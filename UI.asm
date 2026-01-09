@@ -1,0 +1,9 @@
+ENUM	UIFADE_NONE, \
+		UIFADE_IN,	\
+		UIFADE_OUT
+
+.DATA
+
+UIFade			BPEnum UIFADE_NONE
+UIFadeCallback	BPPtr 0
+UIFadeVal		REAL4 0.0
