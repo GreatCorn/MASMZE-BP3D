@@ -14,6 +14,7 @@ ENUML
 		E 	UI_STATE_MENU_SETTINGS_CONTROLS
 		
 		; UI_STATE_MENU_SETTINGS_GRAPHICS tree
+		E 	UI_STATE_MENU_SETTINGS_GRAPHICS_EFFECTS
 		E 	UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA
 		
 		; UI_STATE_MENU_SETTINGS_CONTROLS tree
@@ -22,7 +23,7 @@ ENUML
 ; UI parameters and values
 UI_SCALE	EQU 4
 UI_BRD_M	EQU 4*UI_SCALE				; Border margin
-UI_BTN_H	EQU 10*UI_SCALE				; Button height; height of text (used 
+UI_BTN_H	EQU 12*UI_SCALE				; Button height; height of text (used 
 										; without margin)
 UI_BTN_M	EQU 2*UI_SCALE				; Button margin (only between two 
 										; buttons, not around)
@@ -98,6 +99,7 @@ UIScrollPressed		BPBool FALSE
 UIScrollable		BPBool FALSE
 UISliderRange		REAL4 0.0, 1.0
 UISliderStep		REAL4 0.0
+UISliderZeros		BPBool TRUE
 UISmallButtons		BPBool FALSE
 UIXFrom				SDWORD 0
 
@@ -535,7 +537,7 @@ UI_HR PROC EXPORT X:SDWORD, Y:SDWORD
 	invoke glColor4fv, OFFSET clDarkGray
 	invoke glCallList, ScreenQuad
 	call glPopMatrix
-	invoke glColor4fv, clWhite
+	invoke glColor4fv, OFFSET clWhite
 	ret
 UI_HR ENDP
 
@@ -571,19 +573,21 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 		invoke crt_strlen, pcx
 	ENDIF
 	pop pcx
-	IFDEF BP_WININC
-		; Very dirty _gcvt tricks (add back suppressed zeros and decimal point)
-		.IF (pax < 2)
-			mov BYTE PTR [pcx+1], '.'
-		.ENDIF
-		.IF (pax < 3)
-			mov BYTE PTR [pcx+2], '0'
-		.ENDIF
-		.IF (pax < 4)
-			mov BYTE PTR [pcx+3], '0'
-		.ENDIF
-	ENDIF
-	mov BYTE PTR [pcx+4], 0	; Keep fixed length of 4
+	.IF (UISliderZeros)
+		IFDEF BP_WININC
+			; Dirty _gcvt tricks (add suppressed trailing)
+			.IF (pax < 2)
+				mov BYTE PTR [pcx+1], '.'
+			.ENDIF
+			.IF (pax < 3)
+				mov BYTE PTR [pcx+2], '0'
+			.ENDIF
+			.IF (pax < 4)
+				mov BYTE PTR [pcx+3], '0'
+			.ENDIF
+		ENDIF
+		mov BYTE PTR [pcx+4], 0	; Keep fixed length of 4
+	.ENDIF
 	mov eax, xFrom
 	add eax, UI_BTN_W
 	invoke bpRenderText, pcx, eax, yFrom, BP_ALIGN_RIGHT, 0
@@ -993,11 +997,9 @@ UI_DrawMenuSettingsControlsBindings ENDP
 
 UI_DrawMenuSettingsGraphics PROC EXPORT
 	LOCAL dm:DEVMODEAFIX, res:Vector2, resEnum:DWORD, strPtr:BPPtr
-	LOCAL pxFmts[256]:DWORD, numFmts:DWORD, samples:DWORD, wglsamples:DWORD
 	LOCAL nameStr[32]:BYTE, devNamePtr:BPPtr
-	LOCAL fFind:WIN32_FIND_DATAA, hFind:BPPtr, hFile:BPPtr
 	
-	UI_MENU_GRAPHICS_HEIGHT	EQU UI_BTN_H*8 + UI_BTN_M*5 + UI_HR_H*3
+	UI_MENU_GRAPHICS_HEIGHT	EQU UI_BTN_H*7 + UI_BTN_M*5 + UI_HR_H*2
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_GRAPHICS_HEIGHT/2
@@ -1130,6 +1132,78 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	invoke UI_HR, UIXFrom, ebx
 	add ebx, UI_HR_H
 	
+	invoke Vector2Set, ADDR UISliderRange, f(3), f(10)
+	mov UISliderZeros, FALSE
+	fild SettingsGraphicsMazeCull
+	fstp resEnum
+	invoke UI_Slider, StrMenuMazeCull, UIXFrom, ebx, ADDR resEnum
+	.IF (al)
+		fld resEnum
+		fistp SettingsGraphicsMazeCull
+		;invoke Settings_SetOption, OFFSET SettingsAudioVolume
+	.ENDIF
+	mov UISliderZeros, TRUE
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Effects
+	invoke UI_Button, StrMenuEffects, UIXFrom, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		.IF (UIComboboxMenu)
+			mov UIComboboxMenu, 0
+		.ENDIF
+		mov UIState, UI_STATE_MENU_SETTINGS_GRAPHICS_EFFECTS
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Gamma
+	invoke UI_Button, StrMenuGammaSetup, UIXFrom, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		.IF (UIComboboxMenu)
+			mov UIComboboxMenu, 0
+		.ENDIF
+		mov UIState, UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA
+	.ENDIF
+	add ebx, UI_BTN_H
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	mov UISmallButtons, TRUE
+	mov edx, UIXFrom
+	sub edx, UI_BTN_WS + UI_BTN_M/2
+	invoke UI_Button, StrMenuCancel, edx, ebx, BP_ALIGN_LEFT
+	.IF (al)
+		.IF (UIComboboxMenu > 0)
+			call UI_HandleMenuEscape
+		.ENDIF
+		call UI_HandleMenuEscape
+	.ENDIF
+	
+	mov edx, UIXFrom
+	add edx, UI_BTN_M/2
+	invoke UI_Button, StrMenuOK, edx, ebx, BP_ALIGN_LEFT
+	.IF (al)
+		invoke Settings_Save, OFFSET SettingsIniGraphics
+		.IF (UIComboboxMenu > 0)
+			call UI_HandleMenuEscape
+		.ENDIF
+		call UI_HandleMenuEscape
+	.ENDIF
+	
+	mov UISmallButtons, FALSE
+	ret
+UI_DrawMenuSettingsGraphics ENDP
+
+UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
+	LOCAL pxFmts[256]:DWORD, numFmts:DWORD, samples:DWORD, wglsamples:DWORD
+	LOCAL nameStr[32]:BYTE
+
+	UI_MENU_EFFECTS_HEIGHT	EQU UI_BTN_H*6 + UI_BTN_M*4 + UI_HR_H
+	
+	mov ebx, ScreenHalf.Y
+	sub ebx, UI_MENU_EFFECTS_HEIGHT/2
+	
+	; MSAA
 	invoke UI_Combobox, StrMenuMSAA, UIXFrom, ebx, UICB_MSAA
 	.IF (al)		
 		.IF (wglChoosePixelFormatARB)
@@ -1178,20 +1252,21 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
-	; Gamma
-	invoke UI_Button, StrMenuGammaSetup, UIXFrom, ebx, BP_ALIGN_CENTER
-	.IF (al)
-		.IF (UIComboboxMenu)
-			mov UIComboboxMenu, 0
-		.ENDIF
-		mov UIState, UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA
-	.ENDIF
-	add ebx, UI_BTN_H
+	; Pixelization
+	invoke UI_Checkbox, StrMenuPixelization, UIXFrom, ebx, \
+	OFFSET SettingsGraphicsPixelization
+	add ebx, UI_BTN_H + UI_BTN_M
 	
-	invoke UI_HR, UIXFrom, ebx
-	add ebx, UI_HR_H
+	; Posterization
+	invoke UI_Checkbox, StrMenuPosterization, UIXFrom, ebx, \
+	OFFSET SettingsGraphicsPosterization
+	add ebx, UI_BTN_H + UI_BTN_M
 	
-	; Etc section
+	; Afterimage
+	invoke UI_Checkbox, StrMenuAfterimage, UIXFrom, ebx, \
+	OFFSET SettingsGraphicsAfterimage
+	add ebx, UI_BTN_H + UI_BTN_M
+	
 	; Particles
 	invoke UI_Checkbox, StrMenuParticles, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsParticles
@@ -1200,31 +1275,12 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	invoke UI_HR, UIXFrom, ebx
 	add ebx, UI_HR_H
 	
-	mov UISmallButtons, TRUE
-	mov edx, UIXFrom
-	sub edx, UI_BTN_WS + UI_BTN_M/2
-	invoke UI_Button, StrMenuCancel, edx, ebx, BP_ALIGN_LEFT
+	invoke UI_Button, StrMenuBack, UIXFrom, ebx, BP_ALIGN_CENTER
 	.IF (al)
-		.IF (UIComboboxMenu > 0)
-			call UI_HandleMenuEscape
-		.ENDIF
 		call UI_HandleMenuEscape
 	.ENDIF
-	
-	mov edx, UIXFrom
-	add edx, UI_BTN_M/2
-	invoke UI_Button, StrMenuOK, edx, ebx, BP_ALIGN_LEFT
-	.IF (al)
-		invoke Settings_Save, OFFSET SettingsIniGraphics
-		.IF (UIComboboxMenu > 0)
-			call UI_HandleMenuEscape
-		.ENDIF
-		call UI_HandleMenuEscape
-	.ENDIF
-	
-	mov UISmallButtons, FALSE
 	ret
-UI_DrawMenuSettingsGraphics ENDP
+UI_DrawMenuSettingsGraphicsEffects ENDP
 
 UI_DrawMenuSettingsGraphicsGamma PROC EXPORT
 	ret
@@ -1427,7 +1483,7 @@ UI_HandleMenuEscape PROC EXPORT
 		mov UIState, UI_STATE_MENU_PAUSE
 	.ELSEIF (UIState >= UI_STATE_MENU_SETTINGS_CONTROLS_BINDINGS)
 		mov UIState, UI_STATE_MENU_SETTINGS_CONTROLS
-	.ELSEIF (UIState >= UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA)
+	.ELSEIF (UIState >= UI_STATE_MENU_SETTINGS_GRAPHICS_EFFECTS)
 		mov UIState, UI_STATE_MENU_SETTINGS_GRAPHICS
 	.ELSEIF (UIState >= UI_STATE_MENU_SETTINGS_GRAPHICS)
 		.IF (SettingsChanged)
@@ -1527,7 +1583,8 @@ UI_Draw PROC EXPORT
 	invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
 	
 	
-	.IF (SettingsGraphicsAfterimage || SettingsGraphicsPixelization)
+	.IF (SettingsGraphicsAfterimage) || (SettingsGraphicsPixelization) || \
+	(SettingsGraphicsPosterization)
 		invoke FX_ScreenTexture, FXAfterimage
 		.IF (SettingsGraphicsPixelization)
 			invoke glViewport, 0, 0, FMain.ScreenSize.x, FMain.ScreenSize.y
@@ -1536,10 +1593,12 @@ UI_Draw PROC EXPORT
 	invoke glColor4fv, OFFSET clWhite
 	.IF (SettingsGraphicsAfterimage)
 		call FX_DrawAfterimage
-	.ELSEIF (SettingsGraphicsPixelization)
+	.ELSEIF (SettingsGraphicsPixelization) || (SettingsGraphicsPosterization)
+		invoke glDisable, GL_BLEND
 		mov pax, FXAfterimage
 		invoke glBindTexture, GL_TEXTURE_2D, DWORD PTR [pax]
 		invoke glCallList, ScreenQuad
+		invoke glEnable, GL_BLEND
 	.ENDIF
 	
 	; UI Drawing
@@ -1571,6 +1630,8 @@ UI_Draw PROC EXPORT
 			call UI_DrawMenuSettingsControlsBindings
 		CASE UI_STATE_MENU_SETTINGS_GRAPHICS
 			call UI_DrawMenuSettingsGraphics
+		CASE UI_STATE_MENU_SETTINGS_GRAPHICS_EFFECTS
+			call UI_DrawMenuSettingsGraphicsEffects
 		CASE UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA
 			call UI_DrawMenuSettingsGraphicsGamma
 	ENDSW

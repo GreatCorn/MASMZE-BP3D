@@ -17,8 +17,6 @@ FXAfterimageEndFull BPPtr ?	; Real end frame pointer at last afterimage frame
 FXAfterimageFactor	REAL4 ?
 FXAfterimageHighFPS	BPBool ?
 
-FXDepthTextureBuffer	BPPtr ?
-FXDepthTextureSize		BPPtr ?
 FXNoiseScale			REAL4 ?
 FXRenderSize			Vector2 <?, ?>
 FXScreenTextureSize		DWORD ?
@@ -129,6 +127,10 @@ FX_SetAfterimage PROC EXPORT Amount:BPPtr
 	mov FXAfterimageEnd, pax
 	
 	invoke glGenTextures, FXAfterimageAmount, FXAfterimage
+	
+	; In-game configurable afterimage
+	bpMPM FXAfterimageEndFull, FXAfterimageEnd
+	sub FXAfterimageEnd, 2 * SIZEOF BPPtr
 	ret
 FX_SetAfterimage ENDP
 
@@ -144,7 +146,7 @@ FX_ScreenTexture PROC EXPORT GLTexturePtr:BPPtr
 	;   On Windows XP (VirtualBox), this produces GL_INVALID_ENUM. Is 
 	; glReadPixels supported on XP at all?
 	invoke glReadPixels, 0, 0, FXRenderSize.X, FXRenderSize.Y, GL_RGB, \
-	colorMode, FXScreenTextureBuffer	
+	colorMode, FXScreenTextureBuffer
 	
 	mov pax, GLTexturePtr
 	invoke glBindTexture, GL_TEXTURE_2D, DWORD PTR [pax]
@@ -164,8 +166,6 @@ FX_Create PROC EXPORT
 	fstp FXNoiseScale
 	
 	invoke FX_SetAfterimage, FX_AFTERIMAGE_AMOUNT
-	bpMPM FXAfterimageEndFull, FXAfterimageEnd
-	sub FXAfterimageEnd, 2 * SIZEOF BPPtr
 	ret
 FX_Create ENDP
 
@@ -202,23 +202,15 @@ FX_Resize PROC EXPORT
 		mov eax, FMain.ScreenSize.y
 		mov FXRenderSize.Y, eax
 	.ENDIF
-	mov ecx, FXRenderSize.X
+	mov ecx, FXRenderSize.X	; Y in eax
 	mul ecx
-	push eax
-	shl eax, 2	; *4
-	mov FXDepthTextureSize, eax
-	pop eax
-	mov ecx, 3
+	mov ecx, 3				; RGB (3 bytes per pixel max)
 	mul ecx
 	mov FXScreenTextureSize, eax
-	
-	.IF (FXDepthTextureBuffer)
-		invoke bpFree, bpDefHeap, 0, FXDepthTextureBuffer
-	.ENDIF
+
 	.IF (FXScreenTextureBuffer)
 		invoke bpFree, bpDefHeap, 0, FXScreenTextureBuffer
 	.ENDIF
-	mov FXDepthTextureBuffer, rv(bpMalloc, bpDefHeap, 0, FXDepthTextureSize)
 	mov FXScreenTextureBuffer, rv(bpMalloc, bpDefHeap, 0, FXScreenTextureSize)
 	ret
 FX_Resize ENDP

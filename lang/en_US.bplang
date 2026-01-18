@@ -26,11 +26,16 @@ WINDOWED
 FULLSCREEN
 EXCLUSIVE
 VSYNC
-MSAA
 GAMMA SETUP
 GAMMA
 Set the gamma value so that the#image on the right is barely visible.
-Particles
+MAZE CULL RADIUS
+EFFECTS
+MSAA
+PIXELIZATION
+POSTERIZATION
+AFTERIMAGE
+PARTICLES
 Mouse sensitivity
 Raw mouse input
 Use gamepad

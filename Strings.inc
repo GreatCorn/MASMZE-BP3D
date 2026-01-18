@@ -26,10 +26,15 @@ SV	StrMenuWindowed
 SV	StrMenuFullscreen
 SV	StrMenuExclusive
 SV	StrMenuVSync
-SV	StrMenuMSAA
 SV	StrMenuGammaSetup
 SV	StrMenuGamma
 SV	StrMenuGammaDesc
+SV	StrMenuMazeCull
+SV	StrMenuEffects
+SV	StrMenuMSAA
+SV	StrMenuPixelization
+SV	StrMenuPosterization
+SV	StrMenuAfterimage
 SV	StrMenuParticles
 SV	StrMenuMouseSens
 SV	StrMenuMouseRaw

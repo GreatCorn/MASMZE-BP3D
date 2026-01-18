@@ -464,11 +464,6 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniVSync, pax, ADDR SettingsIniPathAbs
 		
-		; MSAA
-		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-		ADDR SettingsIniMSAA, str$(SettingsGraphicsMSAA), \
-		ADDR SettingsIniPathAbs
-		
 		; Maze cull radius
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniMazeCull, str$(SettingsGraphicsMazeCull), \
@@ -478,6 +473,38 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniGamma, real4$(SettingsGraphicsGamma), \
 		ADDR SettingsIniPathAbs
+		
+		; MSAA
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniMSAA, str$(SettingsGraphicsMSAA), \
+		ADDR SettingsIniPathAbs
+		
+		; Pixelization
+		.IF (SettingsGraphicsPixelization)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniPixelization, pax, ADDR SettingsIniPathAbs
+		
+		; Posterization
+		.IF (SettingsGraphicsPosterization)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniPosterization, pax, ADDR SettingsIniPathAbs
+		
+		; Afterimage
+		.IF (SettingsGraphicsAfterimage)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniAfterimage, pax, ADDR SettingsIniPathAbs
 		
 		; Particles
 		.IF (SettingsGraphicsParticles)
@@ -534,6 +561,11 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 			invoke bpSetInputFlags, OFFSET FMain, al
 		.ENDIF
 		
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsAfterimage)
+		print "graphics/afterimage", 13, 10
+		.IF (FMain.Handle)
+			invoke FX_SetAfterimage, FX_AFTERIMAGE_AMOUNT
+		.ENDIF
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsDisplay)
 		print "graphics/display", 13, 10
 		.IF (FMain.Handle)
@@ -542,6 +574,11 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsMSAA)
 		print "graphics/msaa", 13, 10
 		call Settings_SetMSAA
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsPixelization)
+		print "graphics/pixelization", 13, 10
+		.IF (FMain.Handle)
+			call FX_Resize
+		.ENDIF
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsResolution)
 		print "graphics/resolution", 13, 10
 		.IF (FMain.Handle)
