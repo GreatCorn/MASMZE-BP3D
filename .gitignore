@@ -3,4 +3,6 @@
 *.exe
 *.exp
 *.lib
+*.lst
 *.obj
+*.png

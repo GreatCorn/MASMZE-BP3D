@@ -8,10 +8,38 @@ SettingsIniJoystickSpeed	DB "JoystickSpeed", 0
 SettingsIniMouseSensitivity	DB "MouseSensitivity", 0
 SettingsIniRawMouse			DB "RawMouse", 0
 
+; Bind settings are in main
+SettingsIniIBUp				DB "IBUp", 0
+SettingsIniIBDown			DB "IBDown", 0
+SettingsIniIBLeft			DB "IBLeft", 0
+SettingsIniIBRight			DB "IBRight", 0
+SettingsIniIBLookUp			DB "IBLookUp", 0
+SettingsIniIBLookDown		DB "IBLookDown", 0
+SettingsIniIBLookLeft		DB "IBLookLeft", 0
+SettingsIniIBLookRight		DB "IBLookRight", 0
+SettingsIniIBCrouch			DB "IBCrouch", 0
+SettingsIniIBGlyph			DB "IBGlyph", 0
+SettingsIniIBAction			DB "IBAction", 0
+SettingsIniIBConfirm		DB "IBConfirm", 0
+
+SettingsIniJBUp				DB "JBUp", 0
+SettingsIniJBDown			DB "JBDown", 0
+SettingsIniJBLeft			DB "JBLeft", 0
+SettingsIniJBRight			DB "JBRight", 0
+SettingsIniJBLookUp			DB "JBLookUp", 0
+SettingsIniJBLookDown		DB "JBLookDown", 0
+SettingsIniJBLookLeft		DB "JBLookLeft", 0
+SettingsIniJBLookRight		DB "JBLookRight", 0
+SettingsIniJBCrouch			DB "JBCrouch", 0
+SettingsIniJBGlyph			DB "JBGlyph", 0
+SettingsIniJBAction			DB "JBAction", 0
+SettingsIniJBConfirm		DB "JBConfirm", 0
+
 SettingsIniGraphics			DB "Graphics", 0
 SettingsIniAfterimage		DB "Afterimage", 0
 SettingsIniDisplay			DB "Display", 0
 SettingsIniGamma			DB "Gamma", 0
+SettingsIniMazeCull			DB "MazeCull", 0
 SettingsIniMSAA				DB "MSAA", 0
 SettingsIniParticles		DB "Particles", 0
 SettingsIniPixelization		DB "Pixelization", 0
@@ -21,11 +49,18 @@ SettingsIniResolutionHeight	DB "Height", 0
 SettingsIniVSync			DB "VSync", 0
 SettingsIniWindowMode		DB "WindowMode", 0
 
+SettingsIniMisc				DB "Misc", 0
+SettingsIniLanguage			DB "Language", 0
+
 SettingsIni2f		DB "2.0", 0
 SettingsIni1f		DB "1.0", 0
 SettingsIni0n5f		DB "0.5", 0
+SettingsIniEnUS		DB "en_US.bplang", 0
 SettingsIniFalse	DB "false", 0
 SettingsIniTrue		DB "true", 0
+
+SettingsLangPath	DB "lang\*", 0
+LANGOFFSET			EQU SIZEOF SettingsLangPath - 2
 
 SettingsRegCompass		DB "Compass", 0
 SettingsRegComplete		DB "Complete", 0
@@ -54,6 +89,7 @@ SettingsControlsRawMouse			BPBool TRUE
 SettingsGraphicsAfterimage		BPBool TRUE
 SettingsGraphicsDisplay			DWORD 0
 SettingsGraphicsGamma			REAL4 0.5
+SettingsGraphicsMazeCull		DWORD 5
 SettingsGraphicsMSAA			DWORD 0
 SettingsGraphicsParticles		BPBool TRUE
 SettingsGraphicsPixelization	BPBool TRUE
@@ -61,6 +97,8 @@ SettingsGraphicsPosterization	BPBool FALSE
 SettingsGraphicsResolution		DWORD 854, 480
 SettingsGraphicsVSync			BPBool TRUE
 SettingsGraphicsWindowMode		BPEnum BP_WINDOW_MODE_WINDOWED
+
+SettingsMiscLanguage			DB 256 DUP (0)
 SettingsMiscMultithreading		BPBool TRUE
 
 SettingsChanged		BPBool FALSE
@@ -74,7 +112,7 @@ SettingsRegistry HKEY ?	; Default registry key
 .CODE
 Settings_SetOption PROTO :BPPtr
 
-Settings_IsTrue PROC
+Settings_IsTrue PROC EXPORT 
 	.IF (SettingsIniString[0] == 116) || (SettingsIniString[0] == 84) ; t or T
 		mov pax, TRUE
 	.ELSE
@@ -83,7 +121,7 @@ Settings_IsTrue PROC
 	ret
 Settings_IsTrue ENDP
 
-Settings_Load PROC
+Settings_Load PROC EXPORT 
 	; Get absolute path to settings.ini
 	invoke GetFullPathNameA, ADDR SettingsIniPath, LENGTH SettingsIniPathAbs, \
 	ADDR SettingsIniPathAbs, 0
@@ -95,9 +133,7 @@ Settings_Load PROC
 	invoke GetPrivateProfileString, ADDR SettingsIniAudio, \
 	ADDR SettingsIniVolume, ADDR SettingsIni1f, ADDR SettingsIniString, \
 	9, ADDR SettingsIniPathAbs
-	invoke StrToFloat, ADDR SettingsIniString, ADDR SettingsIniDouble
-	fld SettingsIniDouble
-	fstp SettingsAudioVolume
+	invoke StrToFl, ADDR SettingsIniString, ADDR SettingsAudioVolume
 	invoke Settings_SetOption, OFFSET SettingsAudioVolume
 	
 	; ----- CONTROLS -----
@@ -115,17 +151,13 @@ Settings_Load PROC
 	invoke GetPrivateProfileString, ADDR SettingsIniControls, \
 	ADDR SettingsIniJoystickSpeed, ADDR SettingsIni2f, ADDR SettingsIniString, \
 	9, ADDR SettingsIniPathAbs
-	invoke StrToFloat, ADDR SettingsIniString, ADDR SettingsIniDouble
-	fld SettingsIniDouble
-	fstp SettingsControlsJoystickSpeed
+	invoke StrToFl, ADDR SettingsIniString, ADDR SettingsControlsJoystickSpeed
 	
 	; Mouse sensitivity
 	invoke GetPrivateProfileString, ADDR SettingsIniControls, \
 	ADDR SettingsIniMouseSensitivity, ADDR SettingsIni0n5f, \
 	ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
-	invoke StrToFloat, ADDR SettingsIniString, ADDR SettingsIniDouble
-	fld SettingsIniDouble
-	fstp SettingsControlsMouseSensitivity
+	invoke StrToFl, ADDR SettingsIniString,ADDR SettingsControlsMouseSensitivity
 	
 	; Raw mouse
 	invoke GetPrivateProfileString, ADDR SettingsIniControls, \
@@ -138,7 +170,7 @@ Settings_Load PROC
 	.ENDIF
 	
 	; ----- GRAPHICS -----
-	; Afterimage (HIDDEN)
+	; Afterimage
 	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
 	ADDR SettingsIniAfterimage, ADDR SettingsIniTrue, ADDR SettingsIniString, \
 	9, ADDR SettingsIniPathAbs
@@ -160,9 +192,15 @@ Settings_Load PROC
 	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
 	ADDR SettingsIniGamma, ADDR SettingsIni0n5f, ADDR SettingsIniString,\
 	9, ADDR SettingsIniPathAbs
-	invoke StrToFloat, ADDR SettingsIniString, ADDR SettingsIniDouble
-	fld SettingsIniDouble
-	fstp SettingsGraphicsGamma
+	invoke StrToFl, ADDR SettingsIniString, ADDR SettingsGraphicsGamma
+	
+	; Maze cull radius
+	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+	ADDR SettingsIniMazeCull, SettingsGraphicsMazeCull, ADDR SettingsIniPathAbs
+	.IF (eax != SettingsGraphicsMazeCull)
+		mov SettingsGraphicsMazeCull, eax
+		invoke Settings_SetOption, OFFSET SettingsGraphicsMazeCull
+	.ENDIF
 	
 	; MSAA
 	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
@@ -232,9 +270,96 @@ Settings_Load PROC
 		invoke Settings_SetOption, OFFSET SettingsGraphicsWindowMode
 	.ENDIF
 	
+	
+	; ----- MISC -----
+	; Language
+	invoke GetPrivateProfileString, ADDR SettingsIniMisc, \
+	ADDR SettingsIniLanguage, ADDR SettingsIniEnUS, \
+	ADDR SettingsMiscLanguage, 255, ADDR SettingsIniPathAbs
+	invoke Settings_SetOption, OFFSET SettingsMiscLanguage
+	
 	mov SettingsChanged, FALSE
 	ret
 Settings_Load ENDP
+
+Settings_LoadBindings PROC EXPORT
+	; Keyboard/mouse
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBUp, IBUp, ADDR SettingsIniPathAbs
+	mov IBUp, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBDown, IBDown, ADDR SettingsIniPathAbs
+	mov IBDown, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLeft, IBLeft, ADDR SettingsIniPathAbs
+	mov IBLeft, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBRight, IBRight, ADDR SettingsIniPathAbs
+	mov IBRight, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLookUp, IBLookUp, ADDR SettingsIniPathAbs
+	mov IBLookUp, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLookDown, IBLookDown, ADDR SettingsIniPathAbs
+	mov IBLookDown, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLookLeft, IBLookLeft, ADDR SettingsIniPathAbs
+	mov IBLookLeft, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLookRight, IBLookRight, ADDR SettingsIniPathAbs
+	mov IBLookRight, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBCrouch, IBCrouch, ADDR SettingsIniPathAbs
+	mov IBCrouch, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBGlyph, IBGlyph, ADDR SettingsIniPathAbs
+	mov IBGlyph, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBAction, IBAction, ADDR SettingsIniPathAbs
+	mov IBAction, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBConfirm, IBConfirm, ADDR SettingsIniPathAbs
+	mov IBConfirm, eax
+	
+	; Joystick
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBUp, JBUp, ADDR SettingsIniPathAbs
+	mov JBUp, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBDown, JBDown, ADDR SettingsIniPathAbs
+	mov JBDown, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLeft, JBLeft, ADDR SettingsIniPathAbs
+	mov JBLeft, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBRight, JBRight, ADDR SettingsIniPathAbs
+	mov JBRight, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLookUp, JBLookUp, ADDR SettingsIniPathAbs
+	mov JBLookUp, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLookDown, JBLookDown, ADDR SettingsIniPathAbs
+	mov JBLookDown, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLookLeft, JBLookLeft, ADDR SettingsIniPathAbs
+	mov JBLookLeft, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLookRight, JBLookRight, ADDR SettingsIniPathAbs
+	mov JBLookRight, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBCrouch, JBCrouch, ADDR SettingsIniPathAbs
+	mov JBCrouch, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBGlyph, JBGlyph, ADDR SettingsIniPathAbs
+	mov JBGlyph, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBAction, JBAction, ADDR SettingsIniPathAbs
+	mov JBAction, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBConfirm, JBConfirm, ADDR SettingsIniPathAbs
+	mov JBConfirm, eax
+	ret
+Settings_LoadBindings ENDP
 
 Settings_LoadGame PROC EXPORT
 	LOCAL pcbData:DWORD
@@ -269,68 +394,107 @@ Settings_LoadGame PROC EXPORT
 	ret
 Settings_LoadGame ENDP
 
-Settings_Save PROC IniSection:BPPtr	
+Settings_Save PROC EXPORT IniSection:BPPtr	
 	mov SettingsChanged, FALSE
 	print "Saving settings to section "
 	print IniSection
 	print " in "
 	print ADDR SettingsIniPathAbs, 13, 10
-	SWITCH IniSection
-		CASE OFFSET SettingsIniAudio
-			; Volume
-			invoke WritePrivateProfileStringA, ADDR SettingsIniAudio, \
-			ADDR SettingsIniVolume, real4$(SettingsAudioVolume), \
-			ADDR SettingsIniPathAbs
-			
-		CASE OFFSET SettingsIniGraphics
-			; Resolution
-			invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-			ADDR SettingsIniResolutionWidth, \
-			str$(SettingsGraphicsResolution[0]), ADDR SettingsIniPathAbs
-			invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-			ADDR SettingsIniResolutionHeight, \
-			str$(SettingsGraphicsResolution[4]), ADDR SettingsIniPathAbs
-			
-			; Window mode
-			invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-			ADDR SettingsIniWindowMode, ubyte$(SettingsGraphicsWindowMode), \
-			ADDR SettingsIniPathAbs
-			
-			; Display device
-			invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-			ADDR SettingsIniDisplay, str$(SettingsGraphicsDisplay), \
-			ADDR SettingsIniPathAbs
-			
-			; VSync
-			.IF (SettingsGraphicsVSync)
-				lea pax, SettingsIniTrue
-			.ELSE
-				lea pax, SettingsIniFalse
-			.ENDIF
-			invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-			ADDR SettingsIniVSync, pax, ADDR SettingsIniPathAbs
-			
-			; MSAA
-			invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-			ADDR SettingsIniMSAA, str$(SettingsGraphicsMSAA), \
-			ADDR SettingsIniPathAbs
-			
-			; Gamma
-			invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-			ADDR SettingsIniGamma, real4$(SettingsGraphicsGamma), \
-			ADDR SettingsIniPathAbs
-			
-			; Particles
-			.IF (SettingsGraphicsParticles)
-				lea pax, SettingsIniTrue
-			.ELSE
-				lea pax, SettingsIniFalse
-			.ENDIF
-			invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-			ADDR SettingsIniParticles, pax, ADDR SettingsIniPathAbs
-	ENDSW
+	.IF (IniSection == OFFSET SettingsIniAudio)
+		; Volume
+		invoke WritePrivateProfileStringA, ADDR SettingsIniAudio, \
+		ADDR SettingsIniVolume, real4$(SettingsAudioVolume), \
+		ADDR SettingsIniPathAbs
+	.ELSEIF (IniSection == OFFSET SettingsIniControls)
+		; Mouse sensitivity
+		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+		ADDR SettingsIniMouseSensitivity, \
+		real4$(SettingsControlsMouseSensitivity), ADDR SettingsIniPathAbs
+		
+		; Use raw mouse
+		.IF (SettingsControlsRawMouse)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+		ADDR SettingsIniRawMouse, pax, ADDR SettingsIniPathAbs
+		
+		; Use joystick
+		.IF (SettingsControlsJoystick)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+		ADDR SettingsIniJoystick, pax, ADDR SettingsIniPathAbs
+		
+		; Joystick speed
+		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+		ADDR SettingsIniJoystickSpeed, \
+		real4$(SettingsControlsJoystickSpeed), ADDR SettingsIniPathAbs
+		
+		; Bindings
+		call Settings_SaveBindings
+	.ELSEIF (IniSection == OFFSET SettingsIniGraphics)
+		; Resolution
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniResolutionWidth, \
+		str$(SettingsGraphicsResolution[0]), ADDR SettingsIniPathAbs
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniResolutionHeight, \
+		str$(SettingsGraphicsResolution[4]), ADDR SettingsIniPathAbs
+		
+		; Window mode
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniWindowMode, ubyte$(SettingsGraphicsWindowMode), \
+		ADDR SettingsIniPathAbs
+		
+		; Display device
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniDisplay, str$(SettingsGraphicsDisplay), \
+		ADDR SettingsIniPathAbs
+		
+		; VSync
+		.IF (SettingsGraphicsVSync)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniVSync, pax, ADDR SettingsIniPathAbs
+		
+		; MSAA
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniMSAA, str$(SettingsGraphicsMSAA), \
+		ADDR SettingsIniPathAbs
+		
+		; Maze cull radius
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniMazeCull, str$(SettingsGraphicsMazeCull), \
+		ADDR SettingsIniPathAbs
+		
+		; Gamma
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniGamma, real4$(SettingsGraphicsGamma), \
+		ADDR SettingsIniPathAbs
+		
+		; Particles
+		.IF (SettingsGraphicsParticles)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniParticles, pax, ADDR SettingsIniPathAbs
+	.ENDIF
 	ret
 Settings_Save ENDP
+
+Settings_SaveBindings PROC EXPORT
+	
+	ret
+Settings_SaveBindings ENDP
 
 Settings_SetMSAA PROC
 	;   Haven't found a way to set it in the middle of the game without 
@@ -338,67 +502,92 @@ Settings_SetMSAA PROC
 	ret
 Settings_SetMSAA ENDP
 
-Settings_SetOption PROC OptionPtr:BPPtr	
+Settings_SetOption PROC EXPORT OptionPtr:BPPtr	
 	mov SettingsChanged, TRUE
 	print "Setting option: "
-	SWITCH OptionPtr
-		CASE OFFSET SettingsAudioVolume
-			print "audio/volume", 13, 10
-			.IF (AudioDevice)
-				invoke alListenerf, AL_GAIN, SettingsAudioVolume
-			.ENDIF
-		CASE OFFSET SettingsControlsJoystick
-			print "controls/joystick", 13, 10
-			.IF (FMain.Handle)
-				and FMain.InputFlags, not BP_IF_JOYSTICK
-				invoke bpSetInputFlags, ADDR FMain, FMain.InputFlags
-			.ENDIF
-		CASE OFFSET SettingsControlsRawMouse
-			print "controls/raw mouse", 13, 10
-			.IF (FMain.Handle)
-				and FMain.InputFlags, not BP_IF_RAW_MOUSE
-				invoke bpSetInputFlags, ADDR FMain, FMain.InputFlags
-			.ENDIF
+	.IF (OptionPtr == OFFSET SettingsAudioVolume)
+		print "audio/volume", 13, 10
+		.IF (AudioDevice)
+			invoke alListenerf, AL_GAIN, SettingsAudioVolume
+		.ENDIF
 		
-		CASE OFFSET SettingsGraphicsDisplay
-			print "graphics/display", 13, 10
-			.IF (FMain.Handle)
-				invoke bpSetDisplayDevice, ADDR FMain, SettingsGraphicsDisplay
+	.ELSEIF (OptionPtr == OFFSET SettingsControlsJoystick)
+		print "controls/joystick", 13, 10
+		.IF (FMain.Handle)
+			mov al, FMain.InputFlags
+			.IF (SettingsControlsJoystick)
+				or al, BP_IF_RAW_JOYSTICK
+			.ELSE
+				and al, not BP_IF_RAW_JOYSTICK
 			.ENDIF
-		CASE OFFSET SettingsGraphicsMSAA
-			print "graphics/msaa", 13, 10
-			call Settings_SetMSAA
-		CASE OFFSET SettingsGraphicsResolution
-			print "graphics/resolution", 13, 10
-			.IF (FMain.Handle)
-				mov eax, SettingsGraphicsResolution[4]
-				shl eax, 2
-				or eax, SettingsGraphicsResolution[0]
-				.IF (FMain.WindowMode != BP_WINDOW_MODE_FULLSCREEN)
-					invoke bpSetScreenSize, ADDR FMain, \
-					SettingsGraphicsResolution[0], SettingsGraphicsResolution[4]
-				.ELSE
-					invoke Vector2Copy, ADDR FMain.WindowSize, \
-					ADDR SettingsGraphicsResolution
-					invoke bpScreenToWindowSize, ADDR FMain, \
-					ADDR FMain.WindowSize
-				.ENDIF
+			invoke bpSetInputFlags, OFFSET FMain, al
+		.ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsControlsRawMouse)
+		print "controls/raw mouse", 13, 10
+		.IF (FMain.Handle)
+			mov al, FMain.InputFlags
+			.IF (SettingsControlsRawMouse)
+				or al, MOUSE_RAW
+			.ELSE
+				and al, not MOUSE_RAW
 			.ENDIF
-		CASE OFFSET SettingsGraphicsVSync
-			print "graphics/vsync", 13, 10
-			.IF (wglSwapIntervalEXT) && (FMain.GraphicsContext)
-				.IF (SettingsGraphicsVSync)
-					push -1	; -1 for adaptive, should test
-				.ELSE
-					push 0
-				.ENDIF
-				call wglSwapIntervalEXT
+			invoke bpSetInputFlags, OFFSET FMain, al
+		.ENDIF
+		
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsDisplay)
+		print "graphics/display", 13, 10
+		.IF (FMain.Handle)
+			invoke bpSetDisplayDevice, ADDR FMain, SettingsGraphicsDisplay
+		.ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsMSAA)
+		print "graphics/msaa", 13, 10
+		call Settings_SetMSAA
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsResolution)
+		print "graphics/resolution", 13, 10
+		.IF (FMain.Handle)
+			mov eax, SettingsGraphicsResolution[4]
+			shl eax, 2
+			or eax, SettingsGraphicsResolution[0]
+			.IF (FMain.WindowMode != BP_WINDOW_MODE_FULLSCREEN)
+				invoke bpSetScreenSize, ADDR FMain, \
+				SettingsGraphicsResolution[0], SettingsGraphicsResolution[4]
+			.ELSE
+				invoke Vector2Copy, ADDR FMain.WindowSize, \
+				ADDR SettingsGraphicsResolution
+				invoke bpScreenToWindowSize, ADDR FMain, \
+				ADDR FMain.WindowSize
 			.ENDIF
-		CASE OFFSET SettingsGraphicsWindowMode
-			print "graphics/window mode", 13, 10
-			.IF (FMain.Handle)
-				invoke bpSetWindowMode, ADDR FMain, SettingsGraphicsWindowMode
+		.ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsVSync)
+		print "graphics/vsync", 13, 10
+		.IF (wglSwapIntervalEXT) && (FMain.GraphicsContext)
+			.IF (SettingsGraphicsVSync)
+				push -1	; -1 for adaptive, should test
+			.ELSE
+				push 0
 			.ENDIF
-	ENDSW
+			call wglSwapIntervalEXT
+		.ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsWindowMode)
+		print "graphics/window mode", 13, 10
+		.IF (FMain.Handle)
+			invoke bpSetWindowMode, ADDR FMain, SettingsGraphicsWindowMode
+		.ENDIF
+		
+	.ELSEIF (OptionPtr == OFFSET SettingsMiscLanguage)
+		print "misc/language", 13, 10
+		invoke RtlMoveMemory, \
+		OFFSET SettingsMiscLanguage + LANGOFFSET,
+		OFFSET SettingsMiscLanguage,SIZEOF SettingsMiscLanguage - LANGOFFSET
+		invoke RtlMoveMemory, OFFSET SettingsMiscLanguage,
+		OFFSET SettingsLangPath, LANGOFFSET
+		print OFFSET SettingsMiscLanguage, 13, 10
+		.IF (FMain.Handle)
+			call FreeStrings
+			invoke LoadStrings, OFFSET SettingsMiscLanguage
+			invoke glDeleteTextures, 255, OFFSET bpDefaultFont
+			invoke bpLoadFont, StrLangFontPath, OFFSET bpDefaultFont
+		.ENDIF
+	.ENDIF
 	ret
 Settings_SetOption ENDP

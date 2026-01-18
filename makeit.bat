@@ -1,8 +1,9 @@
-:: Batch is a fucking headache
 @echo off
+:: Batch is a fucking headache
 
 setlocal EnableDelayedExpansion
 set _argCnt=0
+set _target=WINDOWS
 set _help=0
 set _build=0
 set _asm=masm
@@ -39,6 +40,8 @@ for %%x in (%*) do (
 			set _link=linkw
 		) else if [%%~x] == [/d] (
 			set _reading=drive
+		) else if [%%~x] == [/D] (
+			set _target=CONSOLE
 		) else if [%%~x] == [/i] (
 			set _includes=custom
 			set _reading=includes
@@ -82,6 +85,7 @@ if %_argCnt%==0 (
 		echo /b		Build only, without running
 		echo /c		Use ASMC and LINKW to compile and link
 		echo /d		Specify drive when using default include paths
+		echo /D		Compile in debug mode, CONSOLE target, MODE_DEBUG symbol
 		echo /i [path]	Specify custom include path. Must have \lib
 		echo /help		Print this help message
 		echo /j		Use UASM and JWlink to compile and link
@@ -123,6 +127,16 @@ if %_includes%==masm (
 	)
 )
 
+if %_target%==CONSOLE (
+	if %_asm%==masm (
+		set _asmArgs=%_asmArgs% /DMODE_DEBUG=1
+	) else if %_asm%==poasm (
+		set _asmArgs=%_asmArgs% /DMODE_DEBUG=1
+	) else (
+		set _asmArgs=%_asmArgs% -DMODE_DEBUG=1
+	)
+)
+
 if %_asm%==uasm (
 	uasm32 -c -coff -I %_incpath% %_asmArgs% %_sourcefile%
 ) else if %_asm%==masm (
@@ -139,24 +153,24 @@ if %_asm%==uasm (
 
 if %_link%==jwlink (
 	if [%_quiet%] EQU [1] (
-		JWlink RUNTIME WINDOWS FILE %_project%.obj LIBPATH %_libpath% OP START=_start NAME "%_appName%" OPTION QUIET OPTION NOLARGE
+		JWlink RUNTIME %_target% FILE %_project%.obj LIBPATH %_libpath% OP START=_start NAME "%_appName%" OPTION QUIET OPTION NOLARGE
 	) else (
-		JWlink RUNTIME WINDOWS FILE %_project%.obj LIBPATH %_libpath% OP START=_start NAME "%_appName%" OPTION NOLARGE
+		JWlink RUNTIME %_target% FILE %_project%.obj LIBPATH %_libpath% OP START=_start NAME "%_appName%" OPTION NOLARGE
 	)
 ) else if %_link%==link (
 	if [%_quiet%] EQU [1] (
-		link /subsystem:WINDOWS %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%" /nologo
+		link /subsystem:%_target% %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%" /nologo
 	) else (
-		link /subsystem:WINDOWS %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%"
+		link /subsystem:%_target% %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%"
 	)
 ) else if %_link%==linkw (
 	if [%_quiet%] EQU [1] (
-		linkw /subsystem:WINDOWS /libpath:%_libpath% /entry:_start /out:"%_appName%" /nologo %_project%.obj 
+		linkw /subsystem:%_target% /libpath:%_libpath% /entry:_start /out:"%_appName%" /nologo %_project%.obj 
 	) else (
-		linkw /subsystem:WINDOWS /libpath:%_libpath% /entry:_start /out:"%_appName%" %_project%.obj 
+		linkw /subsystem:%_target% /libpath:%_libpath% /entry:_start /out:"%_appName%" %_project%.obj 
 	)
 ) else if %_link%==polink (
-	polink /subsystem:WINDOWS %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%"
+	polink /subsystem:%_target% %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%"
 )
 if [%_build%] NEQ [1] (
 	%_project%.exe

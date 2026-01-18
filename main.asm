@@ -1,19 +1,39 @@
-.386
+.686
 .model flat,stdcall
 option casemap:none
 
-BP_IMPORTERS_VERBOSE	EQU <1>
+BP_COMPATIBILITY_W9X	EQU <1>
+BP_ERROR_PASS			EQU <1>
+;BP_IMPORTERS_VERBOSE	EQU <1>
+IFDEF MODE_DEBUG
+	ECHO Compiling MASMZE-BP3D in debug mode.
+	BP_TRACEABLE_HEAP EQU <1>
+ENDIF
 
 include ..\BoilPlate3D\src\BP3D.asm
 
-include include\advapi32.inc
-includelib advapi32.lib
-include include\masm32.inc
-includelib masm32.lib
-include include\msvcrt.inc
-includelib msvcrt.lib
-include macros\macros.asm
+IFDEF BP_COMPATIBILITY_W9X
+	MOUSE_RAW EQU 0
+ELSE
+	MOUSE_RAW EQU BP_IF_RAW_MOUSE
+ENDIF
 
+IFDEF BP_WININC
+	includelib advapi32.lib
+	include include\stdlib.inc
+	includelib msvcrt.lib
+ELSEIFNDEF BP_CUSTOM_INCLUDES
+	include include\advapi32.inc
+	includelib advapi32.lib
+	include include\msvcrt.inc
+	includelib msvcrt.lib
+	
+	include include\masm32.inc
+	includelib masm32.lib
+	include macros\macros.asm
+ENDIF
+
+include ..\BoilPlate3D\src\BP3DArrays.inc
 include ..\BoilPlate3D\src\BP3DMaths.inc
 include ..\BoilPlate3D\src\BP3DVectors.inc
 include ..\BoilPlate3D\src\BP3DImporters.inc
@@ -24,6 +44,10 @@ include lib\soft_oal.inc
 includelib lib\soft_oal.lib
 include lib\stb_vorbis.inc
 includelib lib\stb_vorbis.lib
+
+;PROC_TRACE		EQU <1>
+PROC_TRACE_ALL	EQU <1>
+include ProcTrace.asm
 
 ; ----- Miscellaneous helper macros -----
 ;   Define a series of symbolic EQUs with incrementing numeric constants.
@@ -49,8 +73,114 @@ E MACRO earg:REQ
 	enumlval_ = enumlval_ +1
 ENDM
 
+IFNDEF print
+	;   Blank print macro cuz I can't bother to rewrite it for full 
+	; compatibility with MASM's print macro.
+	print MACRO Dummy:VARARG
+	ENDM
+ENDIF
+IFNDEF real4$
+	; msvcrt cheats to replace macros (they use it anyway I think)
+	real4$ MACRO FlVal:REQ
+		LOCAL localDbl, localStr
+		.DATA
+			localStr DB 16 DUP (0)
+		.DATA?
+			localDbl REAL8 ?
+		.CODE
+		IF (OPATTR (FlVal)) AND 00010000y	; Register
+			push FlVal
+			fld REAL4 PTR [psp]
+			add psp, SIZEOF BPPtr
+		ELSE
+			fld FlVal
+		ENDIF
+		fstp localDbl
+		IFDEF _gcvt	; WinInc
+			invoke _gcvt, localDbl, 7, ADDR localStr
+		ELSE		; MASM
+			invoke crt__gcvt, localDbl, 7, ADDR localStr
+		ENDIF
+		EXITM pax
+	ENDM
+ENDIF
+IFNDEF rv
+	rv MACRO ProcName:REQ, Args:VARARG
+		procCall EQU <invoke ProcName>
+		FOR var,<Args>
+			procCall CATSTR procCall,<, var>
+		ENDM
+		procCall
+		EXITM <pax>
+	ENDM
+ENDIF
+IFNDEF str$
+	str$ MACRO IntVal:REQ
+		LOCAL localStr
+		.DATA
+			localStr DB 11 DUP (0)
+		.CODE
+		IFDEF _ltoa	; WinInc
+			invoke _ltoa, IntVal, ADDR localStr, 10
+		ELSE		; MASM
+			invoke crt__ltoa, IntVal, ADDR localStr, 10
+		ENDIF
+		EXITM <ADDR localStr>
+	ENDM
+ENDIF
+IFNDEF SWITCH
+	swCases	= 0
+	SWITCH MACRO VarName:REQ
+		mov pax, VarName
+		swCases = 0
+	ENDM
+	CASE MACRO Args:VARARG
+		LOCAL stat, argc
+		argc = 0
+		stat TEXTEQU <>
+		FOR var,<Args>
+			IF argc EQ 1
+				stat CATSTR <||>
+			ENDIF
+			stat CATSTR <pax == var>
+			argc = 1
+		ENDM
+		IF swCases EQ 0
+			.IF stat
+			swCases = 1
+		ELSE
+			.ELSEIF stat
+		ENDIF
+	ENDM
+	ENDSW MACRO
+		.ENDIF
+	ENDM
+ENDIF
+IFNDEF ubyte$
+	ubyte$ MACRO ByteVal:REQ
+		movzx pax, ByteVal
+		EXITM <str$(pax)>
+	ENDM
+ENDIF
+
+mbm MACRO m1, m2
+	mov al, m2
+	mov m1, al
+ENDM
+
+pushb MACRO m1
+	;movzx pax, m1
+	mov al, m1
+	push pax
+ENDM
+
+popb MACRO m1
+	pop pax
+	mov m1, al
+ENDM
+
 ;   Implicit call a function identifier with VARARG arguments.
-vinvoke MACRO FuncName:REQ, args:VARARG
+vinvoke MACRO ProcName:REQ, args:VARARG
 	LOCAL txt, arg, adr
 	txt TEXTEQU <>
 	%FOR arg, <args>
@@ -70,7 +200,22 @@ vinvoke MACRO FuncName:REQ, args:VARARG
 		ENDIF
 		push the@arg
 	ENDM
-	call FuncName
+	call ProcName
+ENDM
+
+vrv MACRO ProcName:REQ, Args:VARARG
+	vinvoke ProcName, Args
+	EXITM <pax>
+ENDM
+
+;   Simple MASM SADD replacement. Declares a string and returns its ADDR in pax.
+;   qStr:String - quoted string.
+s MACRO qStr:REQ
+	LOCAL strDb
+	.DATA
+		strDb DB qStr,0
+	.CODE
+	EXITM <ADDR strDb>
 ENDM
 
 ;   Make the argument into a string (for preprocessor @ data).
@@ -79,7 +224,13 @@ stringify MACRO arg
     foo CATSTR <'>,arg,<'>
     EXITM foo
 ENDM
+
 .CONST
+FLT_1	EQU 1065353216
+ENUM	BIND_NONE, \
+		BIND_KEY_MOUSE, \
+		BIND_JOYSTICK
+
 AppName DB "MASMZE-3D", 0	; App name & caption
 AsmTime	DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), 13, 10, 0
 
@@ -88,47 +239,159 @@ AsmTime	DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), 13, 10, 0
 FARB	BPForm <>		; Dummy form to load wgl functions and init ARB ext
 FMain	BPForm <>		; Main form
 
-ARBPixelAttribsMSAA DWORD \	; Pixel attributes for MSAA
+; To check for MSAA options
+ARBPixelAttribs DWORD \	
+	2001h, GL_TRUE, \	; WGL_DRAW_TO_WINDOW_ARB = true
+	2010h, GL_TRUE, \	; WGL_SUPPORT_OPENGL_ARB = true
+	2011h, GL_TRUE, \	; WGL_DOUBLE_BUFFER_ARB = true
+	2013h, 202Bh, \		; WGL_PIXEL_TYPE_ARB = WGL_TYPE_RGBA_ARB
+	2014h, 24, \		; WGL_COLOR_BITS_ARB = 24
+	2022h, 24, \		; WGL_DEPTH_BITS_ARB = 24
+	2023h, 1, \			; WGL_STENCIL_BITS_ARB = 1
+0		
+
+; Pixel attributes to apply MSAA
+ARBPixelAttribsMSAA DWORD \	
 	2001h, GL_TRUE, \			; WGL_DRAW_TO_WINDOW_ARB = true
 	2010h, GL_TRUE, \			; WGL_SUPPORT_OPENGL_ARB = true
 	2011h, GL_TRUE, \			; WGL_DOUBLE_BUFFER_ARB = true
 	2013h, 202Bh, \				; WGL_PIXEL_TYPE_ARB = WGL_TYPE_RGBA_ARB
 	2014h, 24, \				; WGL_COLOR_BITS_ARB = 24
 	2022h, 24, \				; WGL_DEPTH_BITS_ARB = 24
+	2023h, 1, \					; WGL_STENCIL_BITS_ARB = 1
 	2041h, 1, \					; WGL_SAMPLE_BUFFERS_ARB = 1 (multisample)
-	2042h, 4, \					; WGL_SAMPLES_ARB = 4 (4x MSAA?)
+	2042h, 0, \					; WGL_SAMPLES_ARB = 0
 0		
 
-AudioDevice		ALCdevice 0		; OpenAL audio device
-AudioContext	ALCcontext 0	; OpenAL audio context
+; ----- INPUT -----
+Keys BPBool 255 DUP (0)
+LastInput BPPtr 0
+LastInputTimer REAL4 0.2, 0.05
 
-Glyphs	DWORD 7
+; Input binds
+IBUp		BPPtr "W"
+IBDown		BPPtr "S"
+IBLeft		BPPtr "A"
+IBRight		BPPtr "D"
+IBLookUp	BPPtr VK_UP
+IBLookDown	BPPtr VK_DOWN
+IBLookLeft	BPPtr VK_LEFT
+IBLookRight	BPPtr VK_RIGHT
+IBCrouch	BPPtr VK_CONTROL
+IBGlyph		BPPtr "G"
+IBAction	BPPtr VK_SPACE
+IBConfirm	BPPtr VK_RETURN
+
+IBMenu		BPPtr VK_ESCAPE
+IBUIUp		BPPtr VK_UP
+IBUIDown	BPPtr VK_DOWN
+IBUILeft	BPPtr VK_LEFT
+IBUIRight	BPPtr VK_RIGHT
+IBUIConfirm	BPPtr VK_RETURN
+
+; Gamepad axes
+GAMEPAD_NEG		EQU 128
+GAMEPAD_LS_H	EQU 64
+GAMEPAD_LS_V	EQU 65
+GAMEPAD_RS_H	EQU 66
+GAMEPAD_RS_V	EQU 67
+GAMEPAD_TRIG_L	EQU 68
+GAMEPAD_TRIG_R	EQU 68 or GAMEPAD_NEG
+; Joystick binds
+JBUp		BPPtr GAMEPAD_LS_V or GAMEPAD_NEG
+JBDown		BPPtr GAMEPAD_LS_V
+JBLeft		BPPtr GAMEPAD_LS_H or GAMEPAD_NEG
+JBRight		BPPtr GAMEPAD_LS_H
+JBLookUp	BPPtr GAMEPAD_RS_V or GAMEPAD_NEG
+JBLookDown	BPPtr GAMEPAD_RS_V
+JBLookLeft	BPPtr GAMEPAD_RS_H or GAMEPAD_NEG
+JBLookRight	BPPtr GAMEPAD_RS_H
+JBCrouch	BPPtr 4
+JBGlyph		BPPtr 0
+JBAction	BPPtr 1
+JBConfirm	BPPtr 8
+
+
+JBMenu		BPPtr 9
+JBCancel	BPPtr 2
+JBUIUp		BPPtr BP_JOY_DPAD_UP
+JBUIDown	BPPtr BP_JOY_DPAD_DOWN
+JBUILeft	BPPtr BP_JOY_DPAD_LEFT
+JBUIRight	BPPtr BP_JOY_DPAD_RIGHT
+JBUIConfirm	BPPtr 1
+
+ENUM \
+	INPUT_KEYBOARD_MOUSE, \
+	INPUT_JOYSTICK
+InputMethod BPEnum INPUT_KEYBOARD_MOUSE
+
+InputAxes				REAL4 0.0, 0.0, 0.0, 0.0,	0.0, 0.0, 0.0, 0.0
+InputLook				Vector2 <0.0, 0.0>
+InputMovement			Vector2 <0.0, 0.0>
+InputMovementClamped	Vector2 <0.0, 0.0>
+InputCrouch				BPPtr FALSE
+InputGlyph				BPPtr FALSE
+InputAction				BPPtr FALSE
+InputConfirm			BPPtr FALSE
+
+InputMenu				BPPtr FALSE
+InputUIUp				BPPtr FALSE
+InputUIDown				BPPtr FALSE
+InputUILeft				BPPtr FALSE
+InputUIRight			BPPtr FALSE
+InputUIConfirm			BPPtr FALSE
+InputUIConfirmT			BPPtr FALSE
+
+FogDensity	REAL4 0.5
 
 .DATA?
 delta2	REAL4 ?
 delta10	REAL4 ?
+delta20	REAL4 ?
+IFDEF MODE_DEBUG
+FPS		REAL4 ?
+ENDIF
 FPUCW	WORD ?	; To store the x87 FPU codeword
+
+; Screen stuffs
+ScreenHalf Vector2 <?, ?>
+ScreenSizeF Vector2 <?, ?>
 
 ; ----- WGL extended functions -----
 wglChoosePixelFormatARB			BPPtr ?
 wglGetPixelFormatAttribivARB	BPPtr ?
 wglSwapIntervalEXT				BPPtr ?
 
-CurrentFloor	DWORD ?	; Environmental variety
-CurrentRoof		DWORD ?
-CurrentWall		DWORD ?
-CurrentWallMDL	DWORD ?
-
+AUDIO_OPENAL	EQU <1>
+include SndUtils.asm
 include Resources.asm
 
+include FX.asm
+include Collide.asm
 include Maze.asm
 include Kubale.asm
 include Player.asm
-include UI.asm
 
 include Settings.asm
+include UI.asm
 
 .CODE
+
+DrawScene PROC EXPORT
+	.IF (Maze)
+		call Maze_Draw
+	.ENDIF
+	invoke glBindTexture, GL_TEXTURE_2D, TexVebra
+	call glPushMatrix
+	invoke glTranslatef, 0, 0, f(-1)
+	.IF (Keys["V"])
+		invoke glRotatef, f(-90), 0, f(1), 0
+		;int 3
+	.ENDIF
+	invoke glCallList, MdlVebraLook
+	call glPopMatrix
+	ret
+DrawScene ENDP
 
 ;   Manually initialize an ARB-compatible OpenGL context on FMain
 InitARBContext PROC EXPORT
@@ -142,12 +405,16 @@ InitARBContext PROC EXPORT
 	invoke DescribePixelFormat, FMain.DeviceContext, pixelFormat, \
 	SIZEOF PIXELFORMATDESCRIPTOR, ADDR pfd
 	.IF (!al)
-		invoke bpError, SADD("Can't describe pixel format."), 0
+		invoke bpError, s("Can't describe pixel format."), 0
+		xor pax, pax
+		ret
 	.ENDIF
 	
 	invoke SetPixelFormat, FMain.DeviceContext, pixelFormat, ADDR pfd
 	.IF (!al)
-		invoke bpError, SADD("Can't set pixel format."), 0
+		invoke bpError, s("Can't set pixel format."), 0
+		xor pax, pax
+		ret
 	.ENDIF
 	invoke wglCreateContext, FMain.DeviceContext
 	mov FMain.GraphicsContext, pax
@@ -167,33 +434,36 @@ InitARBContext PROC EXPORT
 	invoke glEnableClientState, GL_NORMAL_ARRAY
 	
 	invoke glClearColor4fv, ADDR clBlack
+	mov pax, TRUE
 	ret
 InitARBContext ENDP
 
 InitAudio PROC EXPORT
-	mov AudioDevice, rv(alcOpenDevice, NULL)
-	mov AudioContext, rv(alcCreateContext, AudioDevice, NULL)
-	invoke alcMakeContextCurrent, AudioContext
+	call InitAudioSystem
 	ret
 InitAudio ENDP
 
 InitGraphics PROC EXPORT
 	; Initialize the respective OpenGL context
 	.IF (SettingsGraphicsMSAA) && (wglChoosePixelFormatARB)
-		m2m ARBPixelAttribsMSAA[15*4], SettingsGraphicsMSAA
-		invoke InitARBContext
+		bpMEM32 ARBPixelAttribsMSAA[17*4], SettingsGraphicsMSAA
+		.IF (!rv(InitARBContext))
+			; MSAA failed, let's not crash
+			mov SettingsGraphicsMSAA, 0
+			invoke bpInitGLContext, OFFSET FMain
+		.ENDIF
 	.ELSE
-		invoke bpInitGLContext, ADDR FMain	; Initialize OpenGL context
+		invoke bpInitGLContext, OFFSET FMain	; Initialize OpenGL context
 	.ENDIF
 	
-	invoke wglGetProcAddress, SADD("wglSwapIntervalEXT")
+	invoke wglGetProcAddress, s("wglSwapIntervalEXT")
 	mov wglSwapIntervalEXT, pax
 	.IF (wglSwapIntervalEXT)
 		print "Got wglSwapIntervalEXT extension.", 13, 10
 		invoke Settings_SetOption, OFFSET SettingsGraphicsVSync
 	.ENDIF
 	
-	m2m bpAnimationFPS, f(24)
+	bpMEM32 bpAnimationFPS, f(24)
 	
 	invoke glHint, GL_FOG_HINT, GL_FASTEST
 	invoke glHint, GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST
@@ -203,16 +473,25 @@ InitGraphics PROC EXPORT
 	
 	invoke glEnable, GL_LIGHTING
 	invoke glEnable, GL_LIGHT0
-	invoke glLightfv, GL_LIGHT0, GL_SPECULAR, ADDR clGray
+	invoke glLightfv, GL_LIGHT0, GL_SPECULAR, OFFSET clGray
 	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, f(1)
 	
 	invoke glEnable, GL_FOG
 	
+	invoke glColorMaterial, GL_FRONT, GL_DIFFUSE
+	
 	invoke glMaterialf, GL_FRONT, GL_SHININESS, f(64)
-	invoke glMaterialfv, GL_FRONT, GL_SPECULAR, ADDR clGray
+	invoke glMaterialfv, GL_FRONT, GL_SPECULAR, OFFSET clGray
+	
 	ret
 InitGraphics ENDP
 
+ProcessScene PROC EXPORT
+	.IF (Maze)
+		call Maze_Process
+	.ENDIF
+	ret
+ProcessScene ENDP
 
 ;   FMain bindings
 OnCreate PROC EXPORT
@@ -220,16 +499,176 @@ OnCreate PROC EXPORT
 	call InitGraphics
 	call LoadResources
 	print "Finished initialization.", 13, 10
-	.IF !(rv(Settings_LoadGame))
-		; If no save game is present start intro sequence
-		invoke alSourcePlay, SndIntro
-	.ENDIF
-	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+	
+	call FX_Create
+	call UI_Create
 	ret
 OnCreate ENDP
 
 OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
+	; Set current input method
+	.IF (BPInType == BP_INPUT_MOUSE_BUTTON || BPInType == BP_INPUT_KEY)
+		mov InputMethod, INPUT_KEYBOARD_MOUSE
+	.ELSEIF (BPInType == BP_INPUT_JOY_AXIS || BPInType == BP_INPUT_JOY_BUTTON)
+		mov InputMethod, INPUT_JOYSTICK
+	.ENDIF
 	
+	mov pbx, BPInStruct
+	.IF (BPInType == BP_INPUT_MOUSE_MOVE)
+		ASSUME pbx:PTR BPInMouseMove
+		.IF ([pbx].Relative.x)
+			fild [pbx].Relative.x
+			fmul f(0.01)
+			fmul SettingsControlsMouseSensitivity
+			fstp InputLook.X
+		.ENDIF
+		.IF ([pbx].Relative.y)
+			fild [pbx].Relative.y
+			fmul f(0.01)
+			fmul SettingsControlsMouseSensitivity
+			fstp InputLook.Y
+		.ENDIF
+	.ELSEIF (BPInType == BP_INPUT_KEY) || (BPInType == BP_INPUT_MOUSE_BUTTON)
+		ASSUME pbx:PTR BPInKey
+		mov al, [pbx].Pressed
+		mov pcx, [pbx].Keycode
+		
+		.IF (pcx < 256)
+			.IF (Keys[pcx] == al)
+				ret
+			.ENDIF
+			mov Keys[pcx], al
+		.ENDIF
+			
+		mov LastInput, 0
+		bpMEM32 LastInputTimer, f(0.2)
+		
+		.IF ([pbx].Pressed)
+			.IF (UIBinding == BIND_KEY_MOUSE) && ([pbx].Keycode != VK_ESCAPE)
+				mov pax, UIBindAction
+				bpMPM BPPtr PTR [pax], [pbx].Keycode
+				call UI_HandleMenuEscape
+				mov SettingsChanged, TRUE
+			.ENDIF
+			
+			SWITCH [pbx].Keycode
+				CASE IBMenu, VK_ESCAPE
+					print "Escape", 13, 10
+					call UI_HandleMenuEscape
+				CASE IBUIUp
+					mov InputUIUp, TRUE
+					mov LastInput, OFFSET InputUIUp
+				CASE IBUIDown
+					mov InputUIDown, TRUE
+					mov LastInput, OFFSET InputUIDown
+				CASE IBUILeft
+					mov InputUILeft, TRUE
+				CASE IBUIRight
+					mov InputUIRight, TRUE
+				
+				CASE IBUIConfirm
+					mov InputUIConfirm, TRUE
+					mov InputUIConfirmT, TRUE
+				
+				; Mouse
+				CASE VK_LBUTTON
+					.IF (UIState == UI_STATE_GAME)
+						invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+					.ENDIF
+					mov InputUIConfirm, TRUE
+					mov InputUIConfirmT, TRUE
+				CASE VK_MWHEEL_DOWN
+					sub UIScroll, 12
+				CASE VK_MWHEEL_UP
+					add UIScroll, 12
+					
+				IFDEF MODE_DEBUG
+				CASE "R"
+					call Maze_Free
+					invoke Maze_Generate, nRandSeed
+				CASE "0"
+					invoke Vector32DSet, ADDR CamPos, f(1), f(1)
+					invoke Vector32DSet, ADDR CamPosL, f(1), f(1)
+				CASE VK_F3
+					not UIDebug
+				ENDIF
+			ENDSW
+			
+			; REBINDABLE
+			SWITCH [pbx].Keycode
+				CASE IBUp
+					mov InputAxes[0], FLT_1
+				CASE IBDown
+					mov InputAxes[4], FLT_1
+				CASE IBLeft
+					mov InputAxes[8], FLT_1
+				CASE IBRight
+					mov InputAxes[12], FLT_1
+				CASE IBLookUp
+					mov InputAxes[16], FLT_1
+				CASE IBLookDown
+					mov InputAxes[20], FLT_1
+				CASE IBLookLeft
+					mov InputAxes[24], FLT_1
+				CASE IBLookRight
+					mov InputAxes[28], FLT_1
+				CASE IBCrouch
+					mov InputCrouch, 1
+				CASE IBGlyph
+					mov InputGlyph, 1
+				CASE IBAction
+					mov InputAction, 1
+				CASE IBConfirm
+					mov InputConfirm, 1
+			ENDSW
+		.ELSE
+			SWITCH [pbx].Keycode
+				CASE IBUIUp
+					mov InputUIUp, FALSE
+				CASE IBUIDown
+					mov InputUIDown, FALSE
+				CASE IBUILeft
+					mov InputUILeft, FALSE
+				CASE IBUIRight
+					mov InputUIRight, FALSE
+				
+				CASE IBUIConfirm
+					mov InputUIConfirm, FALSE
+					
+				; Mouse
+				CASE VK_LBUTTON
+					mov InputUIConfirm, FALSE
+			ENDSW
+			
+			; REBINDABLE
+			SWITCH [pbx].Keycode
+				CASE IBUp
+					mov InputAxes[0], 0
+				CASE IBDown
+					mov InputAxes[4], 0
+				CASE IBLeft
+					mov InputAxes[8], 0
+				CASE IBRight
+					mov InputAxes[12], 0
+				CASE IBLookUp
+					mov InputAxes[16], 0
+				CASE IBLookDown
+					mov InputAxes[20], 0
+				CASE IBLookLeft
+					mov InputAxes[24], 0
+				CASE IBLookRight
+					mov InputAxes[28], 0
+				CASE IBCrouch
+					mov InputCrouch, 0
+				CASE IBGlyph
+					mov InputGlyph, 0
+				CASE IBAction
+					mov InputAction, 0
+				CASE IBConfirm
+					mov InputConfirm, 0
+			ENDSW
+		.ENDIF
+	.ENDIF
 	ret
 OnInput ENDP
 
@@ -238,7 +677,15 @@ OnRender PROC EXPORT
 	fmul f(2)
 	fst delta2
 	fmul f(5)
-	fstp delta10
+	fst delta10
+	fmul f(2)
+	fstp delta20
+	
+	IFDEF MODE_DEBUG
+	fld1
+	fdiv deltaUnscaled
+	fistp FPS		; FPS
+	ENDIF
 	
 	.IF (FMain.MouseMode == BP_MOUSE_MODE_LOCKED)
 		.IF (!FMain.Focused)
@@ -246,23 +693,117 @@ OnRender PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
+	; Repeat last input
+	.IF (LastInput)
+		fld LastInputTimer[0]
+		fsub deltaUnscaled
+		fstp LastInputTimer[0]
+		
+		fcmp LastInputTimer[0]
+		.IF (Carry?)
+			fld LastInputTimer[4]
+			fsub deltaUnscaled
+			fstp LastInputTimer[4]
+			
+			fcmp LastInputTimer[4]
+			.IF (Carry?)
+				mov pax, LastInput
+				mov BYTE PTR [pax], TRUE
+				
+				fld LastInputTimer[4]
+				fadd f(0.1)
+				fstp LastInputTimer[4]
+			.ENDIF
+		.ENDIF
+	.ENDIF
+		
+	invoke glViewport, 0, 0, FXRenderSize.X, FXRenderSize.Y
 	invoke glClear, GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT
+	invoke glStencilOp, GL_KEEP, GL_KEEP, GL_REPLACE
+	invoke glColor4fv, OFFSET clWhite
 	
 	invoke glMatrixMode, GL_PROJECTION
 	call glLoadIdentity
 	
+	invoke gluPerspectivef, CamFOV, FMain.Aspect, f(0.01), f(1000)
+	
 	invoke glMatrixMode, GL_MODELVIEW
 	call glLoadIdentity
+	.IF (MazeState != MAZE_CROA)
+		invoke glLightfv, GL_LIGHT0, GL_POSITION, ADDR CamLightPos	; Draw light
+	.ENDIF
+	
+	invoke glRotate3fvr, ADDR CamRotL	; Cam matrix
+	Vector3Push CamPosL
+	invoke Vector3Negate, ADDR CamPosL
+	invoke glTranslate3fv, ADDR CamPosL
+	Vector3Pop CamPosL
+	
+	; Processing
+	call UI_Process
+	.IF (deltaTime)
+		call Plr_Process
+		call ProcessScene
+	.ENDIF
+	
+	; Drawing
+	invoke glFogf, GL_FOG_DENSITY, FogDensity
+	
+	call DrawScene
+	call UI_Draw
+	
+	mov InputUIUp, FALSE
+	mov InputUIDown, FALSE
+	mov InputUIConfirmT, FALSE
+	
+	invoke Vector2Set, ADDR InputLook, 0, 0
 	
 	call glFlush
 	ret
 OnRender ENDP
 
+OnResize PROC EXPORT
+	fild FMain.ScreenSize.x
+	fstp ScreenSizeF.X
+	fild FMain.ScreenSize.y
+	fstp ScreenSizeF.Y
+	
+	mov eax, FMain.ScreenSize.x
+	shr eax, 1
+	mov ScreenHalf.X, eax
+	mov eax, FMain.ScreenSize.y
+	shr eax, 1
+	mov ScreenHalf.Y, eax
+	
+	call FX_Resize
+
+	mov FMain.DefaultFlag, FALSE			; We handle resizing ourselves (FX)
+	invoke bpSetScreenCenter, ADDR FMain	; This is default behavior
+	ret
+OnResize ENDP
+
+OnStart PROC EXPORT
+	; Apply window settings
+	invoke bpSetDisplayDevice, ADDR FMain, SettingsGraphicsDisplay
+	invoke bpSetScreenSize, ADDR FMain, SettingsGraphicsResolution[0], \
+	SettingsGraphicsResolution[4]
+	invoke Settings_SetOption, OFFSET SettingsGraphicsWindowMode
+	
+	;.IF !(rv(Settings_LoadGame))
+		; If no save game is present start intro sequence
+	;	mov PlrState, PLAYER_INTRO_DARK
+	;	invoke alSourcePlay, SndIntro
+	;.ENDIF
+	invoke Maze_Generate, 11058752
+	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+	ret
+OnStart ENDP
+
 ;   FARB bindings
 FARBOnCreate PROC EXPORT
-	invoke bpInitGLContext, ADDR FARB
+	invoke bpInitGLContext, OFFSET FARB
 	
-	invoke wglGetProcAddress, SADD("wglChoosePixelFormatARB")
+	invoke wglGetProcAddress, s("wglChoosePixelFormatARB")
 	mov wglChoosePixelFormatARB, pax
 	.IF (wglChoosePixelFormatARB)
 		print "Got wglChoosePixelFormatARB extension.", 13, 10
@@ -270,7 +811,7 @@ FARBOnCreate PROC EXPORT
 		print "wglChoosePixelFormatARB not retrieved.", 13, 10
 	.ENDIF
 	
-	invoke wglGetProcAddress, SADD("wglGetPixelFormatAttribivARB")
+	invoke wglGetProcAddress, s("wglGetPixelFormatAttribivARB")
 	mov wglGetPixelFormatAttribivARB, pax
 	.IF (wglGetPixelFormatAttribivARB)
 		print "Got wglGetPixelFormatAttribivARB extension.", 13, 10
@@ -278,18 +819,18 @@ FARBOnCreate PROC EXPORT
 		print "wglGetPixelFormatAttribivARB not retrieved.", 13, 10
 	.ENDIF
 	
-	invoke bpDestroyForm, ADDR FARB
+	invoke bpDestroyForm, OFFSET FARB
 	ret
 FARBOnCreate ENDP
 
 start:
-	print ADDR AsmTime, 13, 10
+	print OFFSET AsmTime, 13, 10
 	
 	finit
 	
 	; Set FPU precision mode to single precision
 	invoke fpuSetPrecision, FPU_PRECISION_REAL4
-	invoke fpuSetInterrupt, FPU_EXCEPTION_INVALID
+	;invoke fpuSetInterrupt, FPU_EXCEPTION_INVALID
 	
 	; Randomize nRand random generation
 	call nRandomize
@@ -299,18 +840,20 @@ start:
 	
 	; Create dummy form to load wgl functions required for MSAA
 	mov FARB.OnCreate, OFFSET FARBOnCreate
-	invoke bpCreateForm, ADDR FARB
+	invoke bpCreateForm, OFFSET FARB
 	
 	; Create main form
 	; Assign callback functions
 	mov FMain.OnCreate, OFFSET OnCreate
 	mov FMain.OnInput, OFFSET OnInput
 	mov FMain.OnRender, OFFSET OnRender
+	mov FMain.OnResize, OFFSET OnResize
+	mov FMain.OnStart, OFFSET OnStart
 	
 	; Set FMain parameters according to loaded settings
 	mov FMain.Caption, OFFSET AppName
 	.IF (SettingsControlsRawMouse)
-		or FMain.InputFlags, BP_IF_RAW_MOUSE
+		or FMain.InputFlags, MOUSE_RAW
 	.ENDIF
 	.IF (SettingsControlsJoystick)
 		or FMain.InputFlags, BP_IF_JOYSTICK
@@ -318,7 +861,7 @@ start:
 	mov FMain.WindowStyle, WS_OVERLAPPED or WS_CAPTION or WS_SYSMENU or \
 	WS_MINIMIZEBOX
 	
-	invoke bpCreateForm, ADDR FMain
+	invoke bpCreateForm, OFFSET FMain
 	
 	; Form processing exited, we can safely terminate process
 	invoke TerminateProcess, rv(GetCurrentProcess), 0

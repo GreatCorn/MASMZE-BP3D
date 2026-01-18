@@ -15,7 +15,7 @@ KubaleVision	REAL4 0.0				; Kubale vision value (alpha, gain)
 ; Spawn Kubale into the layer with random position
 Kubale_Spawn PROC EXPORT
 	mov Kubale, KUBALE_ACTIVE
-	m2m KubaleList, MdlKubale
+	bpMEM32 KubaleList, MdlKubale
 	
 	invoke alSourcePlay, SndKubaleV
 	
