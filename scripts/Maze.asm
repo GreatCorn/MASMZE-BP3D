@@ -97,6 +97,9 @@ MazeTramWait	REAL4 0.0			; Tram wait at stop timer
 
 MazeShop		BPBool FALSE
 
+MazePartAmb		ParticleSystem <>
+MazePartDust	ParticleSystem <>
+
 .DATA?
 MazeCurFloor	DWORD ?	; Environmental variety
 MazeCurRoof		DWORD ?
@@ -440,6 +443,10 @@ Maze_OrCellI PROC EXPORT X:SDWORD, Y:SDWORD, Val:BYTE
 	ret
 Maze_OrCellI ENDP
 
+Maze_Create PROC EXPORT
+	
+	ret
+Maze_Create ENDP
 
 Maze_Draw PROC EXPORT
 	LOCAL Pos:Vector2, Boundaries:Vector4

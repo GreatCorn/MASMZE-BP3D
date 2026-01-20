@@ -587,6 +587,24 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 			.ENDIF
 		ENDIF
 		mov BYTE PTR [pcx+4], 0	; Keep fixed length of 4
+	.ELSE
+		IFNDEF BP_WININC
+		IFNDEF BP_CUSTOM_INCLUDES
+			; MASM tricks, as its real4$ doesn't suppress trailing
+			dec pax
+			.WHILE (pax)
+				.IF (BYTE PTR [pcx+pax] == '0')
+					mov BYTE PTR [pcx+pax], 0
+					dec pax
+				.ELSE
+					.IF (BYTE PTR [pcx+pax]=='.') || (BYTE PTR [pcx+pax]==',')
+						mov BYTE PTR [pcx+pax], 0
+					.ENDIF
+					.BREAK
+				.ENDIF
+			.ENDW
+		ENDIF
+		ENDIF
 	.ENDIF
 	mov eax, xFrom
 	add eax, UI_BTN_W
@@ -1604,6 +1622,14 @@ UI_Draw PROC EXPORT
 	; UI Drawing
 	call glLoadIdentity
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+	.IF (Loading)
+		invoke glColor4fv, OFFSET clBlack
+		invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
+		invoke glCallList, bpFontQuad
+		call glLoadIdentity
+		invoke glColor4fv, OFFSET clWhite
+		jmp uiFinish
+	.ENDIF
 	; Menu background darkening frame
 	.IF (UIState != UI_STATE_GAME) && \
 	(UIState != UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA)
@@ -1653,6 +1679,7 @@ UI_Draw PROC EXPORT
 	.ENDIF
 	ENDIF
 	
+	uiFinish:
 	invoke glDisable, GL_BLEND
 	invoke glEnable, GL_LIGHTING
 	invoke glEnable, GL_DEPTH_TEST

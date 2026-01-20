@@ -45,10 +45,6 @@ includelib lib\soft_oal.lib
 include lib\stb_vorbis.inc
 includelib lib\stb_vorbis.lib
 
-;PROC_TRACE		EQU <1>
-PROC_TRACE_ALL	EQU <1>
-include ProcTrace.asm
-
 ; ----- Miscellaneous helper macros -----
 ;   Define a series of symbolic EQUs with incrementing numeric constants.
 ENUM MACRO vargs:VARARG
@@ -345,9 +341,10 @@ InputUIConfirmT			BPPtr FALSE
 FogDensity	REAL4 0.5
 
 .DATA?
-delta2	REAL4 ?
-delta10	REAL4 ?
-delta20	REAL4 ?
+delta2		REAL4 ?
+delta10		REAL4 ?
+delta20		REAL4 ?
+deltaFixed	REAL4 ?
 IFDEF MODE_DEBUG
 FPS		REAL4 ?
 ENDIF
@@ -362,18 +359,23 @@ wglChoosePixelFormatARB			BPPtr ?
 wglGetPixelFormatAttribivARB	BPPtr ?
 wglSwapIntervalEXT				BPPtr ?
 
+;PROC_TRACE		EQU <1>
+PROC_TRACE_ALL	EQU <1>
+include scripts\ProcTrace.asm
+
 AUDIO_OPENAL	EQU <1>
-include SndUtils.asm
-include Resources.asm
+include scripts\SndUtils.asm
+include scripts\Resources.asm
 
-include FX.asm
-include Collide.asm
-include Maze.asm
-include Kubale.asm
-include Player.asm
+include scripts\FX.asm
+include scripts\Collide.asm
+include scripts\Particles.asm
+include scripts\Maze.asm
+include scripts\Kubale.asm
+include scripts\Player.asm
 
-include Settings.asm
-include UI.asm
+include scripts\Settings.asm
+include scripts\UI.asm
 
 .CODE
 
@@ -392,6 +394,20 @@ DrawScene PROC EXPORT
 	call glPopMatrix
 	ret
 DrawScene ENDP
+
+;   Game start (everything loaded in, could be a bind to FMain.OnStart, but
+; we're using staged resource loading)
+GameStart PROC EXPORT
+	;.IF !(rv(Settings_LoadGame))
+		; If no save game is present start intro sequence
+	;	mov PlrState, PLAYER_INTRO_DARK
+	;	invoke alSourcePlay, SndIntro
+	;.ENDIF
+	invoke Maze_Generate, 11058752
+	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+	
+	ret
+GameStart ENDP
 
 ;   Manually initialize an ARB-compatible OpenGL context on FMain
 InitARBContext PROC EXPORT
@@ -493,15 +509,17 @@ ProcessScene PROC EXPORT
 	ret
 ProcessScene ENDP
 
+
+
 ;   FMain bindings
 OnCreate PROC EXPORT
 	call InitAudio
 	call InitGraphics
-	call LoadResources
-	print "Finished initialization.", 13, 10
+	print "Finished base initialization.", 13, 10
 	
 	call FX_Create
 	call UI_Create
+	print "Finished scripts initialization.", 13, 10
 	ret
 OnCreate ENDP
 
@@ -673,6 +691,17 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 OnInput ENDP
 
 OnRender PROC EXPORT
+	.IF (Loading)
+		call LoadResources
+		call UI_Draw
+		
+		call glFlush
+		ret
+	.ELSEIF (LoadState == LOADING_FINISHED)
+		mov LoadState, LOADING_TEXT
+		call GameStart
+	.ENDIF
+	
 	fld deltaTime
 	fmul f(2)
 	fst delta2
@@ -789,13 +818,8 @@ OnStart PROC EXPORT
 	SettingsGraphicsResolution[4]
 	invoke Settings_SetOption, OFFSET SettingsGraphicsWindowMode
 	
-	;.IF !(rv(Settings_LoadGame))
-		; If no save game is present start intro sequence
-	;	mov PlrState, PLAYER_INTRO_DARK
-	;	invoke alSourcePlay, SndIntro
-	;.ENDIF
-	invoke Maze_Generate, 11058752
-	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+	; Start loading resources
+	call LoadResources
 	ret
 OnStart ENDP
 
