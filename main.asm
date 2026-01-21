@@ -345,9 +345,7 @@ delta2		REAL4 ?
 delta10		REAL4 ?
 delta20		REAL4 ?
 deltaFixed	REAL4 ?
-IFDEF MODE_DEBUG
-FPS		REAL4 ?
-ENDIF
+FPS			REAL4 ?
 FPUCW	WORD ?	; To store the x87 FPU codeword
 
 ; Screen stuffs
@@ -571,7 +569,6 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 			
 			SWITCH [pbx].Keycode
 				CASE IBMenu, VK_ESCAPE
-					print "Escape", 13, 10
 					call UI_HandleMenuEscape
 				CASE IBUIUp
 					mov InputUIUp, TRUE
@@ -710,11 +707,9 @@ OnRender PROC EXPORT
 	fmul f(2)
 	fstp delta20
 	
-	IFDEF MODE_DEBUG
 	fld1
 	fdiv deltaUnscaled
 	fistp FPS		; FPS
-	ENDIF
 	
 	.IF (FMain.MouseMode == BP_MOUSE_MODE_LOCKED)
 		.IF (!FMain.Focused)
@@ -776,6 +771,7 @@ OnRender PROC EXPORT
 	.ENDIF
 	
 	; Drawing
+	invoke glAlphaFunc, GL_GREATER, f(0.5)
 	invoke glFogf, GL_FOG_DENSITY, FogDensity
 	
 	call DrawScene

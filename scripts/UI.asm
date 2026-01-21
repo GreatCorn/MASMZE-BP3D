@@ -77,6 +77,8 @@ UIComboboxNames		BPPtr 0		; Array of 32-length strings
 UIComboboxSelected	BYTE 0	; Currently selected item to display check
 UIComboboxXLerp		REAL4 0.0
 
+UIDisabled			BPBool FALSE
+
 UIID				BYTE 0
 
 UIFade				BPEnum UI_FADE_NONE
@@ -120,6 +122,7 @@ UIResSize			BPPtr ?
 .CODE
 UI_DrawRectangle PROTO :DWORD, :DWORD
 UI_MouseFocus PROTO :SDWORD, :SDWORD, :BYTE
+UI_Text PROTO :BPPtr, :SDWORD, :SDWORD, :BPEnum, :BPEnum
 
 FontSize MACRO FontWidth:REQ, FontHeight:REQ
 	invoke Vector2Set, ADDR bpFontWidth, f(%(FontWidth*UI_SCALE)), \
@@ -128,8 +131,7 @@ ENDM
 
 IFDEF MODE_DEBUG
 UI_DrawDebug PROC EXPORT
-	invoke glBlendFunc, GL_ONE, GL_ONE
-	invoke glColor4fv, ADDR clWhite
+	invoke glEnable, GL_ALPHA_TEST
 	push bpFontWidth
 	push bpFontHeight
 	
@@ -158,7 +160,7 @@ UI_DrawDebug PROC EXPORT
 	
 	pop bpFontHeight
 	pop bpFontWidth
-	invoke glDisable, GL_BLEND
+	invoke glDisable, GL_ALPHA_TEST
 	ret
 UI_DrawDebug ENDP
 ENDIF
@@ -192,13 +194,17 @@ UI_Button PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ButtonAlign:BPEnum
 	.ENDIF
 	invoke glTranslatei, eax, Y, 0
 	invoke glBindTexture, GL_TEXTURE_2D, 0
-	mov al, UIID
-	.IF (UIPressed == al)
+	.IF (UIDisabled)
 		invoke glColor4fv, ADDR clGray
-	.ELSEIF (UIFocus == al)
-		invoke glColor4fv, ADDR clLightGray
 	.ELSE
-		invoke glColor4fv, ADDR clWhite
+		mov al, UIID
+		.IF (UIPressed == al)
+			invoke glColor4fv, ADDR clGray
+		.ELSEIF (UIFocus == al)
+			invoke glColor4fv, ADDR clLightGray
+		.ELSE
+			invoke glColor4fv, ADDR clWhite
+		.ENDIF
 	.ENDIF
 	
 	.IF (UISmallButtons)
@@ -210,49 +216,51 @@ UI_Button PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ButtonAlign:BPEnum
 	.ENDIF
 	call glPopMatrix
 	
-	mov al, UIID
-	.IF (UIFocus == al)
-		.IF (UIButtonJump)
-			mov UIButtonJump, FALSE
-			.IF (UIComboboxMenu) && (al & 128)
-				uiFindMenu:
-				mov eax, Y
-				sub eax, ScreenHalf.Y
-				mov ecx, UIComboboxHeight
-				shr ecx, 1
-				add eax, ecx
-				mov xFrom, eax
-				
-				mov ecx, UIComboboxHeight
-				sub ecx, UI_BRD_M*2
-				
-				.IF !(rv(intInRange, eax, 0, ecx))
-					invoke intSign, xFrom
-					mov ecx, UI_BTN_H + UI_BTN_M
-					imul ecx
-					sub UIScroll, eax
-					add Y, eax
-					jmp uiFindMenu
-				.ENDIF
-			.ENDIF
-		.ENDIF
-		
+	.IF !(UIDisabled)
 		mov al, UIID
-		.IF (InputUIConfirmT)
-			mov UIPressed, al
-		.ELSEIF (!InputUIConfirm) && (UIPressed == al)
-			.IF (UIButtonType != UI_MAPPER)
-				.IF (UIFocusType == UI_BUTTON)||(UIFocusType == UI_BUTTON_SMALL)
-					mov UIFocus, 0
+		.IF (UIFocus == al)
+			.IF (UIButtonJump)
+				mov UIButtonJump, FALSE
+				.IF (UIComboboxMenu) && (al & 128)
+					uiFindMenu:
+					mov eax, Y
+					sub eax, ScreenHalf.Y
+					mov ecx, UIComboboxHeight
+					shr ecx, 1
+					add eax, ecx
+					mov xFrom, eax
+					
+					mov ecx, UIComboboxHeight
+					sub ecx, UI_BRD_M*2
+					
+					.IF !(rv(intInRange, eax, 0, ecx))
+						invoke intSign, xFrom
+						mov ecx, UI_BTN_H + UI_BTN_M
+						imul ecx
+						sub UIScroll, eax
+						add Y, eax
+						jmp uiFindMenu
+					.ENDIF
 				.ENDIF
 			.ENDIF
-			mov UIPressed, 0
-			mov boolRet, TRUE
+			
+			mov al, UIID
+			.IF (InputUIConfirmT)
+				mov UIPressed, al
+			.ELSEIF (!InputUIConfirm) && (UIPressed == al)
+				.IF (UIButtonType != UI_MAPPER)
+					.IF (UIFocusType == UI_BUTTON) \
+					|| (UIFocusType == UI_BUTTON_SMALL)
+						mov UIFocus, 0
+					.ENDIF
+				.ENDIF
+				mov UIPressed, 0
+				mov boolRet, TRUE
+			.ENDIF
 		.ENDIF
 	.ENDIF
 	
 	.IF (String)
-		invoke glBlendFunc, GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR
 		.IF (ButtonAlign == BP_ALIGN_LEFT)
 			.IF (UISmallButtons)
 				add X, UI_BTN_WS/2
@@ -266,11 +274,17 @@ UI_Button PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ButtonAlign:BPEnum
 		sub eax, xFrom
 		shr eax, 1
 		add Y, eax
-		invoke bpRenderText, String, X, Y, BP_ALIGN_CENTER, 0
-		invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+		.IF (UIDisabled)
+			mov pax, OFFSET clDarkGray
+			mov UIDisabled, FALSE
+		.ELSE
+			mov pax, OFFSET clBlack
+		.ENDIF
+		invoke glColor4fv, pax
+		invoke UI_Text, String, X, Y, BP_ALIGN_CENTER, 0
 	.ENDIF
 
-	invoke glColor4fv, ADDR clWhite
+	invoke glColor4fv, OFFSET clWhite
 	mov pax, boolRet
 	ret
 UI_Button ENDP
@@ -285,27 +299,32 @@ UI_Checkbox PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, BoolPtr:BPPtr
 	sub X, UI_BTN_W/2
 	invoke UI_MouseFocus, X, Y, UIID
 	
-	.IF (UIFocus == bl)	
-		mov UIFocusType, UI_CHECKBOX
-		invoke glColor4fv, OFFSET clLightGray
-		.IF (UIPressed == bl)
-			invoke glColor4fv, OFFSET clGray
-		.ENDIF
-		
-		.IF (InputUIConfirmT)
-			mov UIPressed, bl
-		.ELSEIF (!InputUIConfirm) && (UIPressed == bl)
-			mov UIPressed, 0
-			mov pax, BoolPtr
-			.IF (BPBool PTR [pax])
-				mov BPBool PTR [pax], FALSE
-			.ELSE
-				mov BPBool PTR [pax], TRUE
-			.ENDIF
-			invoke Settings_SetOption, BoolPtr
-		.ENDIF
+	.IF (UIDisabled)
+		mov UIDisabled, FALSE
+		invoke glColor4fv, OFFSET clGray
 	.ELSE
-		invoke glColor4fv, OFFSET clWhite
+		.IF (UIFocus == bl)	
+			mov UIFocusType, UI_CHECKBOX
+			invoke glColor4fv, OFFSET clLightGray
+			.IF (UIPressed == bl)
+				invoke glColor4fv, OFFSET clGray
+			.ENDIF
+			
+			.IF (InputUIConfirmT)
+				mov UIPressed, bl
+			.ELSEIF (!InputUIConfirm) && (UIPressed == bl)
+				mov UIPressed, 0
+				mov pax, BoolPtr
+				.IF (BPBool PTR [pax])
+					mov BPBool PTR [pax], FALSE
+				.ELSE
+					mov BPBool PTR [pax], TRUE
+				.ENDIF
+				invoke Settings_SetOption, BoolPtr
+			.ENDIF
+		.ELSE
+			invoke glColor4fv, OFFSET clWhite
+		.ENDIF
 	.ENDIF
 	
 	call glPushMatrix
@@ -313,15 +332,14 @@ UI_Checkbox PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, BoolPtr:BPPtr
 	invoke glTranslatei, X, Y, 0
 	invoke UI_DrawRectangle, UI_BTN_H, UI_BTN_H
 	
-	invoke glBlendFunc, GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR
-	invoke glColor4fv, OFFSET clWhite
-	
 	mov pax, BoolPtr
 	.IF (BPBool PTR [pax])
 		invoke glTranslatei, (UI_BTN_H - 16)/2, (UI_BTN_H - 16)/2, 0
 		invoke glScalef, f(16), f(16), 0
 		invoke glBindTexture, GL_TEXTURE_2D, TexUICircle
+		invoke glEnable, GL_ALPHA_TEST
 		invoke glCallList, ScreenQuad
+		invoke glDisable, GL_ALPHA_TEST
 	.ENDIF
 	call glPopMatrix
 	
@@ -334,9 +352,8 @@ UI_Checkbox PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, BoolPtr:BPPtr
 	sub eax, ecx
 	shr eax, 1
 	add Y, eax
-	invoke bpRenderText, String, X, Y, BP_ALIGN_LEFT, 0
+	invoke UI_Text, String, X, Y, BP_ALIGN_LEFT, 0
 	
-	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	pop pbx
 	ret
 UI_Checkbox ENDP
@@ -378,17 +395,17 @@ UI_Combobox PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, CBMenu:SDWORD
 	invoke glTranslatei, X, Y, 0
 	invoke glScalef, f(16), f(16), 0
 	invoke glBindTexture, GL_TEXTURE_2D, TexUIArrow
-	invoke glBlendFunc, GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR
+	invoke glEnable, GL_ALPHA_TEST
 	invoke glCallList, ScreenQuad
+	invoke glDisable, GL_ALPHA_TEST
 	call glPopMatrix
-	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	
 	mov pax, pbx
 	pop pbx
 	ret
 UI_Combobox ENDP
 
-; Add existing pointer to string to UIComboboxNames
+; Copy string to UIComboboxNames
 UI_ComboboxAdd PROC EXPORT String:BPPtr
 	LOCAL offs:BPPtr
 	
@@ -559,8 +576,8 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	push bpFontWidth
 	push bpFontHeight
 	FontSize 3, 6
-	invoke glBlendFunc, GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR
-	invoke bpRenderText, String, xFrom, yFrom, BP_ALIGN_LEFT, 0
+	invoke glColor4fv, OFFSET clWhite
+	invoke UI_Text, String, xFrom, yFrom, BP_ALIGN_LEFT, 0
 	
 	; Draw value text
 	mov pax, ValuePtr
@@ -608,7 +625,7 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	.ENDIF
 	mov eax, xFrom
 	add eax, UI_BTN_W
-	invoke bpRenderText, pcx, eax, yFrom, BP_ALIGN_RIGHT, 0
+	invoke UI_Text, pcx, eax, yFrom, BP_ALIGN_RIGHT, 0
 	pop bpFontHeight
 	pop bpFontWidth
 	
@@ -618,7 +635,6 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	call glPushMatrix
 	invoke glTranslatei, xFrom, yFrom, 0
 	invoke glBindTexture, GL_TEXTURE_2D, 0
-	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	invoke glColor4fv, OFFSET clDarkGray
 	invoke UI_DrawRectangle, UI_BTN_W, UI_SLD_H
 	invoke glColor4fv, OFFSET clWhite
@@ -626,65 +642,70 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	
 	invoke UI_MouseFocus, xFrom, Y, bl
 	
-	.IF (UIFocus == bl)	
-		mov UIFocusType, UI_SLIDER
-		invoke glColor4fv, OFFSET clLightGray
-		.IF (UIPressed == bl)
-			invoke glColor4fv, OFFSET clGray
+	.IF (UIDisabled)
+		invoke glColor4fv, OFFSET clGray
+		mov UIDisabled, FALSE
+	.ELSE
+		.IF (UIFocus == bl)	
+			mov UIFocusType, UI_SLIDER
+			invoke glColor4fv, OFFSET clLightGray
+			.IF (UIPressed == bl)
+				invoke glColor4fv, OFFSET clGray
+				
+				; dark wizardry in these calculations
+				mov eax, bpMouseClient[0]
+				sub eax, xFrom
+				sub eax, UI_SLD_T/2
+				push eax
+				fild DWORD PTR [psp]	
+				push UI_BTN_W - UI_SLD_T
+				fidiv DWORD PTR [psp]
+				add psp, SIZEOF BPPtr*2
+				fld UISliderRange[4]	; Val * (Max - Min) + Min
+				fsub UISliderRange[0]
+				fmul
+				fadd UISliderRange[0]
+				mov pcx, ValuePtr
+				fstp REAL4 PTR [pcx]
+				mov REAL4 PTR [pcx], \
+				rv(flClamp, REAL4 PTR [pcx], UISliderRange[0], UISliderRange[4])
+				mov boolRet, TRUE
+			.ENDIF
 			
-			; dark wizardry in these calculations
-			mov eax, bpMouseClient[0]
-			sub eax, xFrom
-			sub eax, UI_SLD_T/2
-			push eax
-			fild DWORD PTR [psp]	
-			push UI_BTN_W - UI_SLD_T
-			fidiv DWORD PTR [psp]
-			add psp, SIZEOF BPPtr*2
-			fld UISliderRange[4]	; Val * (Max - Min) + Min
-			fsub UISliderRange[0]
-			fmul
-			fadd UISliderRange[0]
-			mov pcx, ValuePtr
-			fstp REAL4 PTR [pcx]
-			mov REAL4 PTR [pcx], \
-			rv(flClamp, REAL4 PTR [pcx], UISliderRange[0], UISliderRange[4])
-			mov boolRet, TRUE
-		.ENDIF
-		
-		.IF (InputUILeft || InputUIRight)
-			fld UISliderStep
-			fadd deltaUnscaled
-			fstp UISliderStep
-			mov boolRet, TRUE
-		.ELSE
-			bpMEM32 UISliderStep, f(0.5)
-		.ENDIF
-		
-		.IF (InputUILeft)
-			mov pcx, ValuePtr
-			fld REAL4 PTR [pcx]
-			fld UISliderStep
-			fmul deltaUnscaled
-			fsub
-			fstp REAL4 PTR [pcx]
-			mov REAL4 PTR [pcx], \
-			rv(flClamp, REAL4 PTR [pcx], UISliderRange[0], UISliderRange[4])
-		.ELSEIF (InputUIRight)
-			mov pcx, ValuePtr
-			fld REAL4 PTR [pcx]
-			fld UISliderStep
-			fmul deltaUnscaled
-			fadd
-			fstp REAL4 PTR [pcx]
-			mov REAL4 PTR [pcx], \
-			rv(flClamp, REAL4 PTR [pcx], UISliderRange[0], UISliderRange[4])
-		.ENDIF
-		
-		.IF (Keys[VK_LBUTTON] && InputUIConfirmT)
-			mov UIPressed, bl
-		.ELSEIF !(Keys[VK_LBUTTON]) && (UIPressed == bl)
-			mov UIPressed, 0
+			.IF (InputUILeft || InputUIRight)
+				fld UISliderStep
+				fadd deltaUnscaled
+				fstp UISliderStep
+				mov boolRet, TRUE
+			.ELSE
+				bpMEM32 UISliderStep, f(0.5)
+			.ENDIF
+			
+			.IF (InputUILeft)
+				mov pcx, ValuePtr
+				fld REAL4 PTR [pcx]
+				fld UISliderStep
+				fmul deltaUnscaled
+				fsub
+				fstp REAL4 PTR [pcx]
+				mov REAL4 PTR [pcx], \
+				rv(flClamp, REAL4 PTR [pcx], UISliderRange[0], UISliderRange[4])
+			.ELSEIF (InputUIRight)
+				mov pcx, ValuePtr
+				fld REAL4 PTR [pcx]
+				fld UISliderStep
+				fmul deltaUnscaled
+				fadd
+				fstp REAL4 PTR [pcx]
+				mov REAL4 PTR [pcx], \
+				rv(flClamp, REAL4 PTR [pcx], UISliderRange[0], UISliderRange[4])
+			.ENDIF
+			
+			.IF (Keys[VK_LBUTTON] && InputUIConfirmT)
+				mov UIPressed, bl
+			.ELSEIF !(Keys[VK_LBUTTON]) && (UIPressed == bl)
+				mov UIPressed, 0
+			.ENDIF
 		.ENDIF
 	.ENDIF
 	pop pbx
@@ -711,6 +732,14 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	mov pax, boolRet
 	ret
 UI_Slider ENDP
+
+UI_Text PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, HorAlign:BPEnum, \
+VerAlign:BPEnum
+	invoke glEnable, GL_ALPHA_TEST
+	invoke bpRenderText, String, X, Y, HorAlign, VerAlign
+	invoke glDisable, GL_ALPHA_TEST
+	ret
+UI_Text ENDP
 
 
 UI_DrawComboboxMenu PROC EXPORT
@@ -846,16 +875,16 @@ UI_DrawComboboxMenu PROC EXPORT
 		mov al, UIComboboxSelected
 		.IF (al == UIID)
 			invoke glBindTexture, GL_TEXTURE_2D, TexUICircle
-			invoke glBlendFunc, GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR
 			call glPushMatrix
 			mov eax, xOffset
 			add eax, UI_BTN_W - 32
 			add yOffset, (UI_BTN_H-16)/2
 			invoke glTranslatei, eax, yOffset, 0
 			invoke glScalef, f(16), f(16), 0
+			invoke glEnable, GL_ALPHA_TEST
 			invoke glCallList, ScreenQuad
+			invoke glDisable, GL_ALPHA_TEST
 			call glPopMatrix
-			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 		.ENDIF
 		
 		add ebx, UI_BTN_H + UI_BTN_M
@@ -870,12 +899,12 @@ UI_DrawComboboxMenu PROC EXPORT
 	sub ebx, eax
 	mov UIScrollLimit, ebx
 	
-	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	invoke glDisable, GL_STENCIL_TEST
 	ret
 UI_DrawComboboxMenu ENDP
 
 UI_DrawFullscreen PROC EXPORT Alpha:REAL4
+	invoke glEnable, GL_BLEND
 	call glPushMatrix
 	invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
@@ -883,6 +912,7 @@ UI_DrawFullscreen PROC EXPORT Alpha:REAL4
 	invoke glColor4f, 0, 0, 0, Alpha
 	invoke glCallList, ScreenQuad
 	call glPopMatrix
+	invoke glDisable, GL_BLEND
 	ret
 UI_DrawFullscreen ENDP
 
@@ -912,6 +942,7 @@ UI_DrawMenuPause ENDP
 
 UI_DrawMenuSettings PROC EXPORT
 	LOCAL fFind:WIN32_FIND_DATAA, hFind:BPPtr, langStr[32]:BYTE, hFile:BPPtr
+	LOCAL dwBytesRead:DWORD	; Needed for older WinAPI
 	
 	UI_MENU_SETTINGS_HEIGHT	EQU UI_BTN_H*5 + UI_BTN_M*3 + UI_HR_H
 	
@@ -970,7 +1001,7 @@ UI_DrawMenuSettings PROC EXPORT
 			FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, 0
 			mov hFile, pax
 			
-			invoke ReadFile, hFile, ADDR langStr, 32, NULL, 0
+			invoke ReadFile, hFile, ADDR langStr, 32, ADDR dwBytesRead, 0
 			invoke CloseHandle, hFile
 			
 			; Replace newline char with 0 to terminate string
@@ -1158,7 +1189,6 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	.IF (al)
 		fld resEnum
 		fistp SettingsGraphicsMazeCull
-		;invoke Settings_SetOption, OFFSET SettingsAudioVolume
 	.ENDIF
 	mov UISliderZeros, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
@@ -1222,6 +1252,9 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	sub ebx, UI_MENU_EFFECTS_HEIGHT/2
 	
 	; MSAA
+	.IF !(wglChoosePixelFormatARB)
+		mov UIDisabled, TRUE
+	.ENDIF
 	invoke UI_Combobox, StrMenuMSAA, UIXFrom, ebx, UICB_MSAA
 	.IF (al)		
 		.IF (wglChoosePixelFormatARB)
@@ -1251,8 +1284,7 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 				.ENDIF
 				invoke UI_ComboboxHas, ADDR nameStr
 				.IF (!al)
-					invoke bpArrayAppend, UIMSAA, ADDR samples, 4
-					mov UIMSAA, pax
+					mov UIMSAA, rv(bpArrayAppend, UIMSAA, ADDR samples, 4)
 					invoke UI_ComboboxAdd, ADDR nameStr
 					print str$(samples), 9
 					print str$(SettingsGraphicsMSAA), 13, 10
@@ -1301,6 +1333,53 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 UI_DrawMenuSettingsGraphicsEffects ENDP
 
 UI_DrawMenuSettingsGraphicsGamma PROC EXPORT
+	UI_MENU_GAMMA_WIDTH		EQU 128*UI_SCALE
+	UI_MENU_GAMMA_HEIGHT	EQU 64*UI_SCALE + UI_BTN_H*3 + UI_BTN_M + UI_HR_H
+	
+	mov ebx, ScreenHalf.Y
+	sub ebx, UI_MENU_GAMMA_HEIGHT/2
+	
+	call glPushMatrix
+	mov eax, ScreenHalf.X
+	sub eax, UI_MENU_GAMMA_WIDTH/2
+	invoke glTranslatei, eax, ebx, 0
+	invoke glScalef, f(%(128*UI_SCALE)), f(%(64*UI_SCALE)), f(1)
+	invoke glBindTexture, GL_TEXTURE_2D, TexGamma
+	invoke glCallList, ScreenQuad
+	invoke FX_DrawGamma, SettingsGraphicsGamma
+	call glPopMatrix
+	add ebx, 64*UI_SCALE
+	
+	push bpFontWidth
+	push bpFontHeight
+	FontSize 3, 6
+	invoke UI_Text, StrMenuGammaDesc, ScreenHalf.X, ebx, BP_ALIGN_CENTER, 0
+	pop bpFontHeight
+	pop bpFontWidth
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	.IF (SettingsGraphicsGammaBypass)
+		mov UIDisabled, TRUE
+	.ENDIF
+	invoke Vector2Set, ADDR UISliderRange, f(0), f(1)
+	invoke UI_Slider, StrMenuGamma, UIXFrom, ebx, OFFSET SettingsGraphicsGamma
+	.IF (al)
+		invoke Settings_SetOption, OFFSET SettingsGraphicsGamma
+	.ENDIF
+	add ebx, UI_BTN_H
+	
+	; Bypass
+	invoke UI_Checkbox, StrMenuBypass, UIXFrom, ebx, \
+	OFFSET SettingsGraphicsGammaBypass
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	invoke UI_Button, StrMenuBack, UIXFrom, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		call UI_HandleMenuEscape
+	.ENDIF
 	ret
 UI_DrawMenuSettingsGraphicsGamma ENDP
 
@@ -1323,8 +1402,7 @@ UI_DrawPopupMenu PROC EXPORT
 			sub ebx, UIPP_EXIT_H/2
 			add ebx, UI_BRD_M
 			
-			invoke glBlendFunc, GL_ONE, GL_ONE
-			invoke bpRenderText, StrMenuReallyQuit, ScreenHalf.X, ebx, \
+			invoke UI_Text, StrMenuReallyQuit, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, 0
 			add ebx, UI_BTN_H
 			
@@ -1361,8 +1439,7 @@ UI_DrawPopupMenu PROC EXPORT
 			sub ebx, UIPP_CANCEL_H/2
 			add ebx, UI_BRD_M
 			
-			invoke glBlendFunc, GL_ONE, GL_ONE
-			invoke bpRenderText, StrMenuDiscardSett, ScreenHalf.X, ebx, \
+			invoke UI_Text, StrMenuDiscardSett, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, 0
 			add ebx, UI_BTN_H
 			
@@ -1410,8 +1487,7 @@ UI_DrawPopupMenu PROC EXPORT
 			sub ebx, UIPP_RESTART_H/2
 			add ebx, UI_BRD_M
 			
-			invoke glBlendFunc, GL_ONE, GL_ONE
-			invoke bpRenderText, StrMenuRestartSett, ScreenHalf.X, ebx, \
+			invoke UI_Text, StrMenuRestartSett, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, 0
 			add ebx, UI_BTN_H*2
 			
@@ -1433,15 +1509,13 @@ UI_DrawPopupMenu PROC EXPORT
 			sub ebx, UIPP_BIND_H/2
 			add ebx, UI_BRD_M
 			
-			invoke glBlendFunc, GL_ONE, GL_ONE
 			push bpFontWidth
 			push bpFontHeight
 			FontSize 3, 6
-			invoke bpRenderText, StrMenuRebinding, ScreenHalf.X, ebx, \
+			invoke UI_Text, StrMenuRebinding, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, 0
 			add ebx, UI_BTN_H/2
-			invoke bpRenderText, UIBindStr, ScreenHalf.X, ebx, \
-			BP_ALIGN_CENTER, 0
+			invoke UI_Text, UIBindStr, ScreenHalf.X, ebx, BP_ALIGN_CENTER, 0
 			pop bpFontHeight
 			pop bpFontWidth
 			add ebx, UI_BTN_H/2
@@ -1561,7 +1635,6 @@ UI_Draw PROC EXPORT
 	invoke glDepthMask, GL_FALSE
 	invoke glDisable, GL_DEPTH_TEST
 	invoke glDisable, GL_LIGHTING
-	invoke glEnable, GL_BLEND
 	
 	; Render downscale overlay
 	invoke glMatrixMode, GL_PROJECTION
@@ -1575,15 +1648,21 @@ UI_Draw PROC EXPORT
 	invoke glScalei, FXRenderSize.X, FXRenderSize.Y, 1
 	
 	; Noise
-	call FX_DrawNoise
+	.IF (SettingsGraphicsNoise)
+		call FX_DrawNoise
+	.ENDIF
 	
 	; Vignette
-	invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
-	invoke glBindTexture, GL_TEXTURE_2D, TexVignette
-	invoke glCallList, ScreenQuad
+	.IF (SettingsGraphicsVignette)
+		invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
+		invoke glBindTexture, GL_TEXTURE_2D, TexVignette
+		invoke glCallList, ScreenQuad
+	.ENDIF
 	
 	; Gamma
-	invoke FX_DrawGamma, SettingsGraphicsGamma
+	.IF !(SettingsGraphicsGammaBypass)
+		invoke FX_DrawGamma, SettingsGraphicsGamma
+	.ENDIF
 	
 	.IF (SettingsGraphicsAfterimage)
 		call FX_PushAfterimage
@@ -1612,24 +1691,37 @@ UI_Draw PROC EXPORT
 	.IF (SettingsGraphicsAfterimage)
 		call FX_DrawAfterimage
 	.ELSEIF (SettingsGraphicsPixelization) || (SettingsGraphicsPosterization)
-		invoke glDisable, GL_BLEND
 		mov pax, FXAfterimage
 		invoke glBindTexture, GL_TEXTURE_2D, DWORD PTR [pax]
 		invoke glCallList, ScreenQuad
-		invoke glEnable, GL_BLEND
 	.ENDIF
 	
 	; UI Drawing
 	call glLoadIdentity
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+	invoke glColor4fv, OFFSET clWhite
+	
 	.IF (Loading)
 		invoke glColor4fv, OFFSET clBlack
 		invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
 		invoke glCallList, bpFontQuad
 		call glLoadIdentity
 		invoke glColor4fv, OFFSET clWhite
+		
+		.IF (LoadState == LOADING_MODELS)
+			mov pax, StrLoadModels
+		.ELSEIF (LoadState == LOADING_TEXTURES)
+			mov pax, StrLoadTextures
+		.ELSEIF (LoadState == LOADING_SOUNDS)
+			mov pax, StrLoadSounds
+		.ELSE
+			mov pax, StrLoadFinished
+		.ENDIF
+		invoke UI_Text, pax, ScreenHalf.X, ScreenHalf.Y, BP_ALIGN_CENTER, \
+		BP_ALIGN_CENTER
 		jmp uiFinish
 	.ENDIF
+	
 	; Menu background darkening frame
 	.IF (UIState != UI_STATE_GAME) && \
 	(UIState != UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA)
@@ -1680,7 +1772,6 @@ UI_Draw PROC EXPORT
 	ENDIF
 	
 	uiFinish:
-	invoke glDisable, GL_BLEND
 	invoke glEnable, GL_LIGHTING
 	invoke glEnable, GL_DEPTH_TEST
 	invoke glDepthMask, GL_TRUE

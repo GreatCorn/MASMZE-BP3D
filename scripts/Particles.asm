@@ -100,7 +100,7 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		
 		call glPushMatrix
 		
-		m2m ParticleColor[12], f(1)
+		bpMEM32 ParticleColor[12], f(1)
 		
 		mov pcx, ParSysPtr
 		.IF ([pcx].Fade & PARTICLE_FADE_IN)
@@ -111,7 +111,7 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 			fstp Alpha
 			fcmp Alpha, f(1)
 			.IF (Carry?)
-				m2m ParticleColor[12], Alpha
+				bpMEM32 ParticleColor[12], Alpha
 			.ENDIF
 		.ENDIF
 		.IF ([pcx].Fade & PARTICLE_FADE_OUT)
@@ -123,7 +123,7 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 			fstp Alpha
 			fcmp Alpha, f(1)
 			.IF (Carry?)
-				m2m ParticleColor[12], Alpha
+				bpMEM32 ParticleColor[12], Alpha
 			.ENDIF
 		.ENDIF
 		

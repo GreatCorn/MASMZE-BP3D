@@ -126,6 +126,7 @@ TexEBD			DWORD ?, ?, ?
 TexEBDShadow	DWORD ?
 TexFacade		DWORD ?
 TexFloor		DWORD ?
+TexGamma		DWORD ?
 TexGlyph		DWORD 7 DUP(?)
 TexGlyphs		DWORD ?
 TexHbd			DWORD ?
@@ -244,7 +245,7 @@ SndSectionEnd	BYTE ?
 SV	MACRO StrID:REQ
 	StrID	BPPtr ?
 ENDM
-include lang\Strings.inc
+include Strings.inc
 
 .CODE
 LoadStrings PROTO :BPPtr
@@ -465,6 +466,7 @@ LoadResources PROC EXPORT
 		LoadBPT ADDR TexEBDShadow,		"assets\textures\EBDShadow.bpt"
 		LoadBPT ADDR TexFacade,			"assets\textures\facade.bpt"
 		LoadBPT ADDR TexFloor,			"assets\textures\floor.bpt"
+		LoadBPT ADDR TexGamma,			"assets\textures\gamma.bpt"
 		LoadBPT ADDR TexGlyph[0],		"assets\textures\glyph1.bpt"
 		LoadBPT ADDR TexGlyph[4],		"assets\textures\glyph2.bpt"
 		LoadBPT ADDR TexGlyph[8],		"assets\textures\glyph3.bpt"

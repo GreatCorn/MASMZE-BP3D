@@ -39,13 +39,16 @@ SettingsIniGraphics			DB "Graphics", 0
 SettingsIniAfterimage		DB "Afterimage", 0
 SettingsIniDisplay			DB "Display", 0
 SettingsIniGamma			DB "Gamma", 0
+SettingsIniGammaBypass		DB "GammaBypass", 0
 SettingsIniMazeCull			DB "MazeCull", 0
 SettingsIniMSAA				DB "MSAA", 0
+SettingsIniNoise			DB "Noise", 0
 SettingsIniParticles		DB "Particles", 0
 SettingsIniPixelization		DB "Pixelization", 0
 SettingsIniPosterization	DB "Posterization", 0
 SettingsIniResolutionWidth	DB "Width", 0
 SettingsIniResolutionHeight	DB "Height", 0
+SettingsIniVignette			DB "Vignette", 0
 SettingsIniVSync			DB "VSync", 0
 SettingsIniWindowMode		DB "WindowMode", 0
 
@@ -59,7 +62,7 @@ SettingsIniEnUS		DB "en_US.bplang", 0
 SettingsIniFalse	DB "false", 0
 SettingsIniTrue		DB "true", 0
 
-SettingsLangPath	DB "lang\*", 0
+SettingsLangPath	DB ".\lang\*", 0
 LANGOFFSET			EQU SIZEOF SettingsLangPath - 2
 
 SettingsRegCompass		DB "Compass", 0
@@ -89,12 +92,15 @@ SettingsControlsRawMouse			BPBool TRUE
 SettingsGraphicsAfterimage		BPBool TRUE
 SettingsGraphicsDisplay			DWORD 0
 SettingsGraphicsGamma			REAL4 0.5
+SettingsGraphicsGammaBypass		BPBool FALSE
 SettingsGraphicsMazeCull		DWORD 5
 SettingsGraphicsMSAA			DWORD 0
+SettingsGraphicsNoise			BPBool TRUE
 SettingsGraphicsParticles		BPBool TRUE
 SettingsGraphicsPixelization	BPBool TRUE
-SettingsGraphicsPosterization	BPBool FALSE
+SettingsGraphicsPosterization	BPBool TRUE
 SettingsGraphicsResolution		DWORD 854, 480
+SettingsGraphicsVignette		BPBool TRUE
 SettingsGraphicsVSync			BPBool TRUE
 SettingsGraphicsWindowMode		BPEnum BP_WINDOW_MODE_WINDOWED
 
@@ -194,6 +200,15 @@ Settings_Load PROC EXPORT
 	9, ADDR SettingsIniPathAbs
 	invoke StrToFl, ADDR SettingsIniString, ADDR SettingsGraphicsGamma
 	
+	; Gamma bypass
+	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+	ADDR SettingsIniGammaBypass, ADDR SettingsIniFalse, ADDR SettingsIniString,\
+	9, ADDR SettingsIniPathAbs
+	call Settings_IsTrue
+	.IF (al != SettingsGraphicsGammaBypass)
+		mov SettingsGraphicsGammaBypass, al
+	.ENDIF
+	
 	; Maze cull radius
 	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
 	ADDR SettingsIniMazeCull, SettingsGraphicsMazeCull, ADDR SettingsIniPathAbs
@@ -208,6 +223,15 @@ Settings_Load PROC EXPORT
 	.IF (eax != SettingsGraphicsMSAA)
 		mov SettingsGraphicsMSAA, eax
 		invoke Settings_SetOption, OFFSET SettingsGraphicsMSAA
+	.ENDIF
+	
+	; Noise
+	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+	ADDR SettingsIniNoise, ADDR SettingsIniTrue, ADDR SettingsIniString,\
+	9, ADDR SettingsIniPathAbs
+	call Settings_IsTrue
+	.IF (al != SettingsGraphicsNoise)
+		mov SettingsGraphicsNoise, al
 	.ENDIF
 	
 	; Particles
@@ -231,7 +255,7 @@ Settings_Load PROC EXPORT
 	
 	; Posterization
 	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniPosterization,ADDR SettingsIniFalse,ADDR SettingsIniString,\
+	ADDR SettingsIniPosterization,ADDR SettingsIniTrue,ADDR SettingsIniString, \
 	9, ADDR SettingsIniPathAbs
 	call Settings_IsTrue
 	.IF (al != SettingsGraphicsPosterization)
@@ -240,16 +264,25 @@ Settings_Load PROC EXPORT
 	
 	; Resolution
 	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniResolutionWidth, 854, ADDR SettingsIniPathAbs
+	ADDR SettingsIniResolutionWidth, 800, ADDR SettingsIniPathAbs
 	push pax
 	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniResolutionHeight, 480, ADDR SettingsIniPathAbs
+	ADDR SettingsIniResolutionHeight, 600, ADDR SettingsIniPathAbs
 	pop pcx
 	.IF (SettingsGraphicsResolution[0] != ecx) || \
 	(SettingsGraphicsResolution[4] != eax)
 		mov SettingsGraphicsResolution[0], ecx
 		mov SettingsGraphicsResolution[4], eax
 		invoke Settings_SetOption, OFFSET SettingsGraphicsResolution
+	.ENDIF
+	
+	; Vignette
+	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+	ADDR SettingsIniVignette, ADDR SettingsIniTrue, ADDR SettingsIniString, \
+	9, ADDR SettingsIniPathAbs
+	call Settings_IsTrue
+	.IF (al != SettingsGraphicsVignette)
+		mov SettingsGraphicsVignette, al
 	.ENDIF
 	
 	; VSync
@@ -473,6 +506,15 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniGamma, real4$(SettingsGraphicsGamma), \
 		ADDR SettingsIniPathAbs
+		
+		; Gamma bypass
+		.IF (SettingsGraphicsGammaBypass)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniGammaBypass, pax, ADDR SettingsIniPathAbs
 		
 		; MSAA
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \

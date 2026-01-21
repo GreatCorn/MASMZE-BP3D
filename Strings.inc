@@ -1,6 +1,10 @@
 SV	StrLanguageID
 SV	StrLanguageName
 SV	StrLangFontPath
+SV	StrLoadModels
+SV	StrLoadTextures
+SV	StrLoadSounds
+SV	StrLoadFinished
 SV	StrMenuResume
 SV	StrMenuSettings
 SV	StrMenuQuit
@@ -29,6 +33,7 @@ SV	StrMenuVSync
 SV	StrMenuGammaSetup
 SV	StrMenuGamma
 SV	StrMenuGammaDesc
+SV	StrMenuBypass
 SV	StrMenuMazeCull
 SV	StrMenuEffects
 SV	StrMenuMSAA

@@ -27,6 +27,27 @@ FXScreenTextureBuffer	BPPtr ?
 FX_DrawAfterimage PROC EXPORT
 	LOCAL Alpha:REAL4, NowMulF:REAL4
 	
+	.IF (FPS > 70)	; Cheap pandering to 60+ Hz displayfags
+		.IF (!FXAfterimageHighFPS)
+			dec FXAfterimageFPSTimer	; Use timer for 10 frames
+			.IF (!FXAfterimageFPSTimer)
+				mov FXAfterimageHighFPS, TRUE
+			.ENDIF
+		.ELSE
+			mov FXAfterimageFPSTimer, 10
+		.ENDIF
+	.ELSE
+		.IF (FXAfterimageHighFPS)
+			dec FXAfterimageFPSTimer
+			.IF (!FXAfterimageFPSTimer)
+				mov FXAfterimageHighFPS, FALSE
+			.ENDIF
+		.ELSE
+			mov FXAfterimageFPSTimer, 10
+		.ENDIF
+	.ENDIF
+	
+	invoke glEnable, GL_BLEND
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	bpMEM32 Alpha, f(1)
 	mov pbx, FXAfterimage
@@ -54,17 +75,22 @@ FX_DrawAfterimage PROC EXPORT
 	sub pbx, SIZEOF BPPtr
 	shr pbx, BPPtrShift
 	mov FXAfterimageNow, pbx
+	invoke glDisable, GL_BLEND
 	ret
 FX_DrawAfterimage ENDP
 
 FX_DrawGamma PROC EXPORT Gamma:REAL4
-	mov eax, Gamma
-	invoke glBindTexture, GL_TEXTURE_2D, 0
-	invoke glColor3f, Gamma, Gamma, Gamma
-	invoke glBlendFunc, GL_DST_COLOR, GL_DST_COLOR
-	invoke glCallList, ScreenQuad
-	invoke glCallList, ScreenQuad	
-	invoke glColor3fv, ADDR clWhite
+	;mov eax, Gamma
+	;.IF (eax != f(0.5))
+		invoke glBindTexture, GL_TEXTURE_2D, 0
+		invoke glEnable, GL_BLEND
+		invoke glBlendFunc, GL_DST_COLOR, GL_DST_COLOR
+		invoke glColor3f, Gamma, Gamma, Gamma
+		invoke glCallList, ScreenQuad
+		invoke glCallList, ScreenQuad	
+		invoke glColor3fv, OFFSET clWhite
+		invoke glDisable, GL_BLEND
+	;.ENDIF
 	ret
 FX_DrawGamma ENDP
 
@@ -79,11 +105,13 @@ FX_DrawNoise PROC EXPORT
 	invoke glTranslatef, eax, ecx, 0
 	invoke glMatrixMode, GL_MODELVIEW
 
+	invoke glEnable, GL_BLEND
+	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	invoke glBindTexture, GL_TEXTURE_2D, TexNoise
 	invoke glColor4f, f(1), f(1), f(1), FXNoiseAmplitude
-	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	invoke glCallList, ScreenQuad
 	invoke glColor4fv, ADDR clWhite
+	invoke glDisable, GL_BLEND
 	
 	invoke glMatrixMode, GL_TEXTURE
 	call glPopMatrix

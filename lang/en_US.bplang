@@ -1,6 +1,10 @@
 ENGLISH
 ENGLISH
 font\
+LOADING MODELS...
+LOADING TEXTURES...
+LOADING SOUNDS...
+FINISHING UP...
 RESUME
 SETTINGS
 QUIT
@@ -29,6 +33,7 @@ VSYNC
 GAMMA SETUP
 GAMMA
 Set the gamma value so that the#image on the right is barely visible.
+BYPASS
 MAZE CULL RADIUS
 EFFECTS
 MSAA
