@@ -3,6 +3,7 @@
 *.err
 *.exe
 *.exp
+*.ini
 *.lib
 *.lst
 *.mtl
