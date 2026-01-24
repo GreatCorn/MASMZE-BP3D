@@ -131,8 +131,8 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		
 		mov pcx, ParSysPtr
 		.IF ([pcx].Billboard)
-			vinvoke Vector32DAngle, ADDR [pbx].Position, OFFSET CamPosL
-			invoke glRotatefr, eax, 0, f(1), 0
+			vinvoke glRotatefr, CamRotL.Y, 0, f(-1), 0
+			vinvoke glRotatefr, CamRotL.X, f(-1), 0, 0
 		.ELSE
 			invoke glRotatefr, ADDR [pbx].Rotation, 0, f(1), 0
 			
@@ -174,8 +174,8 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		fld ParticleColor[12]
 		fmul ParticleMaxAlpha
 		fstp ParticleColor[12]
-		invoke glMaterialfv, GL_FRONT_AND_BACK, GL_DIFFUSE, ADDR ParticleColor
-		
+		;invoke glColor4fv, ADDR ParticleColor
+		invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR ParticleColor
 		
 		invoke glScalef, [pbx].Scale, [pbx].Scale, [pbx].Scale
 		
@@ -185,6 +185,7 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		add pbx, SIZEOF Particle
 		mov pcx, ParSysPtr
 	.ENDW
+	invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
 	
 	pop pbx
 	ASSUME pcx:nothing

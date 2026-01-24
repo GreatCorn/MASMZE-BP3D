@@ -1,10 +1,13 @@
 SV	StrLanguageID
 SV	StrLanguageName
 SV	StrLangFontPath
+SV	StrLoading
+SV	StrLoadAnimations
 SV	StrLoadModels
 SV	StrLoadTextures
 SV	StrLoadSounds
 SV	StrLoadFinished
+SV	StrMenuPaused
 SV	StrMenuResume
 SV	StrMenuSettings
 SV	StrMenuQuit

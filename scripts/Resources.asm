@@ -1,10 +1,17 @@
 ENUM	LOADING_TEXT, \
+		LOADING_ANIMATIONS, \
 		LOADING_MODELS, \
 		LOADING_TEXTURES, \
 		LOADING_SOUNDS, \
-		LOADING_FINISHED
+		LOADING_FINISHED, \
+		LOADING_WAIT
 
 .DATA
+; ----- ANIMATIONS -----
+AnimCamEnter		BPAnimTrack <>
+AnimCamExit			BPAnimTrack <>
+AnimCamWalk			BPAnimTrack <>
+
 ; ----- FONTS -----
 FntKeys		DWORD 255 dup (0)
 FntPS		DWORD 255 dup (0)
@@ -14,6 +21,7 @@ Loading		BPBool FALSE
 LoadState	BPEnum 0
 
 .DATA?
+
 ; ----- MODELS -----
 MdlBorderFloor		DWORD ?
 MdlBorderWall		DWORD ?
@@ -46,6 +54,7 @@ MdlOutskirtsRoad	DWORD ?
 MdlOutskirtsTerrain	DWORD ?
 MdlOutskirtsTrees	DWORD ?
 MdlPadlock			DWORD ?
+MdlParticle			DWORD ?
 MdlPipe				DWORD ?
 MdlPlane			DWORD ?
 MdlPlaneC			DWORD ?
@@ -85,7 +94,6 @@ MdlVirdyaWave		DWORD ?, ?, ?, ?, ?, ?, ?, ?, ?
 MdlWall				DWORD ?
 MdlWallB			DWORD ?
 MdlWallD			DWORD ?
-MdlWallH			DWORD ?
 MdlWallM			DWORD ?
 MdlWallS			DWORD ?
 MdlWallT			DWORD ?
@@ -111,6 +119,7 @@ MdlWmblykWalk		DWORD ?, ?, ?, ?
 ScreenQuad	DWORD ?
 
 ; ----- TEXTURES -----
+TexAmbient		DWORD ?
 TexBricks		DWORD ?
 TexCompass		DWORD ?
 TexCompassWorld	DWORD ?
@@ -121,7 +130,7 @@ TexCursor		DWORD ?
 TexDiamond		DWORD ?
 TexDirt			DWORD ?
 TexDoor			DWORD ?
-TexDoorblur		DWORD ?
+TexDoorBlur		DWORD ?
 TexEBD			DWORD ?, ?, ?
 TexEBDShadow	DWORD ?
 TexFacade		DWORD ?
@@ -270,167 +279,176 @@ LoadResources PROC EXPORT
 		; Load language strings
 		vinvoke LoadStrings, OFFSET SettingsMiscLanguage
 		
+		print "Loading fonts...", 9
 		; ----- FONTS -----
 		invoke bpLoadFont, StrLangFontPath, OFFSET bpDefaultFont	; Main
 		mov bpTextNL, '#'
 		LoadFont "font\input\", OFFSET FntKeys	; Direct mapping to keys/axes
 		LoadFont "font\input\ps\", OFFSET FntPS
 		LoadFont "font\input\xb\", OFFSET FntXB
+		print "...done!", 13, 10
+	.ELSEIF (LoadState == LOADING_ANIMATIONS)
+		print "Loading animations...", 9
+		LoadBPA OFFSET AnimCamEnter,		"assets\anim\camEnter.bpa"
+		LoadBPA OFFSET AnimCamExit,			"assets\anim\camExit.bpa"
+		LoadBPA OFFSET AnimCamWalk,			"assets\anim\camWalk.bpa"
+		mov AnimCamWalk.Looping, TRUE
+		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_MODELS)
 		; ----- MODELS -----
 		print "Loading models...", 9
-		LoadBPL ADDR MdlBorderFloor, 		"assets\models\borderFloor.bpl"
-		LoadBPL ADDR MdlBorderWall, 		"assets\models\borderWall.bpl"
-		LoadBPL ADDR MdlCheckFloor, 		"assets\models\checkFloor.bpl"
-		LoadBPL ADDR MdlCheckRoof, 			"assets\models\checkRoof.bpl"
-		LoadBPL ADDR MdlCheckWalls, 		"assets\models\checkWalls.bpl"
-		LoadBPL ADDR MdlCityConcrete, 		"assets\models\cityConcrete.bpl"
-		LoadBPL ADDR MdlCityFacade, 		"assets\models\cityFacade.bpl"
-		LoadBPL ADDR MdlCityTerrain, 		"assets\models\cityTerrain.bpl"
-		LoadBPL ADDR MdlCompassArrow, 		"assets\models\compassArrow.bpl"
-		LoadBPL ADDR MdlCompassWorld, 		"assets\models\compassWorld.bpl"
-		LoadBPL ADDR MdlCrevice, 			"assets\models\crevice.bpl"
-		LoadBPL ADDR MdlCube, 				"assets\models\cube.bpl"
-		LoadBPL ADDR MdlDoor, 				"assets\models\door.bpl"
-		LoadBPL ADDR MdlDoorFrame, 			"assets\models\doorFrame.bpl"
-		LoadBPL ADDR MdlDoorFrameLock, 		"assets\models\doorFrameLock.bpl"
-		LoadBPL ADDR MdlDoorwayM, 			"assets\models\doorwayM.bpl"
-		LoadBPL ADDR MdlGlyphs, 			"assets\models\glyphs.bpl"
-		LoadBPL ADDR MdlHbd, 				"assets\models\hbd.bpl"
-		LoadBPL ADDR MdlHbdS, 				"assets\models\hbdS.bpl"
-		LoadBPL ADDR MdlKey, 				"assets\models\key.bpl"
-		LoadBPL ADDR MdlKoluplykDig[0],		"assets\models\koluplykDig1.bpl"
-		LoadBPL ADDR MdlKoluplykDig[4], 	"assets\models\koluplykDig2.bpl"
-		LoadBPL ADDR MdlKoluplykDig[8],		"assets\models\koluplykDig3.bpl"
-		LoadBPL ADDR MdlKoluplykDig[12],	"assets\models\koluplykDig4.bpl"
-		LoadBPL ADDR MdlKoluplykShop[0],	"assets\models\koluplykShop1.bpl"
-		LoadBPL ADDR MdlKoluplykShop[4],	"assets\models\koluplykShop2.bpl"
-		LoadBPL ADDR MdlKubale[0],			"assets\models\kubale1.bpl"
-		LoadBPL ADDR MdlKubale[4],			"assets\models\kubale2.bpl"
-		LoadBPL ADDR MdlKubale[8],			"assets\models\kubale3.bpl"
-		LoadBPL ADDR MdlKubale[12],			"assets\models\kubale4.bpl"
-		LoadBPL ADDR MdlLamp,				"assets\models\lamp.bpl"
-		LoadBPL ADDR MdlMotrya[0],			"assets\models\motrya1.bpl"
-		LoadBPL ADDR MdlMotrya[4],			"assets\models\motrya2.bpl"
-		LoadBPL ADDR MdlMotrya[8],			"assets\models\motrya3.bpl"
-		LoadBPL ADDR MdlMotrya[12],			"assets\models\motrya4.bpl"
-		LoadBPL ADDR MdlNeqaotor,			"assets\models\neqaotor.bpl"
-		LoadBPL ADDR MdlOutskirtsBunker,	"assets\models\outskirtsBunker.bpl"
-		LoadBPL ADDR MdlOutskirtsRoad,		"assets\models\outskirtsRoad.bpl"
-		LoadBPL ADDR MdlOutskirtsTerrain,	"assets\models\outskirtsTerrain.bpl"
-		LoadBPL ADDR MdlOutskirtsTrees,		"assets\models\outskirtsTrees.bpl"
-		LoadBPL ADDR MdlPadlock,			"assets\models\padlock.bpl"
-		LoadBPL ADDR MdlPipe,				"assets\models\pipe.bpl"
-		LoadBPL ADDR MdlPlane,				"assets\models\plane.bpl"
-		LoadBPL ADDR MdlPlaneC,				"assets\models\planeC.bpl"
-		LoadBPL ADDR MdlPlaneH,				"assets\models\planeH.bpl"
-		LoadBPL ADDR MdlPlaneM,				"assets\models\planeM.bpl"
-		LoadBPL ADDR MdlPlaneR,				"assets\models\planeR.bpl"
-		LoadBPL ADDR MdlPlanks,				"assets\models\planks.bpl"
-		LoadBPL ADDR MdlRubble,				"assets\models\rubble.bpl"
-		LoadBPL ADDR MdlRubbleFacade,		"assets\models\rubbleFacade.bpl"
-		LoadBPL ADDR MdlSigil[0],			"assets\models\sigil1.bpl"
-		LoadBPL ADDR MdlSigil[4],			"assets\models\sigil2.bpl"
-		LoadBPL ADDR MdlSigns,				"assets\models\signs.bpl"
-		LoadBPL ADDR MdlSky,				"assets\models\sky.bpl"
-		LoadBPL ADDR MdlStairsM,			"assets\models\stairsM.bpl"
-		LoadBPL ADDR MdlTaburetka,			"assets\models\taburetka.bpl"
-		LoadBPL ADDR MdlTerrain,			"assets\models\terrain.bpl"
-		LoadBPL ADDR MdlTorlagg,			"assets\models\torlagg.bpl"
-		LoadBPL ADDR MdlTrack,				"assets\models\track.bpl"
-		LoadBPL ADDR MdlTrackTurn,			"assets\models\trackTurn.bpl"
-		LoadBPL ADDR MdlTram,				"assets\models\tram.bpl"
-		LoadBPL ADDR MdlTramD[0],			"assets\models\tramD1.bpl"
-		LoadBPL ADDR MdlTramD[4],			"assets\models\tramD2.bpl"
-		LoadBPL ADDR MdlTramD[8],			"assets\models\tramD3.bpl"
-		LoadBPL ADDR MdlTramD[12],			"assets\models\tramD4.bpl"
-		LoadBPL ADDR MdlTramDG[0],			"assets\models\tramDG1.bpl"
-		LoadBPL ADDR MdlTramDG[4],			"assets\models\tramDG2.bpl"
-		LoadBPL ADDR MdlTramDG[8],			"assets\models\tramDG3.bpl"
-		LoadBPL ADDR MdlTramDG[12],			"assets\models\tramDG4.bpl"
-		LoadBPL ADDR MdlTramG,				"assets\models\tramG.bpl"
-		LoadBPL ADDR MdlUpFloor,			"assets\models\upFloor.bpl"
-		LoadBPL ADDR MdlUpRoof,				"assets\models\upRoof.bpl"
-		LoadBPL ADDR MdlUpWalls,			"assets\models\upWalls.bpl"
-		LoadBPL ADDR MdlVasT[0],			"assets\models\vasT1.bpl"
-		LoadBPL ADDR MdlVasT[4],			"assets\models\vasT2.bpl"
-		LoadBPL ADDR MdlVasT[8],			"assets\models\vasT3.bpl"
-		LoadBPL ADDR MdlVebraExit[0],		"assets\models\vebraExit1.bpl"
-		LoadBPL ADDR MdlVebraExit[4],		"assets\models\vebraExit2.bpl"
-		LoadBPL ADDR MdlVebraExit[8],		"assets\models\vebraExit3.bpl"
-		LoadBPL ADDR MdlVebraExit[12],		"assets\models\vebraExit4.bpl"
-		LoadBPL ADDR MdlVebraExit[16],		"assets\models\vebraExit5.bpl"
-		LoadBPL ADDR MdlVebraExit[20],		"assets\models\vebraExit6.bpl"
-		LoadBPL ADDR MdlVebraLook[0],		"assets\models\vebraLook1.bpl"
-		LoadBPL ADDR MdlVebraLook[4],		"assets\models\vebraLook2.bpl"
-		LoadBPL ADDR MdlVirdyaBack[0],		"assets\models\virdyaBack1.bpl"
-		LoadBPL ADDR MdlVirdyaBack[4],		"assets\models\virdyaBack2.bpl"
-		LoadBPL ADDR MdlVirdyaBack[8],		"assets\models\virdyaBack3.bpl"
-		LoadBPL ADDR MdlVirdyaBack[12],		"assets\models\virdyaBack4.bpl"
-		LoadBPL ADDR MdlVirdyaBack[16],		"assets\models\virdyaBack5.bpl"
-		LoadBPL ADDR MdlVirdyaBack[20],		"assets\models\virdyaBack6.bpl"
-		LoadBPL ADDR MdlVirdyaBody,			"assets\models\virdyaBody.bpl"
-		LoadBPL ADDR MdlVirdyaH[0],			"assets\models\virdyaH1.bpl"
-		LoadBPL ADDR MdlVirdyaH[4],			"assets\models\virdyaH2.bpl"
-		LoadBPL ADDR MdlVirdyaHead,			"assets\models\virdyaHead.bpl"
-		LoadBPL ADDR MdlVirdyaRest,			"assets\models\virdyaRest.bpl"
-		LoadBPL ADDR MdlVirdyaWalk[0],		"assets\models\virdyaWalk1.bpl"
-		LoadBPL ADDR MdlVirdyaWalk[4],		"assets\models\virdyaWalk2.bpl"
-		LoadBPL ADDR MdlVirdyaWalk[8],		"assets\models\virdyaWalk3.bpl"
-		LoadBPL ADDR MdlVirdyaWalk[12],		"assets\models\virdyaWalk4.bpl"
-		LoadBPL ADDR MdlVirdyaWalk[16],		"assets\models\virdyaWalk5.bpl"
-		LoadBPL ADDR MdlVirdyaWalk[20],		"assets\models\virdyaWalk6.bpl"
-		LoadBPL ADDR MdlVirdyaWalk[24],		"assets\models\virdyaWalk7.bpl"
-		LoadBPL ADDR MdlVirdyaWalk[28],		"assets\models\virdyaWalk8.bpl"
-		LoadBPL ADDR MdlVirdyaWave[0],		"assets\models\virdyaWave1.bpl"
-		LoadBPL ADDR MdlVirdyaWave[4],		"assets\models\virdyaWave2.bpl"
-		LoadBPL ADDR MdlVirdyaWave[8],		"assets\models\virdyaWave3.bpl"
-		LoadBPL ADDR MdlVirdyaWave[12],		"assets\models\virdyaWave4.bpl"
-		LoadBPL ADDR MdlVirdyaWave[16],		"assets\models\virdyaWave5.bpl"
-		LoadBPL ADDR MdlVirdyaWave[20],		"assets\models\virdyaWave4.bpl"	; Still lazy
-		LoadBPL ADDR MdlVirdyaWave[24],		"assets\models\virdyaWave5.bpl"
-		LoadBPL ADDR MdlVirdyaWave[28],		"assets\models\virdyaWave4.bpl"
-		LoadBPL ADDR MdlVirdyaWave[32],		"assets\models\virdyaWave2.bpl"
-		LoadBPL ADDR MdlWall,				"assets\models\wall.bpl"
-		LoadBPL ADDR MdlWallB,				"assets\models\wallB.bpl"
-		LoadBPL ADDR MdlWallD,				"assets\models\wallD.bpl"
-		LoadBPL ADDR MdlWallH,				"assets\models\wallH.bpl"
-		LoadBPL ADDR MdlWallM,				"assets\models\wallM.bpl"
-		LoadBPL ADDR MdlWallS,				"assets\models\wallS.bpl"
-		LoadBPL ADDR MdlWallT,				"assets\models\wallT.bpl"
-		LoadBPL ADDR MdlWallT2,				"assets\models\wallT2.bpl"
-		LoadBPL ADDR MdlWallTR,				"assets\models\wallTR.bpl"
-		LoadBPL ADDR MdlWallW,				"assets\models\wallW.bpl"
-		LoadBPL ADDR MdlWbAttack[0],		"assets\models\wbAttack1.bpl"
-		LoadBPL ADDR MdlWbAttack[4],		"assets\models\wbAttack2.bpl"
-		LoadBPL ADDR MdlWbAttack[8],		"assets\models\wbAttack3.bpl"
-		LoadBPL ADDR MdlWbbk,				"assets\models\wbbk.bpl"
-		LoadBPL ADDR MdlWbIdle[0],			"assets\models\wbIdle1.bpl"
-		LoadBPL ADDR MdlWbIdle[4],			"assets\models\wbIdle2.bpl"
-		LoadBPL ADDR MdlWbWalk[0],			"assets\models\wbWalk1.bpl"
-		LoadBPL ADDR MdlWbWalk[4],			"assets\models\wbWalk2.bpl"
-		LoadBPL ADDR MdlWbWalk[8],			"assets\models\wbWalk3.bpl"
-		LoadBPL ADDR MdlWires,				"assets\models\wires.bpl"
-		LoadBPL ADDR MdlWmblykBody,			"assets\models\wmblykBody.bpl"
-		LoadBPL ADDR MdlWmblykBodyG,		"assets\models\wmblykBodyG.bpl"
-		LoadBPL ADDR MdlWmblykCrawl[0],		"assets\models\wmblykCrawl1.bpl"
-		LoadBPL ADDR MdlWmblykCrawl[4],		"assets\models\wmblykCrawl2.bpl"
-		LoadBPL ADDR MdlWmblykDead,			"assets\models\wmblykDead.bpl"
-		LoadBPL ADDR MdlWmblykHead,			"assets\models\wmblykHead.bpl"
-		LoadBPL ADDR MdlWmblykStr[0],		"assets\models\wmblykStr0.bpl"
-		LoadBPL ADDR MdlWmblykStr[4],		"assets\models\wmblykStr1.bpl"
-		LoadBPL ADDR MdlWmblykStr[8],		"assets\models\wmblykStr2.bpl"
-		LoadBPL ADDR MdlWmblykStrL[0],		"assets\models\wmblykStrL0.bpl"
-		LoadBPL ADDR MdlWmblykStrL[4],		"assets\models\wmblykStrL1.bpl"
-		LoadBPL ADDR MdlWmblykStrL[8],		"assets\models\wmblykStrL2.bpl"
-		LoadBPL ADDR MdlWmblykStrW[0],		"assets\models\wmblykStrW0.bpl"
-		LoadBPL ADDR MdlWmblykStrW[4],		"assets\models\wmblykStrW1.bpl"
-		LoadBPL ADDR MdlWmblykStrW[8],		"assets\models\wmblykStrW2.bpl"
-		LoadBPL ADDR MdlWmblykTram,			"assets\models\wmblykTram.bpl"
-		LoadBPL ADDR MdlWmblykWalk[0],		"assets\models\wmblykWalk1.bpl"
-		LoadBPL ADDR MdlWmblykWalk[4],		"assets\models\wmblykWalk2.bpl"
-		LoadBPL ADDR MdlWmblykWalk[8],		"assets\models\wmblykWalk3.bpl"
-		LoadBPL ADDR MdlWmblykWalk[12],		"assets\models\wmblykWalk4.bpl"
+		LoadBPL OFFSET MdlBorderFloor, 		"assets\models\borderFloor.bpl"
+		LoadBPL OFFSET MdlBorderWall, 		"assets\models\borderWall.bpl"
+		LoadBPL OFFSET MdlCheckFloor, 		"assets\models\checkFloor.bpl"
+		LoadBPL OFFSET MdlCheckRoof, 		"assets\models\checkRoof.bpl"
+		LoadBPL OFFSET MdlCheckWalls, 		"assets\models\checkWalls.bpl"
+		LoadBPL OFFSET MdlCityConcrete, 	"assets\models\cityConcrete.bpl"
+		LoadBPL OFFSET MdlCityFacade, 		"assets\models\cityFacade.bpl"
+		LoadBPL OFFSET MdlCityTerrain, 		"assets\models\cityTerrain.bpl"
+		LoadBPL OFFSET MdlCompassArrow, 	"assets\models\compassArrow.bpl"
+		LoadBPL OFFSET MdlCompassWorld, 	"assets\models\compassWorld.bpl"
+		LoadBPL OFFSET MdlCrevice, 			"assets\models\crevice.bpl"
+		LoadBPL OFFSET MdlCube, 			"assets\models\cube.bpl"
+		LoadBPL OFFSET MdlDoor, 			"assets\models\door.bpl"
+		LoadBPL OFFSET MdlDoorFrame, 		"assets\models\doorFrame.bpl"
+		LoadBPL OFFSET MdlDoorFrameLock, 	"assets\models\doorFrameLock.bpl"
+		LoadBPL OFFSET MdlDoorwayM, 		"assets\models\doorwayM.bpl"
+		LoadBPL OFFSET MdlGlyphs, 			"assets\models\glyphs.bpl"
+		LoadBPL OFFSET MdlHbd, 				"assets\models\hbd.bpl"
+		LoadBPL OFFSET MdlHbdS, 			"assets\models\hbdS.bpl"
+		LoadBPL OFFSET MdlKey, 				"assets\models\key.bpl"
+		LoadBPL OFFSET MdlKoluplykDig[0],	"assets\models\koluplykDig1.bpl"
+		LoadBPL OFFSET MdlKoluplykDig[4], 	"assets\models\koluplykDig2.bpl"
+		LoadBPL OFFSET MdlKoluplykDig[8],	"assets\models\koluplykDig3.bpl"
+		LoadBPL OFFSET MdlKoluplykDig[12],	"assets\models\koluplykDig4.bpl"
+		LoadBPL OFFSET MdlKoluplykShop[0],	"assets\models\koluplykShop1.bpl"
+		LoadBPL OFFSET MdlKoluplykShop[4],	"assets\models\koluplykShop2.bpl"
+		LoadBPL OFFSET MdlKubale[0],		"assets\models\kubale1.bpl"
+		LoadBPL OFFSET MdlKubale[4],		"assets\models\kubale2.bpl"
+		LoadBPL OFFSET MdlKubale[8],		"assets\models\kubale3.bpl"
+		LoadBPL OFFSET MdlKubale[12],		"assets\models\kubale4.bpl"
+		LoadBPL OFFSET MdlLamp,				"assets\models\lamp.bpl"
+		LoadBPL OFFSET MdlMotrya[0],		"assets\models\motrya1.bpl"
+		LoadBPL OFFSET MdlMotrya[4],		"assets\models\motrya2.bpl"
+		LoadBPL OFFSET MdlMotrya[8],		"assets\models\motrya3.bpl"
+		LoadBPL OFFSET MdlMotrya[12],		"assets\models\motrya4.bpl"
+		LoadBPL OFFSET MdlNeqaotor,			"assets\models\neqaotor.bpl"
+		LoadBPL OFFSET MdlOutskirtsBunker,	"assets\models\outskirtsBunker.bpl"
+		LoadBPL OFFSET MdlOutskirtsRoad,	"assets\models\outskirtsRoad.bpl"
+		LoadBPL OFFSET MdlOutskirtsTerrain,	"assets\models\outskirtsTerrain.bpl"
+		LoadBPL OFFSET MdlOutskirtsTrees,	"assets\models\outskirtsTrees.bpl"
+		LoadBPL OFFSET MdlPadlock,			"assets\models\padlock.bpl"
+		LoadBPL OFFSET MdlParticle,			"assets\models\particle.bpl"
+		LoadBPL OFFSET MdlPipe,				"assets\models\pipe.bpl"
+		LoadBPL OFFSET MdlPlane,			"assets\models\plane.bpl"
+		LoadBPL OFFSET MdlPlaneC,			"assets\models\planeC.bpl"
+		LoadBPL OFFSET MdlPlaneH,			"assets\models\planeH.bpl"
+		LoadBPL OFFSET MdlPlaneM,			"assets\models\planeM.bpl"
+		LoadBPL OFFSET MdlPlaneR,			"assets\models\planeR.bpl"
+		LoadBPL OFFSET MdlPlanks,			"assets\models\planks.bpl"
+		LoadBPL OFFSET MdlRubble,			"assets\models\rubble.bpl"
+		LoadBPL OFFSET MdlRubbleFacade,		"assets\models\rubbleFacade.bpl"
+		LoadBPL OFFSET MdlSigil[0],			"assets\models\sigil1.bpl"
+		LoadBPL OFFSET MdlSigil[4],			"assets\models\sigil2.bpl"
+		LoadBPL OFFSET MdlSigns,			"assets\models\signs.bpl"
+		LoadBPL OFFSET MdlSky,				"assets\models\sky.bpl"
+		LoadBPL OFFSET MdlStairsM,			"assets\models\stairsM.bpl"
+		LoadBPL OFFSET MdlTaburetka,		"assets\models\taburetka.bpl"
+		LoadBPL OFFSET MdlTerrain,			"assets\models\terrain.bpl"
+		LoadBPL OFFSET MdlTorlagg,			"assets\models\torlagg.bpl"
+		LoadBPL OFFSET MdlTrack,			"assets\models\track.bpl"
+		LoadBPL OFFSET MdlTrackTurn,		"assets\models\trackTurn.bpl"
+		LoadBPL OFFSET MdlTram,				"assets\models\tram.bpl"
+		LoadBPL OFFSET MdlTramD[0],			"assets\models\tramD1.bpl"
+		LoadBPL OFFSET MdlTramD[4],			"assets\models\tramD2.bpl"
+		LoadBPL OFFSET MdlTramD[8],			"assets\models\tramD3.bpl"
+		LoadBPL OFFSET MdlTramD[12],		"assets\models\tramD4.bpl"
+		LoadBPL OFFSET MdlTramDG[0],		"assets\models\tramDG1.bpl"
+		LoadBPL OFFSET MdlTramDG[4],		"assets\models\tramDG2.bpl"
+		LoadBPL OFFSET MdlTramDG[8],		"assets\models\tramDG3.bpl"
+		LoadBPL OFFSET MdlTramDG[12],		"assets\models\tramDG4.bpl"
+		LoadBPL OFFSET MdlTramG,			"assets\models\tramG.bpl"
+		LoadBPL OFFSET MdlUpFloor,			"assets\models\upFloor.bpl"
+		LoadBPL OFFSET MdlUpRoof,			"assets\models\upRoof.bpl"
+		LoadBPL OFFSET MdlUpWalls,			"assets\models\upWalls.bpl"
+		LoadBPL OFFSET MdlVasT[0],			"assets\models\vasT1.bpl"
+		LoadBPL OFFSET MdlVasT[4],			"assets\models\vasT2.bpl"
+		LoadBPL OFFSET MdlVasT[8],			"assets\models\vasT3.bpl"
+		LoadBPL OFFSET MdlVebraExit[0],		"assets\models\vebraExit1.bpl"
+		LoadBPL OFFSET MdlVebraExit[4],		"assets\models\vebraExit2.bpl"
+		LoadBPL OFFSET MdlVebraExit[8],		"assets\models\vebraExit3.bpl"
+		LoadBPL OFFSET MdlVebraExit[12],	"assets\models\vebraExit4.bpl"
+		LoadBPL OFFSET MdlVebraExit[16],	"assets\models\vebraExit5.bpl"
+		LoadBPL OFFSET MdlVebraExit[20],	"assets\models\vebraExit6.bpl"
+		LoadBPL OFFSET MdlVebraLook[0],		"assets\models\vebraLook1.bpl"
+		LoadBPL OFFSET MdlVebraLook[4],		"assets\models\vebraLook2.bpl"
+		LoadBPL OFFSET MdlVirdyaBack[0],	"assets\models\virdyaBack1.bpl"
+		LoadBPL OFFSET MdlVirdyaBack[4],	"assets\models\virdyaBack2.bpl"
+		LoadBPL OFFSET MdlVirdyaBack[8],	"assets\models\virdyaBack3.bpl"
+		LoadBPL OFFSET MdlVirdyaBack[12],	"assets\models\virdyaBack4.bpl"
+		LoadBPL OFFSET MdlVirdyaBack[16],	"assets\models\virdyaBack5.bpl"
+		LoadBPL OFFSET MdlVirdyaBack[20],	"assets\models\virdyaBack6.bpl"
+		LoadBPL OFFSET MdlVirdyaBody,		"assets\models\virdyaBody.bpl"
+		LoadBPL OFFSET MdlVirdyaH[0],		"assets\models\virdyaH1.bpl"
+		LoadBPL OFFSET MdlVirdyaH[4],		"assets\models\virdyaH2.bpl"
+		LoadBPL OFFSET MdlVirdyaHead,		"assets\models\virdyaHead.bpl"
+		LoadBPL OFFSET MdlVirdyaRest,		"assets\models\virdyaRest.bpl"
+		LoadBPL OFFSET MdlVirdyaWalk[0],	"assets\models\virdyaWalk1.bpl"
+		LoadBPL OFFSET MdlVirdyaWalk[4],	"assets\models\virdyaWalk2.bpl"
+		LoadBPL OFFSET MdlVirdyaWalk[8],	"assets\models\virdyaWalk3.bpl"
+		LoadBPL OFFSET MdlVirdyaWalk[12],	"assets\models\virdyaWalk4.bpl"
+		LoadBPL OFFSET MdlVirdyaWalk[16],	"assets\models\virdyaWalk5.bpl"
+		LoadBPL OFFSET MdlVirdyaWalk[20],	"assets\models\virdyaWalk6.bpl"
+		LoadBPL OFFSET MdlVirdyaWalk[24],	"assets\models\virdyaWalk7.bpl"
+		LoadBPL OFFSET MdlVirdyaWalk[28],	"assets\models\virdyaWalk8.bpl"
+		LoadBPL OFFSET MdlVirdyaWave[0],	"assets\models\virdyaWave1.bpl"
+		LoadBPL OFFSET MdlVirdyaWave[4],	"assets\models\virdyaWave2.bpl"
+		LoadBPL OFFSET MdlVirdyaWave[8],	"assets\models\virdyaWave3.bpl"
+		LoadBPL OFFSET MdlVirdyaWave[12],	"assets\models\virdyaWave4.bpl"
+		LoadBPL OFFSET MdlVirdyaWave[16],	"assets\models\virdyaWave5.bpl"
+		LoadBPL OFFSET MdlVirdyaWave[20],	"assets\models\virdyaWave4.bpl"	; Still lazy
+		LoadBPL OFFSET MdlVirdyaWave[24],	"assets\models\virdyaWave5.bpl"
+		LoadBPL OFFSET MdlVirdyaWave[28],	"assets\models\virdyaWave4.bpl"
+		LoadBPL OFFSET MdlVirdyaWave[32],	"assets\models\virdyaWave2.bpl"
+		LoadBPL OFFSET MdlWall,				"assets\models\wall.bpl"
+		LoadBPL OFFSET MdlWallB,			"assets\models\wallB.bpl"
+		LoadBPL OFFSET MdlWallD,			"assets\models\wallD.bpl"
+		LoadBPL OFFSET MdlWallM,			"assets\models\wallM.bpl"
+		LoadBPL OFFSET MdlWallS,			"assets\models\wallS.bpl"
+		LoadBPL OFFSET MdlWallT,			"assets\models\wallT.bpl"
+		LoadBPL OFFSET MdlWallT2,			"assets\models\wallT2.bpl"
+		LoadBPL OFFSET MdlWallTR,			"assets\models\wallTR.bpl"
+		LoadBPL OFFSET MdlWallW,			"assets\models\wallW.bpl"
+		LoadBPL OFFSET MdlWbAttack[0],		"assets\models\wbAttack1.bpl"
+		LoadBPL OFFSET MdlWbAttack[4],		"assets\models\wbAttack2.bpl"
+		LoadBPL OFFSET MdlWbAttack[8],		"assets\models\wbAttack3.bpl"
+		LoadBPL OFFSET MdlWbbk,				"assets\models\wbbk.bpl"
+		LoadBPL OFFSET MdlWbIdle[0],		"assets\models\wbIdle1.bpl"
+		LoadBPL OFFSET MdlWbIdle[4],		"assets\models\wbIdle2.bpl"
+		LoadBPL OFFSET MdlWbWalk[0],		"assets\models\wbWalk1.bpl"
+		LoadBPL OFFSET MdlWbWalk[4],		"assets\models\wbWalk2.bpl"
+		LoadBPL OFFSET MdlWbWalk[8],		"assets\models\wbWalk3.bpl"
+		LoadBPL OFFSET MdlWires,			"assets\models\wires.bpl"
+		LoadBPL OFFSET MdlWmblykBody,		"assets\models\wmblykBody.bpl"
+		LoadBPL OFFSET MdlWmblykBodyG,		"assets\models\wmblykBodyG.bpl"
+		LoadBPL OFFSET MdlWmblykCrawl[0],	"assets\models\wmblykCrawl1.bpl"
+		LoadBPL OFFSET MdlWmblykCrawl[4],	"assets\models\wmblykCrawl2.bpl"
+		LoadBPL OFFSET MdlWmblykDead,		"assets\models\wmblykDead.bpl"
+		LoadBPL OFFSET MdlWmblykHead,		"assets\models\wmblykHead.bpl"
+		LoadBPL OFFSET MdlWmblykStr[0],		"assets\models\wmblykStr0.bpl"
+		LoadBPL OFFSET MdlWmblykStr[4],		"assets\models\wmblykStr1.bpl"
+		LoadBPL OFFSET MdlWmblykStr[8],		"assets\models\wmblykStr2.bpl"
+		LoadBPL OFFSET MdlWmblykStrL[0],	"assets\models\wmblykStrL0.bpl"
+		LoadBPL OFFSET MdlWmblykStrL[4],	"assets\models\wmblykStrL1.bpl"
+		LoadBPL OFFSET MdlWmblykStrL[8],	"assets\models\wmblykStrL2.bpl"
+		LoadBPL OFFSET MdlWmblykStrW[0],	"assets\models\wmblykStrW0.bpl"
+		LoadBPL OFFSET MdlWmblykStrW[4],	"assets\models\wmblykStrW1.bpl"
+		LoadBPL OFFSET MdlWmblykStrW[8],	"assets\models\wmblykStrW2.bpl"
+		LoadBPL OFFSET MdlWmblykTram,		"assets\models\wmblykTram.bpl"
+		LoadBPL OFFSET MdlWmblykWalk[0],	"assets\models\wmblykWalk1.bpl"
+		LoadBPL OFFSET MdlWmblykWalk[4],	"assets\models\wmblykWalk2.bpl"
+		LoadBPL OFFSET MdlWmblykWalk[8],	"assets\models\wmblykWalk3.bpl"
+		LoadBPL OFFSET MdlWmblykWalk[12],	"assets\models\wmblykWalk4.bpl"
 
 		mov ScreenQuad, rv(glGenLists, 1)
 		invoke glNewList, ScreenQuad, GL_COMPILE
@@ -449,218 +467,219 @@ LoadResources PROC EXPORT
 	.ELSEIF (LoadState == LOADING_TEXTURES)
 		; ----- TEXTURES -----
 		print "Loading textures...", 9
-		LoadBPT ADDR TexBricks,			"assets\textures\bricks.bpt"
-		LoadBPT ADDR TexCompass,		"assets\textures\compass.bpt"
-		LoadBPT ADDR TexCompassWorld,	"assets\textures\compassWorld.bpt"
-		LoadBPT ADDR TexConcrete,		"assets\textures\concrete.bpt"
-		LoadBPT ADDR TexConcreteRoof,	"assets\textures\concreteRoof.bpt"
-		LoadBPT ADDR TexCroa,			"assets\textures\croa.bpt"
-		LoadBPT ADDR TexCursor,			"assets\textures\cursor.bpt"
-		LoadBPT ADDR TexDiamond,		"assets\textures\diamond.bpt"
-		LoadBPT ADDR TexDirt,			"assets\textures\dirt.bpt"
-		LoadBPT ADDR TexDoor,			"assets\textures\door.bpt"
-		LoadBPT ADDR TexDoorblur,		"assets\textures\doorBlur.bpt"
-		LoadBPT ADDR TexEBD[0],			"assets\textures\EBD1.bpt"
-		LoadBPT ADDR TexEBD[4],			"assets\textures\EBD2.bpt"
-		LoadBPT ADDR TexEBD[8],			"assets\textures\EBD3.bpt"
-		LoadBPT ADDR TexEBDShadow,		"assets\textures\EBDShadow.bpt"
-		LoadBPT ADDR TexFacade,			"assets\textures\facade.bpt"
-		LoadBPT ADDR TexFloor,			"assets\textures\floor.bpt"
-		LoadBPT ADDR TexGamma,			"assets\textures\gamma.bpt"
-		LoadBPT ADDR TexGlyph[0],		"assets\textures\glyph1.bpt"
-		LoadBPT ADDR TexGlyph[4],		"assets\textures\glyph2.bpt"
-		LoadBPT ADDR TexGlyph[8],		"assets\textures\glyph3.bpt"
-		LoadBPT ADDR TexGlyph[12],		"assets\textures\glyph4.bpt"
-		LoadBPT ADDR TexGlyph[16],		"assets\textures\glyph5.bpt"
-		LoadBPT ADDR TexGlyph[20],		"assets\textures\glyph6.bpt"
-		LoadBPT ADDR TexGlyph[24],		"assets\textures\glyph7.bpt"
-		LoadBPT ADDR TexHbd,			"assets\textures\hbd.bpt"
-		LoadBPT ADDR TexKey,			"assets\textures\key.bpt"
-		LoadBPT ADDR TexKoluplyk,		"assets\textures\koluplyk.bpt"
-		LoadBPT ADDR TexKubale,			"assets\textures\kubale.bpt"
-		LoadBPT ADDR TexKubaleV[0],		"assets\textures\kubaleV1.bpt"
-		LoadBPT ADDR TexKubaleV[4],		"assets\textures\kubaleV2.bpt"
-		LoadBPT ADDR TexKubaleV[8],		"assets\textures\kubaleV3.bpt"
-		LoadBPT ADDR TexKubaleV[12],	"assets\textures\kubaleV4.bpt"
-		LoadBPT ADDR TexKubaleV[16],	"assets\textures\kubaleV5.bpt"
-		LoadBPT ADDR TexKubaleV[20],	"assets\textures\kubaleV6.bpt"
-		LoadBPT ADDR TexKubaleV[24],	"assets\textures\kubaleV7.bpt"
-		LoadBPT ADDR TexKubaleV[24],	"assets\textures\kubaleV8.bpt"
-		LoadBPT ADDR TexKubaleV[24],	"assets\textures\kubaleV8.bpt"
-		LoadBPT ADDR TexKubaleV[28],	"assets\textures\kubaleV9.bpt"
-		LoadBPT ADDR TexLamp,			"assets\textures\lamp.bpt"
-		LoadBPT ADDR TexLight,			"assets\textures\light.bpt"
-		LoadBPT ADDR TexMap,			"assets\textures\map.bpt"
-		LoadBPT ADDR TexMetal,			"assets\textures\metal.bpt"
-		LoadBPT ADDR TexMetalFloor,		"assets\textures\metalFloor.bpt"
-		LoadBPT ADDR TexMetalRoof,		"assets\textures\metalRoof.bpt"
-		LoadBPT ADDR TexMotrya,			"assets\textures\motrya.bpt"
-		LoadBPT ADDR TexNoise,			"assets\textures\noise.bpt"
-		LoadBPT ADDR TexPaper,			"assets\textures\paper.bpt"
-		LoadBPT ADDR TexPipe,			"assets\textures\pipe.bpt"
-		LoadBPT ADDR TexPlanks,			"assets\textures\planks.bpt"
-		LoadBPT ADDR TexPlaster,		"assets\textures\plaster.bpt"
-		LoadBPT ADDR TexRain,			"assets\textures\rain.bpt"
-		LoadBPT ADDR TexRoof,			"assets\textures\roof.bpt"
-		LoadBPT ADDR TexShadow,			"assets\textures\shadow.bpt"
-		LoadBPT ADDR TexSigns,			"assets\textures\signs.bpt"
-		LoadBPT ADDR TexSky,			"assets\textures\sky.bpt"
+		LoadBPT OFFSET TexAmbient,		"assets\textures\ambient.bpt"
+		LoadBPT OFFSET TexBricks,		"assets\textures\bricks.bpt"
+		LoadBPT OFFSET TexCompass,		"assets\textures\compass.bpt"
+		LoadBPT OFFSET TexCompassWorld,	"assets\textures\compassWorld.bpt"
+		LoadBPT OFFSET TexConcrete,		"assets\textures\concrete.bpt"
+		LoadBPT OFFSET TexConcreteRoof,	"assets\textures\concreteRoof.bpt"
+		LoadBPT OFFSET TexCroa,			"assets\textures\croa.bpt"
+		LoadBPT OFFSET TexCursor,		"assets\textures\cursor.bpt"
+		LoadBPT OFFSET TexDiamond,		"assets\textures\diamond.bpt"
+		LoadBPT OFFSET TexDirt,			"assets\textures\dirt.bpt"
+		LoadBPT OFFSET TexDoor,			"assets\textures\door.bpt"
+		LoadBPT OFFSET TexDoorBlur,		"assets\textures\doorBlur.bpt"
+		LoadBPT OFFSET TexEBD[0],		"assets\textures\EBD1.bpt"
+		LoadBPT OFFSET TexEBD[4],		"assets\textures\EBD2.bpt"
+		LoadBPT OFFSET TexEBD[8],		"assets\textures\EBD3.bpt"
+		LoadBPT OFFSET TexEBDShadow,	"assets\textures\EBDShadow.bpt"
+		LoadBPT OFFSET TexFacade,		"assets\textures\facade.bpt"
+		LoadBPT OFFSET TexFloor,		"assets\textures\floor.bpt"
+		LoadBPT OFFSET TexGamma,		"assets\textures\gamma.bpt"
+		LoadBPT OFFSET TexGlyph[0],		"assets\textures\glyph1.bpt"
+		LoadBPT OFFSET TexGlyph[4],		"assets\textures\glyph2.bpt"
+		LoadBPT OFFSET TexGlyph[8],		"assets\textures\glyph3.bpt"
+		LoadBPT OFFSET TexGlyph[12],	"assets\textures\glyph4.bpt"
+		LoadBPT OFFSET TexGlyph[16],	"assets\textures\glyph5.bpt"
+		LoadBPT OFFSET TexGlyph[20],	"assets\textures\glyph6.bpt"
+		LoadBPT OFFSET TexGlyph[24],	"assets\textures\glyph7.bpt"
+		LoadBPT OFFSET TexHbd,			"assets\textures\hbd.bpt"
+		LoadBPT OFFSET TexKey,			"assets\textures\key.bpt"
+		LoadBPT OFFSET TexKoluplyk,		"assets\textures\koluplyk.bpt"
+		LoadBPT OFFSET TexKubale,		"assets\textures\kubale.bpt"
+		LoadBPT OFFSET TexKubaleV[0],	"assets\textures\kubaleV1.bpt"
+		LoadBPT OFFSET TexKubaleV[4],	"assets\textures\kubaleV2.bpt"
+		LoadBPT OFFSET TexKubaleV[8],	"assets\textures\kubaleV3.bpt"
+		LoadBPT OFFSET TexKubaleV[12],	"assets\textures\kubaleV4.bpt"
+		LoadBPT OFFSET TexKubaleV[16],	"assets\textures\kubaleV5.bpt"
+		LoadBPT OFFSET TexKubaleV[20],	"assets\textures\kubaleV6.bpt"
+		LoadBPT OFFSET TexKubaleV[24],	"assets\textures\kubaleV7.bpt"
+		LoadBPT OFFSET TexKubaleV[24],	"assets\textures\kubaleV8.bpt"
+		LoadBPT OFFSET TexKubaleV[24],	"assets\textures\kubaleV8.bpt"
+		LoadBPT OFFSET TexKubaleV[28],	"assets\textures\kubaleV9.bpt"
+		LoadBPT OFFSET TexLamp,			"assets\textures\lamp.bpt"
+		LoadBPT OFFSET TexLight,		"assets\textures\light.bpt"
+		LoadBPT OFFSET TexMap,			"assets\textures\map.bpt"
+		LoadBPT OFFSET TexMetal,		"assets\textures\metal.bpt"
+		LoadBPT OFFSET TexMetalFloor,	"assets\textures\metalFloor.bpt"
+		LoadBPT OFFSET TexMetalRoof,	"assets\textures\metalRoof.bpt"
+		LoadBPT OFFSET TexMotrya,		"assets\textures\motrya.bpt"
+		LoadBPT OFFSET TexNoise,		"assets\textures\noise.bpt"
+		LoadBPT OFFSET TexPaper,		"assets\textures\paper.bpt"
+		LoadBPT OFFSET TexPipe,			"assets\textures\pipe.bpt"
+		LoadBPT OFFSET TexPlanks,		"assets\textures\planks.bpt"
+		LoadBPT OFFSET TexPlaster,		"assets\textures\plaster.bpt"
+		LoadBPT OFFSET TexRain,			"assets\textures\rain.bpt"
+		LoadBPT OFFSET TexRoof,			"assets\textures\roof.bpt"
+		LoadBPT OFFSET TexShadow,		"assets\textures\shadow.bpt"
+		LoadBPT OFFSET TexSigns,		"assets\textures\signs.bpt"
+		LoadBPT OFFSET TexSky,			"assets\textures\sky.bpt"
 		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR
 		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR
 		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP
-		LoadBPT ADDR TexTaburetka,		"assets\textures\taburetka.bpt"
-		LoadBPT ADDR TexTileBig,		"assets\textures\tileBig.bpt"
-		LoadBPT ADDR TexTilefloor,		"assets\textures\tilefloor.bpt"
-		LoadBPT ADDR TexTone,			"assets\textures\tone.bpt"
-		LoadBPT ADDR TexTutorial,		"assets\textures\tutorial.bpt"
-		LoadBPT ADDR TexTutorialJ,		"assets\textures\tutorialJ.bpt"
-		LoadBPT ADDR TexUIArrow,		"assets\textures\uiArrow.bpt"
-		LoadBPT ADDR TexUICircle,		"assets\textures\uiCircle.bpt"
-		LoadBPT ADDR TexVas,			"assets\textures\vas.bpt"
-		LoadBPT ADDR TexVebra,			"assets\textures\vebra.bpt"
-		LoadBPT ADDR TexVignette,		"assets\textures\vignette.bpt"
+		LoadBPT OFFSET TexTaburetka,	"assets\textures\taburetka.bpt"
+		LoadBPT OFFSET TexTileBig,		"assets\textures\tileBig.bpt"
+		LoadBPT OFFSET TexTilefloor,	"assets\textures\tilefloor.bpt"
+		LoadBPT OFFSET TexTone,			"assets\textures\tone.bpt"
+		LoadBPT OFFSET TexTutorial,		"assets\textures\tutorial.bpt"
+		LoadBPT OFFSET TexTutorialJ,	"assets\textures\tutorialJ.bpt"
+		LoadBPT OFFSET TexUIArrow,		"assets\textures\uiArrow.bpt"
+		LoadBPT OFFSET TexUICircle,		"assets\textures\uiCircle.bpt"
+		LoadBPT OFFSET TexVas,			"assets\textures\vas.bpt"
+		LoadBPT OFFSET TexVebra,		"assets\textures\vebra.bpt"
+		LoadBPT OFFSET TexVignette,		"assets\textures\vignette.bpt"
 		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR
 		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR
-		LoadBPT ADDR TexVignetteRed,	"assets\textures\vignetteRed.bpt"
-		LoadBPT ADDR TexVirdyaBlink,	"assets\textures\virdyaBlink.bpt"
-		LoadBPT ADDR TexVirdyaDown,		"assets\textures\virdyaDown.bpt"
-		LoadBPT ADDR TexVirdyaN,		"assets\textures\virdyaN.bpt"
-		LoadBPT ADDR TexVirdyaNeut,		"assets\textures\virdyaNeut.bpt"
-		LoadBPT ADDR TexVirdyaUp,		"assets\textures\virdyaUp.bpt"
-		LoadBPT ADDR TexWall,			"assets\textures\wall.bpt"
-		LoadBPT ADDR TexWB,				"assets\textures\WB.bpt"
-		LoadBPT ADDR TexWBBK,			"assets\textures\WBBK.bpt"
-		LoadBPT ADDR TexWBBK1,			"assets\textures\WBBK1.bpt"
-		LoadBPT ADDR TexWBBKP,			"assets\textures\WBBKP.bpt"
-		LoadBPT ADDR TexWhitewall,		"assets\textures\whitewall.bpt"
-		LoadBPT ADDR TexWmblykHappy,	"assets\textures\wmblykHappy.bpt"
-		LoadBPT ADDR TexWmblykJumpscare,"assets\textures\wmblykJumpscare.bpt"
-		LoadBPT ADDR TexWmblykL1,		"assets\textures\wmblykL1.bpt"
-		LoadBPT ADDR TexWmblykL2,		"assets\textures\wmblykL2.bpt"
-		LoadBPT ADDR TexWmblykL3,		"assets\textures\wmblykL3.bpt"
-		LoadBPT ADDR TexWmblykNeutral,	"assets\textures\wmblykNeutral.bpt"
-		LoadBPT ADDR TexWmblykStr,		"assets\textures\wmblykStr.bpt"
-		LoadBPT ADDR TexWmblykW1,		"assets\textures\wmblykW1.bpt"
-		LoadBPT ADDR TexWmblykW2,		"assets\textures\wmblykW2.bpt"
+		LoadBPT OFFSET TexVignetteRed,	"assets\textures\vignetteRed.bpt"
+		LoadBPT OFFSET TexVirdyaBlink,	"assets\textures\virdyaBlink.bpt"
+		LoadBPT OFFSET TexVirdyaDown,	"assets\textures\virdyaDown.bpt"
+		LoadBPT OFFSET TexVirdyaN,		"assets\textures\virdyaN.bpt"
+		LoadBPT OFFSET TexVirdyaNeut,	"assets\textures\virdyaNeut.bpt"
+		LoadBPT OFFSET TexVirdyaUp,		"assets\textures\virdyaUp.bpt"
+		LoadBPT OFFSET TexWall,			"assets\textures\wall.bpt"
+		LoadBPT OFFSET TexWB,			"assets\textures\WB.bpt"
+		LoadBPT OFFSET TexWBBK,			"assets\textures\WBBK.bpt"
+		LoadBPT OFFSET TexWBBK1,		"assets\textures\WBBK1.bpt"
+		LoadBPT OFFSET TexWBBKP,		"assets\textures\WBBKP.bpt"
+		LoadBPT OFFSET TexWhitewall,	"assets\textures\whitewall.bpt"
+		LoadBPT OFFSET TexWmblykHappy,	"assets\textures\wmblykHappy.bpt"
+		LoadBPT OFFSET TexWmblykJumpscare,"assets\textures\wmblykJumpscare.bpt"
+		LoadBPT OFFSET TexWmblykL1,		"assets\textures\wmblykL1.bpt"
+		LoadBPT OFFSET TexWmblykL2,		"assets\textures\wmblykL2.bpt"
+		LoadBPT OFFSET TexWmblykL3,		"assets\textures\wmblykL3.bpt"
+		LoadBPT OFFSET TexWmblykNeutral,"assets\textures\wmblykNeutral.bpt"
+		LoadBPT OFFSET TexWmblykStr,	"assets\textures\wmblykStr.bpt"
+		LoadBPT OFFSET TexWmblykW1,		"assets\textures\wmblykW1.bpt"
+		LoadBPT OFFSET TexWmblykW2,		"assets\textures\wmblykW2.bpt"
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_SOUNDS)
 		; ----- SOUNDS -----
 		print "Loading sounds...", 9
-		LoadBPS ADDR SndAlarm,			"assets\sounds\alarm.bps"
+		LoadBPS OFFSET SndAlarm,		"assets\sounds\alarm.bps"
 		invoke alSourcei, SndAlarm, AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndAmb,			"assets\sounds\amb.bps"
+		LoadBPS OFFSET SndAmb,			"assets\sounds\amb.bps"
 		invoke alSourcei, SndAmb, AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndAmbT,			"assets\sounds\ambT.bps"
+		LoadBPS OFFSET SndAmbT,			"assets\sounds\ambT.bps"
 		invoke alSourcei, SndAmbT, AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndAmbW[0],		"assets\sounds\ambW1.bps"
-		LoadBPS ADDR SndAmbW[4],		"assets\sounds\ambW2.bps"
-		LoadBPS ADDR SndAmbW[8],		"assets\sounds\ambW3.bps"
-		LoadBPS ADDR SndAmbW[12],		"assets\sounds\ambW4.bps"
-		LoadBPS ADDR SndCheckpoint,		"assets\sounds\checkpoint.bps"
-		LoadBPS ADDR SndDeath,			"assets\sounds\death.bps"
-		LoadBPS ADDR SndDig,			"assets\sounds\dig.bps"
-		LoadBPS ADDR SndDistress,		"assets\sounds\distress.bps"
-		LoadBPS ADDR SndDoorClose,		"assets\sounds\doorClose.bps"
-		LoadBPS ADDR SndDrip,			"assets\sounds\drip.bps"
+		LoadBPS OFFSET SndAmbW[0],		"assets\sounds\ambW1.bps"
+		LoadBPS OFFSET SndAmbW[4],		"assets\sounds\ambW2.bps"
+		LoadBPS OFFSET SndAmbW[8],		"assets\sounds\ambW3.bps"
+		LoadBPS OFFSET SndAmbW[12],		"assets\sounds\ambW4.bps"
+		LoadBPS OFFSET SndCheckpoint,	"assets\sounds\checkpoint.bps"
+		LoadBPS OFFSET SndDeath,		"assets\sounds\death.bps"
+		LoadBPS OFFSET SndDig,			"assets\sounds\dig.bps"
+		LoadBPS OFFSET SndDistress,		"assets\sounds\distress.bps"
+		LoadBPS OFFSET SndDoorClose,	"assets\sounds\doorClose.bps"
+		LoadBPS OFFSET SndDrip,			"assets\sounds\drip.bps"
 		invoke alSourcei, SndDrip, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndDrip, AL_ROLLOFF_FACTOR, f(2)
-		LoadBPS ADDR SndEBD,			"assets\sounds\ebd.bps"
+		LoadBPS OFFSET SndEBD,			"assets\sounds\ebd.bps"
 		invoke alSourcei, SndEBD, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndEBD, AL_ROLLOFF_FACTOR, f(4)
-		LoadBPS ADDR SndEBDA,			"assets\sounds\ebdA.bps"
+		LoadBPS OFFSET SndEBDA,			"assets\sounds\ebdA.bps"
 		invoke alSourcei, SndEBDA, AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndExit,			"assets\sounds\exit.bps"
-		LoadBPS ADDR SndExit1,			"assets\sounds\exit1.bps"
-		LoadBPS ADDR SndExplosion,		"assets\sounds\explosion.bps"
-		LoadBPS ADDR SndHbd,			"assets\sounds\hbd.bps"
+		LoadBPS OFFSET SndExit,			"assets\sounds\exit.bps"
+		LoadBPS OFFSET SndExit1,		"assets\sounds\exit1.bps"
+		LoadBPS OFFSET SndExplosion,	"assets\sounds\explosion.bps"
+		LoadBPS OFFSET SndHbd,			"assets\sounds\hbd.bps"
 		invoke alSourcei, SndHbd, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndHbd, AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS ADDR SndHbdO,			"assets\sounds\hbdO.bps"
-		LoadBPS ADDR SndHurt,			"assets\sounds\hurt.bps"
-		LoadBPS ADDR SndImpact,			"assets\sounds\impact.bps"
-		LoadBPS ADDR SndIntro,			"assets\sounds\intro.bps"
-		LoadBPS ADDR SndKey,			"assets\sounds\key.bps"
-		LoadBPS ADDR SndKubale,			"assets\sounds\kubale.bps"
+		LoadBPS OFFSET SndHbdO,			"assets\sounds\hbdO.bps"
+		LoadBPS OFFSET SndHurt,			"assets\sounds\hurt.bps"
+		LoadBPS OFFSET SndImpact,		"assets\sounds\impact.bps"
+		LoadBPS OFFSET SndIntro,		"assets\sounds\intro.bps"
+		LoadBPS OFFSET SndKey,			"assets\sounds\key.bps"
+		LoadBPS OFFSET SndKubale,			"assets\sounds\kubale.bps"
 		invoke alSourcef, SndKubale, AL_GAIN, 0
 		invoke alSourcei, SndKubale, AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndKubaleAppear,	"assets\sounds\kubaleAppear.bps"
-		LoadBPS ADDR SndKubaleV,		"assets\sounds\kubaleV.bps"
+		LoadBPS OFFSET SndKubaleAppear,	"assets\sounds\kubaleAppear.bps"
+		LoadBPS OFFSET SndKubaleV,		"assets\sounds\kubaleV.bps"
 		invoke alSourcef, SndKubaleV, AL_GAIN, 0
 		invoke alSourcei, SndKubaleV, AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndMistake,		"assets\sounds\mistake.bps"
-		LoadBPS ADDR SndMus[0],			"assets\sounds\mus1.bps"
+		LoadBPS OFFSET SndMistake,		"assets\sounds\mistake.bps"
+		LoadBPS OFFSET SndMus[0],		"assets\sounds\mus1.bps"
 		invoke alSourcef, SndMus[0], AL_GAIN, f(0.5)
-		LoadBPS ADDR SndMus[4],			"assets\sounds\mus2.bps"
+		LoadBPS OFFSET SndMus[4],		"assets\sounds\mus2.bps"
 		invoke alSourcef, SndMus[4], AL_GAIN, f(0.5)
-		LoadBPS ADDR SndMus[8],			"assets\sounds\mus3.bps"
+		LoadBPS OFFSET SndMus[8],		"assets\sounds\mus3.bps"
 		invoke alSourcef, SndMus[8], AL_GAIN, 0
 		invoke alSourcei, SndMus[8], AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndMus[12],		"assets\sounds\mus4.bps"
+		LoadBPS OFFSET SndMus[12],		"assets\sounds\mus4.bps"
 		invoke alSourcef, SndMus[12], AL_GAIN, 0
 		invoke alSourcei, SndMus[12], AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndMus[16],		"assets\sounds\mus5.bps"
+		LoadBPS OFFSET SndMus[16],		"assets\sounds\mus5.bps"
 		invoke alSourcef, SndMus[16], AL_GAIN, f(0.5)
-		LoadBPS ADDR SndRand[0],		"assets\sounds\rand1.bps"
-		LoadBPS ADDR SndRand[4],		"assets\sounds\rand2.bps"
-		LoadBPS ADDR SndRand[8],		"assets\sounds\rand3.bps"
-		LoadBPS ADDR SndRand[12],		"assets\sounds\rand4.bps"
-		LoadBPS ADDR SndRand[16],		"assets\sounds\rand5.bps"
-		LoadBPS ADDR SndRand[20],		"assets\sounds\rand6.bps"
-		LoadBPS ADDR SndSave,			"assets\sounds\save.bps"
-		LoadBPS ADDR SndScribble,		"assets\sounds\scribble.bps"
-		LoadBPS ADDR SndSiren,			"assets\sounds\siren.bps"
+		LoadBPS OFFSET SndRand[0],		"assets\sounds\rand1.bps"
+		LoadBPS OFFSET SndRand[4],		"assets\sounds\rand2.bps"
+		LoadBPS OFFSET SndRand[8],		"assets\sounds\rand3.bps"
+		LoadBPS OFFSET SndRand[12],		"assets\sounds\rand4.bps"
+		LoadBPS OFFSET SndRand[16],		"assets\sounds\rand5.bps"
+		LoadBPS OFFSET SndRand[20],		"assets\sounds\rand6.bps"
+		LoadBPS OFFSET SndSave,			"assets\sounds\save.bps"
+		LoadBPS OFFSET SndScribble,		"assets\sounds\scribble.bps"
+		LoadBPS OFFSET SndSiren,		"assets\sounds\siren.bps"
 		invoke alSourcef, SndSiren, AL_GAIN, 0
 		invoke alSourcei, SndSiren, AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndSlam,			"assets\sounds\slam.bps"
+		LoadBPS OFFSET SndSlam,			"assets\sounds\slam.bps"
 		invoke alSource3f, SndSlam, AL_POSITION, f(1), f(1), 0
-		LoadBPS ADDR SndSplash,			"assets\sounds\splash.bps"
-		LoadBPS ADDR SndStep[0],		"assets\sounds\step1.bps"
-		LoadBPS ADDR SndStep[4],		"assets\sounds\step2.bps"
-		LoadBPS ADDR SndStep[8],		"assets\sounds\step3.bps"
-		LoadBPS ADDR SndStep[12],		"assets\sounds\step4.bps"
-		LoadBPS ADDR SndTram,			"assets\sounds\tram.bps"
+		LoadBPS OFFSET SndSplash,		"assets\sounds\splash.bps"
+		LoadBPS OFFSET SndStep[0],		"assets\sounds\step1.bps"
+		LoadBPS OFFSET SndStep[4],		"assets\sounds\step2.bps"
+		LoadBPS OFFSET SndStep[8],		"assets\sounds\step3.bps"
+		LoadBPS OFFSET SndStep[12],		"assets\sounds\step4.bps"
+		LoadBPS OFFSET SndTram,			"assets\sounds\tram.bps"
 		invoke alSourcei, SndTram, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndTram, AL_ROLLOFF_FACTOR, f(1.5)
-		LoadBPS ADDR SndTramAnn[0],		"assets\sounds\tramAnn1.bps"
+		LoadBPS OFFSET SndTramAnn[0],	"assets\sounds\tramAnn1.bps"
 		invoke alSourcef, SndTramAnn[0], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS ADDR SndTramAnn[4],		"assets\sounds\tramAnn2.bps"
+		LoadBPS OFFSET SndTramAnn[4],	"assets\sounds\tramAnn2.bps"
 		invoke alSourcef, SndTramAnn[4], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS ADDR SndTramAnn[8],		"assets\sounds\tramAnn3.bps"
+		LoadBPS OFFSET SndTramAnn[8],	"assets\sounds\tramAnn3.bps"
 		invoke alSourcef, SndTramAnn[8], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS ADDR SndTramClose,		"assets\sounds\tramClose.bps"
+		LoadBPS OFFSET SndTramClose,	"assets\sounds\tramClose.bps"
 		invoke alSourcef, SndTramClose, AL_ROLLOFF_FACTOR, f(1.5)
-		LoadBPS ADDR SndTramOpen,		"assets\sounds\tramOpen.bps"
+		LoadBPS OFFSET SndTramOpen,		"assets\sounds\tramOpen.bps"
 		invoke alSourcef, SndTramOpen, AL_ROLLOFF_FACTOR, f(1.5)
-		LoadBPS ADDR SndVirdya,			"assets\sounds\virdya.bps"
+		LoadBPS OFFSET SndVirdya,		"assets\sounds\virdya.bps"
 		invoke alSourcef, SndVirdya, AL_GAIN, 0
 		invoke alSourcei, SndVirdya, AL_LOOPING, AL_TRUE
-		LoadBPS ADDR SndWBAlarm,		"assets\sounds\wbAlarm.bps"
+		LoadBPS OFFSET SndWBAlarm,		"assets\sounds\wbAlarm.bps"
 		invoke alSourcef, SndWBAlarm, AL_ROLLOFF_FACTOR, f(1.5)
-		LoadBPS ADDR SndWBAttack,		"assets\sounds\wbAttack.bps"
-		LoadBPS ADDR SndWBBK,			"assets\sounds\wbbk.bps"
+		LoadBPS OFFSET SndWBAttack,		"assets\sounds\wbAttack.bps"
+		LoadBPS OFFSET SndWBBK,			"assets\sounds\wbbk.bps"
 		invoke alSourcei, SndWBBK, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndWBBK, AL_ROLLOFF_FACTOR, f(10)
-		LoadBPS ADDR SndWBIdle[0],		"assets\sounds\wbIdle1.bps"
+		LoadBPS OFFSET SndWBIdle[0],	"assets\sounds\wbIdle1.bps"
 		invoke alSourcef, SndWBIdle[0], AL_ROLLOFF_FACTOR, f(4)
-		LoadBPS ADDR SndWBIdle[4],		"assets\sounds\wbIdle2.bps"
+		LoadBPS OFFSET SndWBIdle[4],	"assets\sounds\wbIdle2.bps"
 		invoke alSourcef, SndWBIdle[4], AL_ROLLOFF_FACTOR, f(4)
-		LoadBPS ADDR SndWBStep[0],		"assets\sounds\wbStep1.bps"
+		LoadBPS OFFSET SndWBStep[0],	"assets\sounds\wbStep1.bps"
 		invoke alSourcef, SndWBStep[0], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS ADDR SndWBStep[4],		"assets\sounds\wbStep2.bps"
+		LoadBPS OFFSET SndWBStep[4],	"assets\sounds\wbStep2.bps"
 		invoke alSourcef, SndWBStep[4], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS ADDR SndWBStep[8],		"assets\sounds\wbStep3.bps"
+		LoadBPS OFFSET SndWBStep[8],	"assets\sounds\wbStep3.bps"
 		invoke alSourcef, SndWBStep[8], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS ADDR SndWBStep[12],		"assets\sounds\wbStep4.bps"
+		LoadBPS OFFSET SndWBStep[12],	"assets\sounds\wbStep4.bps"
 		invoke alSourcef, SndWBStep[12], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS ADDR SndWhisper,		"assets\sounds\whisper.bps"
+		LoadBPS OFFSET SndWhisper,		"assets\sounds\whisper.bps"
 		invoke alSourcei, SndWhisper, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndWhisper, AL_ROLLOFF_FACTOR, f(2)
-		LoadBPS ADDR SndWmblyk,			"assets\sounds\wmblyk.bps"
-		LoadBPS ADDR SndWmblykB,		"assets\sounds\wmblykB.bps"
+		LoadBPS OFFSET SndWmblyk,		"assets\sounds\wmblyk.bps"
+		LoadBPS OFFSET SndWmblykB,		"assets\sounds\wmblykB.bps"
 		invoke alSourcei, SndWmblykB, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndWmblykB, AL_ROLLOFF_FACTOR, f(4)
-		LoadBPS ADDR SndWmblykStr,		"assets\sounds\wmblykStr.bps"
-		LoadBPS ADDR SndWmblykStrM,		"assets\sounds\wmblykStrM.bps"
+		LoadBPS OFFSET SndWmblykStr,	"assets\sounds\wmblykStr.bps"
+		LoadBPS OFFSET SndWmblykStrM,	"assets\sounds\wmblykStrM.bps"
 		invoke alSourcef, SndWmblykStrM, AL_GAIN, 0
 		invoke alSourcei, SndWmblykStrM, AL_LOOPING, AL_TRUE
 		print "...done!", 13, 10
@@ -674,7 +693,9 @@ LoadResources PROC EXPORT
 		mov LoadState, LOADING_FINISHED
 		ret
 	.ENDIF
-	inc LoadState
+	.IF (LoadState != LOADING_WAIT)
+		inc LoadState
+	.ENDIF
 	ret
 LoadResources ENDP
 
@@ -683,7 +704,7 @@ LoadStrings PROC EXPORT FilePath:BPPtr
 	LOCAL lf:BPBool, strAddr:BPPtr
 	
 	print "Loading strings from "
-	print FilePath, 13, 10
+	print FilePath, "...", 9
 	
 	mov strAddr, OFFSET StrLanguageID
 	
@@ -720,10 +741,6 @@ LoadStrings PROC EXPORT FilePath:BPPtr
 			invoke bpMalloc, bpDefHeap, 0, pcx
 			mov pcx, strAddr
 			
-			pushad
-			print str$(strAddr), 13, 10
-			popad
-			
 			mov BPPtr PTR [pcx], pax
 			add strAddr, SIZEOF BPPtr
 			
@@ -739,10 +756,6 @@ LoadStrings PROC EXPORT FilePath:BPPtr
 			pop pbx
 			mov strLen, 0
 			mov realStrLen, 0
-			pushad
-			print pax
-			print " ", 13, 10
-			popad
 			
 			.IF (strAddr == OFFSET StrSectionEnd)
 				.BREAK
@@ -765,6 +778,7 @@ LoadStrings PROC EXPORT FilePath:BPPtr
 	.ENDIF
 	
     invoke bpFree, rv(GetProcessHeap), 0, buffer
+	print "...done!", 13, 10
 	ret
 LoadStrings ENDP
 
@@ -921,6 +935,17 @@ Vector32DLerp PROC EXPORT A:BPPtr, B:BPPtr, T:REAL4
 	fstp REAL4 PTR [pax+8]
 	ret
 Vector32DLerp ENDP
+
+Vector32DLerpAngle PROC EXPORT A:BPPtr, B:BPPtr, T:REAL4
+	mov pdx, A
+	mov pcx, B
+	
+	invoke flLerpAngle, REAL4 PTR [pdx], REAL4 PTR [pcx], T
+	mov REAL4 PTR [pdx], eax
+	invoke flLerpAngle, REAL4 PTR [pdx+8], REAL4 PTR [pcx+8], T
+	mov REAL4 PTR [pdx+8], eax
+	ret
+Vector32DLerpAngle ENDP
 
 Vector32DMulF PROC EXPORT A:BPPtr, B:REAL4
 	mov pax, A

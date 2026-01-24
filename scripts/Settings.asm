@@ -409,15 +409,15 @@ Settings_LoadGame PROC EXPORT
 	
 	mov pcbData, 4
 	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCurLayer, 0, \
-	NULL, ADDR MazeLevel, ADDR pcbData
+	NULL, ADDR MazeLayer, ADDR pcbData
 	.IF (eax == ERROR_SUCCESS)	; Load temporary progress
 	
 	.ELSE
 		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegLayer, 0, \
-		NULL, ADDR MazeLevel, ADDR pcbData
+		NULL, ADDR MazeLayer, ADDR pcbData
 		.IF (eax != ERROR_SUCCESS)
 			print "Failed to read layer value (DWORD).", 13, 10
-			print str$(MazeLevel), 13, 10
+			print str$(MazeLayer), 13, 10
 			xor pax, pax
 			ret
 		.ENDIF

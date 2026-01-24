@@ -1,8 +1,10 @@
+*.db
 *.dll
 *.err
 *.exe
 *.exp
 *.lib
 *.lst
+*.mtl
 *.obj
 *.png

@@ -346,11 +346,13 @@ delta10		REAL4 ?
 delta20		REAL4 ?
 deltaFixed	REAL4 ?
 FPS			REAL4 ?
+
 FPUCW	WORD ?	; To store the x87 FPU codeword
 
 ; Screen stuffs
-ScreenHalf Vector2 <?, ?>
-ScreenSizeF Vector2 <?, ?>
+ScreenHalf	Vector2 <?, ?>
+ScreenSizeF	Vector2 <?, ?>
+ScreenMode	BPEnum ?
 
 ; ----- WGL extended functions -----
 wglChoosePixelFormatARB			BPPtr ?
@@ -377,33 +379,56 @@ include scripts\UI.asm
 
 .CODE
 
+CreateScene PROC EXPORT
+	call Maze_Create
+	ret
+CreateScene ENDP
+
 DrawScene PROC EXPORT
 	.IF (Maze)
 		call Maze_Draw
 	.ENDIF
-	invoke glBindTexture, GL_TEXTURE_2D, TexVebra
+	invoke glBindTexture, GL_TEXTURE_2D, TexHbd
 	call glPushMatrix
 	invoke glTranslatef, 0, 0, f(-1)
 	.IF (Keys["V"])
 		invoke glRotatef, f(-90), 0, f(1), 0
 		;int 3
 	.ENDIF
-	invoke glCallList, MdlVebraLook
+	invoke glCallList, MdlHbd
 	call glPopMatrix
 	ret
 DrawScene ENDP
 
+FixedScene PROC EXPORT
+	fld bpFixedInterval
+	fmul deltaScale
+	fstp deltaFixed
+	.IF (Maze) && !(MazeGenerating)
+		call Maze_Fixed
+	.ENDIF
+	ret
+FixedScene ENDP
+
 ;   Game start (everything loaded in, could be a bind to FMain.OnStart, but
 ; we're using staged resource loading)
 GameStart PROC EXPORT
+	call Plr_Create
+	print "Finished game object initialization.", 13, 10
+	
 	;.IF !(rv(Settings_LoadGame))
 		; If no save game is present start intro sequence
 	;	mov PlrState, PLAYER_INTRO_DARK
 	;	invoke alSourcePlay, SndIntro
 	;.ENDIF
-	invoke Maze_Generate, 11058752
-	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+	call CreateScene
 	
+	bpMEM32 ListParticle, MdlParticle
+	
+	invoke Maze_Generate, 822896678
+	invoke alSourcePlay, SndAmb
+	
+	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
 	ret
 GameStart ENDP
 
@@ -454,6 +479,7 @@ InitARBContext ENDP
 
 InitAudio PROC EXPORT
 	call InitAudioSystem
+	invoke alListenerf, AL_GAIN, SettingsAudioVolume
 	ret
 InitAudio ENDP
 
@@ -508,7 +534,6 @@ ProcessScene PROC EXPORT
 ProcessScene ENDP
 
 
-
 ;   FMain bindings
 OnCreate PROC EXPORT
 	call InitAudio
@@ -520,6 +545,11 @@ OnCreate PROC EXPORT
 	print "Finished scripts initialization.", 13, 10
 	ret
 OnCreate ENDP
+
+OnFixed PROC EXPORT
+	call FixedScene
+	ret
+OnFixed ENDP
 
 OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 	; Set current input method
@@ -585,6 +615,20 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputUIConfirm, TRUE
 					mov InputUIConfirmT, TRUE
 				
+				CASE VK_F4
+					.IF (Keys[VK_MENU])
+						invoke bpDestroyForm, ADDR FMain
+					.ENDIF
+					.IF (FMain.WindowMode == BP_WINDOW_MODE_FULLSCREEN) || \
+					(FMain.WindowMode == BP_WINDOW_MODE_FULLSCREEN_EX)
+						invoke bpSetWindowMode, ADDR FMain, ScreenMode
+					.ELSE
+						mov al, FMain.WindowMode
+						mov ScreenMode, al
+						invoke bpSetWindowMode, ADDR FMain, \
+						BP_WINDOW_MODE_FULLSCREEN
+					.ENDIF
+					
 				; Mouse
 				CASE VK_LBUTTON
 					.IF (UIState == UI_STATE_GAME)
@@ -598,12 +642,18 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					add UIScroll, 12
 					
 				IFDEF MODE_DEBUG
-				CASE "R"
+				CASE 'F'
+					bpMEM32 deltaScale, f(4)
+				CASE 'R'
 					call Maze_Free
 					invoke Maze_Generate, nRandSeed
-				CASE "0"
-					invoke Vector32DSet, ADDR CamPos, f(1), f(1)
-					invoke Vector32DSet, ADDR CamPosL, f(1), f(1)
+				CASE '0'
+					invoke Plr_Teleport, f(1), f(1)
+				CASE 'X'
+					mov PlrState, PLAYER_ENTER
+				CASE 'T'
+					invoke Plr_Teleport, MazeDoorPos.X, MazeDoorPos.Z
+					mov PlrState, PLAYER_EXIT
 				CASE VK_F3
 					not UIDebug
 				ENDIF
@@ -653,6 +703,11 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				; Mouse
 				CASE VK_LBUTTON
 					mov InputUIConfirm, FALSE
+					
+				IFDEF MODE_DEBUG
+				CASE 'F'
+					bpMEM32 deltaScale, f(1)
+				ENDIF
 			ENDSW
 			
 			; REBINDABLE
@@ -688,16 +743,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 OnInput ENDP
 
 OnRender PROC EXPORT
-	.IF (Loading)
-		call LoadResources
-		call UI_Draw
-		
-		call glFlush
-		ret
-	.ELSEIF (LoadState == LOADING_FINISHED)
-		mov LoadState, LOADING_TEXT
-		call GameStart
-	.ENDIF
+	LOCAL v3Val:Vector3
 	
 	fld deltaTime
 	fmul f(2)
@@ -745,6 +791,7 @@ OnRender PROC EXPORT
 	invoke glClear, GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT
 	invoke glStencilOp, GL_KEEP, GL_KEEP, GL_REPLACE
 	invoke glColor4fv, OFFSET clWhite
+	invoke glAlphaFunc, GL_GREATER, f(0.5)
 	
 	invoke glMatrixMode, GL_PROJECTION
 	call glLoadIdentity
@@ -753,6 +800,18 @@ OnRender PROC EXPORT
 	
 	invoke glMatrixMode, GL_MODELVIEW
 	call glLoadIdentity
+	
+	.IF (Loading)
+		call LoadResources
+		call UI_Draw
+		
+		call glFlush
+		ret
+	.ELSEIF (LoadState == LOADING_FINISHED)
+		mov LoadState, LOADING_TEXT
+		call GameStart
+	.ENDIF
+	
 	.IF (MazeState != MAZE_CROA)
 		invoke glLightfv, GL_LIGHT0, GL_POSITION, ADDR CamLightPos	; Draw light
 	.ENDIF
@@ -768,11 +827,12 @@ OnRender PROC EXPORT
 	.IF (deltaTime)
 		call Plr_Process
 		call ProcessScene
+		call Plr_LateProcess
 	.ENDIF
 	
 	; Drawing
-	invoke glAlphaFunc, GL_GREATER, f(0.5)
 	invoke glFogf, GL_FOG_DENSITY, FogDensity
+	invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
 	
 	call DrawScene
 	call UI_Draw
@@ -808,14 +868,19 @@ OnResize PROC EXPORT
 OnResize ENDP
 
 OnStart PROC EXPORT
-	; Apply window settings
+	; Will start loading resources
+	call LoadResources
+	; Wait for frame to establish, then continue loading
+	mov LoadState, LOADING_WAIT
+	
+	; Apply window settings, this will call OnRender
 	invoke bpSetDisplayDevice, ADDR FMain, SettingsGraphicsDisplay
 	invoke bpSetScreenSize, ADDR FMain, SettingsGraphicsResolution[0], \
 	SettingsGraphicsResolution[4]
 	invoke Settings_SetOption, OFFSET SettingsGraphicsWindowMode
 	
-	; Start loading resources
-	call LoadResources
+	; Continue loading after OnRender calls ended
+	mov LoadState, LOADING_TEXT+1
 	ret
 OnStart ENDP
 
@@ -864,11 +929,12 @@ start:
 	
 	; Create main form
 	; Assign callback functions
-	mov FMain.OnCreate, OFFSET OnCreate
-	mov FMain.OnInput, OFFSET OnInput
-	mov FMain.OnRender, OFFSET OnRender
-	mov FMain.OnResize, OFFSET OnResize
-	mov FMain.OnStart, OFFSET OnStart
+	mov FMain.OnCreate,	OFFSET OnCreate
+	mov FMain.OnFixed,	OFFSET OnFixed
+	mov FMain.OnInput,	OFFSET OnInput
+	mov FMain.OnRender,	OFFSET OnRender
+	mov FMain.OnResize,	OFFSET OnResize
+	mov FMain.OnStart,	OFFSET OnStart
 	
 	; Set FMain parameters according to loaded settings
 	mov FMain.Caption, OFFSET AppName

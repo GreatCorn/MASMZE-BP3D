@@ -143,16 +143,18 @@ UI_DrawDebug PROC EXPORT
 	RenderText real4$(CamPos.X), 16, 32
 	RenderText real4$(CamPos.Y), 112, 32
 	RenderText real4$(CamPos.Z), 208, 32
-	RenderText real4$(PlrHealth), 16, 56
+	RenderText real4$(PlrSpeed), 16, 56
+	RenderText real4$(PlrSpeedScaled), 112, 56
+	RenderText real4$(PlrHealth), 16, 80
 	
-	RenderText str$(FXAfterimageNow), 16, 80
-	RenderText " AFTERIMAGE FRAMES", 32, 80
+	RenderText str$(FXAfterimageNow), 16, 104
+	RenderText " AFTERIMAGE FRAMES", 32, 104
 	
-	RenderText "STACK:", 16, 104
-	RenderText str$(psp), 112, 104
+	RenderText "STACK:", 16, 128
+	RenderText str$(psp), 112, 128
 	IFDEF BP_TRACEABLE_HEAP
-	RenderText "HEAP:", 16, 128
-	RenderText str$(heapAllocated), 112, 128
+	RenderText "HEAP:", 16, 152
+	RenderText str$(heapAllocated), 112, 152
 	ENDIF
 	RenderText "FPU:", 16, 152
 	RenderText str$(rv(fpuGetStackTop)), 112, 152
@@ -917,9 +919,12 @@ UI_DrawFullscreen PROC EXPORT Alpha:REAL4
 UI_DrawFullscreen ENDP
 
 UI_DrawMenuPause PROC EXPORT
-	UI_MENU_PAUSE_HEIGHT	EQU UI_BTN_H*3 + UI_BTN_M*2
+	UI_MENU_PAUSE_HEIGHT	EQU UI_BTN_H*4 + UI_BTN_M*3
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_PAUSE_HEIGHT/2
+	
+	invoke UI_Text, StrMenuPaused, ScreenHalf.X, ebx, BP_ALIGN_CENTER, 0
+	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke UI_Button, StrMenuResume, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
@@ -1334,7 +1339,7 @@ UI_DrawMenuSettingsGraphicsEffects ENDP
 
 UI_DrawMenuSettingsGraphicsGamma PROC EXPORT
 	UI_MENU_GAMMA_WIDTH		EQU 128*UI_SCALE
-	UI_MENU_GAMMA_HEIGHT	EQU 64*UI_SCALE + UI_BTN_H*3 + UI_BTN_M + UI_HR_H
+	UI_MENU_GAMMA_HEIGHT	EQU 64*UI_SCALE + UI_BTN_H*4 + UI_BTN_M*2 + UI_HR_H
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_GAMMA_HEIGHT/2
@@ -1366,12 +1371,12 @@ UI_DrawMenuSettingsGraphicsGamma PROC EXPORT
 	.IF (al)
 		invoke Settings_SetOption, OFFSET SettingsGraphicsGamma
 	.ENDIF
-	add ebx, UI_BTN_H
+	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Bypass
 	invoke UI_Checkbox, StrMenuBypass, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsGammaBypass
-	add ebx, UI_BTN_H + UI_BTN_M
+	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
 	add ebx, UI_HR_H
@@ -1384,7 +1389,7 @@ UI_DrawMenuSettingsGraphicsGamma PROC EXPORT
 UI_DrawMenuSettingsGraphicsGamma ENDP
 
 UI_DrawPopupMenu PROC EXPORT
-	invoke UI_DrawFullscreen, f(0.5)	; Another background darkening frame
+	invoke UI_DrawFullscreen, f(0.75)	; Another background darkening frame
 	.IF (UIFocus < 128)
 		mov UIFocus, 128
 	.ENDIF
@@ -1539,6 +1544,13 @@ UI_DrawPopupMenu PROC EXPORT
 UI_DrawPopupMenu ENDP
 
 UI_DrawRectangle PROC EXPORT RectWidth:DWORD, RectHeight:DWORD
+	call glPushMatrix
+	invoke glScalei, RectWidth, RectHeight, 1
+	invoke glCallList, ScreenQuad
+	call glPopMatrix
+	ret
+	
+	; Mesa sometimes doesn't like this here and is a fucking idiot
 	invoke glBegin, GL_QUADS
 		invoke glVertex2i, 0, 0
 		invoke glVertex2i, 0, RectHeight
@@ -1645,27 +1657,33 @@ UI_Draw PROC EXPORT
 	
 	invoke glMatrixMode, GL_MODELVIEW
 	call glLoadIdentity
-	invoke glScalei, FXRenderSize.X, FXRenderSize.Y, 1
 	
-	; Noise
-	.IF (SettingsGraphicsNoise)
-		call FX_DrawNoise
-	.ENDIF
+	; Full-screen effects
+	.IF !(Loading)
+		invoke glScalei, FXRenderSize.X, FXRenderSize.Y, 1
 	
-	; Vignette
-	.IF (SettingsGraphicsVignette)
-		invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
-		invoke glBindTexture, GL_TEXTURE_2D, TexVignette
-		invoke glCallList, ScreenQuad
-	.ENDIF
+		; Noise
+		.IF (SettingsGraphicsNoise)
+			call FX_DrawNoise
+		.ENDIF
+		
+		; Vignette
+		.IF (SettingsGraphicsVignette)
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
+			invoke glBindTexture, GL_TEXTURE_2D, TexVignette
+			invoke glCallList, ScreenQuad
+			invoke glDisable, GL_BLEND
+		.ENDIF
+		
+		; Gamma
+		.IF !(SettingsGraphicsGammaBypass)
+			invoke FX_DrawGamma, SettingsGraphicsGamma
+		.ENDIF
 	
-	; Gamma
-	.IF !(SettingsGraphicsGammaBypass)
-		invoke FX_DrawGamma, SettingsGraphicsGamma
-	.ENDIF
-	
-	.IF (SettingsGraphicsAfterimage)
-		call FX_PushAfterimage
+		.IF (SettingsGraphicsAfterimage)
+			call FX_PushAfterimage
+		.ENDIF
 	.ENDIF
 	
 	; Initialize full-scale projection
@@ -1687,46 +1705,58 @@ UI_Draw PROC EXPORT
 			invoke glViewport, 0, 0, FMain.ScreenSize.x, FMain.ScreenSize.y
 		.ENDIF
 	.ENDIF
-	invoke glColor4fv, OFFSET clWhite
-	.IF (SettingsGraphicsAfterimage)
-		call FX_DrawAfterimage
-	.ELSEIF (SettingsGraphicsPixelization) || (SettingsGraphicsPosterization)
-		mov pax, FXAfterimage
-		invoke glBindTexture, GL_TEXTURE_2D, DWORD PTR [pax]
-		invoke glCallList, ScreenQuad
+	.IF !(Loading)
+		invoke glColor4fv, OFFSET clWhite
+		.IF (SettingsGraphicsAfterimage)
+			call FX_DrawAfterimage
+		.ELSEIF (SettingsGraphicsPixelization)||(SettingsGraphicsPosterization)
+			mov pax, FXAfterimage
+			invoke glBindTexture, GL_TEXTURE_2D, DWORD PTR [pax]
+			invoke glCallList, ScreenQuad
+		.ENDIF
 	.ENDIF
 	
 	; UI Drawing
 	call glLoadIdentity
-	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
-	invoke glColor4fv, OFFSET clWhite
+	
 	
 	.IF (Loading)
-		invoke glColor4fv, OFFSET clBlack
 		invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
+		
+		invoke glColor4fv, OFFSET clBlack
 		invoke glCallList, bpFontQuad
-		call glLoadIdentity
 		invoke glColor4fv, OFFSET clWhite
 		
-		.IF (LoadState == LOADING_MODELS)
+		call glLoadIdentity
+		.IF (LoadState == LOADING_ANIMATIONS)
+			mov pax, StrLoadAnimations
+		.ELSEIF (LoadState == LOADING_MODELS)
 			mov pax, StrLoadModels
 		.ELSEIF (LoadState == LOADING_TEXTURES)
 			mov pax, StrLoadTextures
 		.ELSEIF (LoadState == LOADING_SOUNDS)
 			mov pax, StrLoadSounds
-		.ELSE
+		.ELSEIF (LoadState == LOADING_FINISHED)
 			mov pax, StrLoadFinished
+		.ELSE
+			mov pax, StrLoading
 		.ENDIF
+		
 		invoke UI_Text, pax, ScreenHalf.X, ScreenHalf.Y, BP_ALIGN_CENTER, \
 		BP_ALIGN_CENTER
+		
 		jmp uiFinish
 	.ENDIF
+	
+	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	
 	; Menu background darkening frame
 	.IF (UIState != UI_STATE_GAME) && \
 	(UIState != UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA)
 		invoke UI_DrawFullscreen, f(0.5)
 	.ENDIF
+	
+	invoke glColor4fv, OFFSET clWhite
 	
 	; Draw combobox menus
 	.IF (UIComboboxMenu > 0)
@@ -1785,7 +1815,12 @@ UI_Process PROC EXPORT
 	LOCAL flVal:REAL4
 	; Do fading
 	.IF (UIFade == UI_FADE_IN)
-		mov UIFadeVal, rv(flMove, UIFadeVal, 0, deltaUnscaled)
+		.IF (UIState == UI_STATE_FADING)
+			mov eax, deltaUnscaled
+		.ELSE
+			mov eax, deltaTime
+		.ENDIF
+		mov UIFadeVal, rv(flMove, UIFadeVal, 0, eax)
 		.IF (UIFadeVal == 0)
 			mov UIFade, UI_FADE_NONE
 			.IF (UIFadeCallback)
@@ -1793,7 +1828,12 @@ UI_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 	.ELSEIF (UIFade == UI_FADE_OUT)
-		mov UIFadeVal, rv(flMove, UIFadeVal, FLT_1, deltaUnscaled)
+		.IF (UIState == UI_STATE_FADING)
+			mov eax, deltaUnscaled
+		.ELSE
+			mov eax, deltaTime
+		.ENDIF
+		mov UIFadeVal, rv(flMove, UIFadeVal, FLT_1, eax)
 		.IF (UIFadeVal == FLT_1)
 			mov UIFade, UI_FADE_NONE
 			.IF (UIFadeCallback)

@@ -1,7 +1,7 @@
 # Blender 3.4.1 MTL File: 'masmze-bp3d.blend'
 # www.blender.org
 
-newmtl wall
+newmtl wallH
 Ns 250.000000
 Ka 1.000000 1.000000 1.000000
 Ks 0.000000 0.000000 0.000000
@@ -9,4 +9,4 @@ Ke 0.000000 0.000000 0.000000
 Ni 1.450000
 d 1.000000
 illum 1
-map_Kd D:/Projects/Asm/MASMZE-3D/GFX/wall.bmp
+map_Kd D:/Projects/Asm/MASMZE-3D/GFX/plaster.png

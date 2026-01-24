@@ -1,10 +1,8 @@
 ENUML
 	E PLAYER_GAME
 	E PLAYER_ENTER
-	E PLAYER_ENTERING
-	E PLAYER_EXIT_DOOR
+	E PLAYER_EXIT
 	E PLAYER_EXITING
-	E PLAYER_EXIT_WAIT
 	
 	; Wmblyk strangle minigame
 	E PLAYER_STRANGLE
@@ -28,29 +26,35 @@ ENUML
 	
 .CONST
 CamHeight		REAL4 1.2
-PlrCrouchSpeed	REAL4 2.6
-PlrWalkSpeed	REAL4 3.6
+PlrSpeedCrouch	REAL4 2.0
+PlrSpeedWalk	REAL4 3.6
 	
 .DATA
 ; Movement and transformation
 CamPos			Vector3 <>	; Real camera position
 CamPosI			Vector3 <>	; Real rounded (FPU_ROUND_ROUND) position
 CamPosL			Vector3 <>	; Displayed (lerped) camera position
+CamPosP			Vector3 <>	; Previous frame camera position
 CamRot			Vector3 <>
 CamRotL			Vector3 <>
 CamRotSmooth	REAL4 16.0
-CamStep			REAL4 0.0, 0.0
 PlrCanControl	BPBool TRUE
 PlrCrouch		REAL4 0.0
 PlrForward		Vector3 <>
 PlrRight		Vector3 <>
-PlrSpeed		REAL4 0.0	; Current plr speed
+PlrSpeed		REAL4 0.0	; Current absolute player speed
+PlrSpeedScaled	REAL4 0.0	; Current scaled player speed (0.0 - PlrSpeedWalk)
+
+CamAnimPlr		BPAnimPlayer <>
+CamPosA			Vector3 <>
+CamRotA			Vector3 <>
 
 CamLightPos		Vector4 <0.0, 0.0, 0.0, 1.0>
 CamFOV			REAL4 70.0
 PlrGlyphs		DWORD 7
 PlrHealth		REAL4 1.0
-PlrState		DWORD PLAYER_GAME
+PlrPlayStep		BPBool FALSE
+PlrState		DWORD PLAYER_ENTER
 
 .CODE
 Plr_Control PROC EXPORT
@@ -118,9 +122,9 @@ Plr_Control PROC EXPORT
 		.ENDIF
 	.ENDIF
 	.IF (PlrCrouch)		; Choose movement speed
-		bpMEM32 movSpd, PlrCrouchSpeed
+		bpMEM32 movSpd, PlrSpeedCrouch
 	.ELSE
-		bpMEM32 movSpd, PlrWalkSpeed
+		bpMEM32 movSpd, PlrSpeedWalk
 	.ENDIF
 	
 	; Move
@@ -144,96 +148,123 @@ Plr_Control PROC EXPORT
 	ret
 Plr_Control ENDP
 
-Plr_ProcessState PROC EXPORT
-	LOCAL fltVal:REAL4
+Plr_LateProcess PROC EXPORT
+	LOCAL flVal:REAL4, v3Val:Vector3
 	
-	.IF (PlrState == PLAYER_ENTER)
-		invoke Vector3Set, ADDR CamRot, f(0.3), PI, 0
-		invoke Vector3Copy, ADDR CamRotL, ADDR CamRot
-		invoke Vector3Set, ADDR CamPos, f(1), CamHeight, f(0.2)
-		invoke Vector3Copy, ADDR CamPosL, ADDR CamPos
+	fld deltaTime
+	fmul CamRotSmooth
+	fstp flVal
+	
+	invoke Vector3Copy, ADDR v3Val, ADDR CamPosA
+	;invoke Vector3MulF, ADDR v3Val, f(16.0)
+	invoke Vector3Add, ADDR v3Val, ADDR CamPos
+	invoke Vector3Lerp, ADDR CamPosL, ADDR v3Val, delta10
+	invoke Vector3Copy, ADDR v3Val, ADDR CamRotA
+	;invoke Vector3MulF, ADDR v3Val, f(16.0)
+	invoke Vector3Add, ADDR v3Val, ADDR CamRot
+	invoke Vector3LerpAngle, ADDR CamRotL, ADDR v3Val, flVal
+	
+	
+	invoke Vector32DDistanceSqr, ADDR CamPos, ADDR CamPosP
+	fsqrt
+	fdiv deltaTime
+	fst PlrSpeed
+	fdiv PlrSpeedWalk
+	fstp PlrSpeedScaled
+	invoke Vector32DCopy, ADDR CamPosP, ADDR CamPos
+	ret
+Plr_LateProcess ENDP
+
+Plr_ProcessState PROC EXPORT
+	LOCAL flVal:REAL4, v3Val:Vector3
+	
+	.IF (PlrState == PLAYER_ENTER)		
+		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
+		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamEnter
+		invoke bpProcessAnimPlayer, ADDR CamAnimPlr, 0
+		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
 		
-		invoke Vector2Set, ADDR CamStep, 0, 0
+		invoke Vector3Set, ADDR CamRot, 0, PI, 0
+		invoke Vector3Copy, ADDR v3Val, ADDR CamRotA
+		invoke Vector3Add, ADDR v3Val, ADDR CamRot
+		invoke Vector3Copy, ADDR CamRotL, ADDR v3Val
+		invoke Vector3Set, ADDR CamPos, f(1), CamHeight, f(1)
+		invoke Vector3Copy, ADDR v3Val, ADDR CamPosA
+		invoke Vector3Add, ADDR v3Val, ADDR CamPos
+		invoke Vector3Copy, ADDR CamPosL, ADDR v3Val
+		
+		mov PlrCanControl, FALSE
 				
 		mov MazeDoorRot, 0
 		
 		mov UIFade, UI_FADE_IN
-		mov UIFadeCallback, 0
+		mov UIFadeCallback, OFFSET plrEnterFade
 		bpMEM32 UIFadeVal, f(1)
 		
-		mov PlrState, PLAYER_ENTERING
+		mov PlrState, PLAYER_ETC
 		ret
-	.ELSEIF (PlrState == PLAYER_ENTERING)
+	.ELSEIF (PlrState == PLAYER_EXIT)
+		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamExit
+		
+		mov PlrCanControl, FALSE
+		
+		mov UIFade, UI_FADE_NONE
+		
+		mov PlrState, PLAYER_EXITING
+		
+		invoke alSourcePlay, SndExit
+		ret
+	.ELSEIF (PlrState == PLAYER_EXITING)
+		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-100), delta2)
+		invoke Vector3Lerp, ADDR CamPos, ADDR MazeDoorPos, delta2
 		mov CamRot.X, rv(flLerp, CamRot.X, 0, delta2)
-		mov CamPos.Z, rv(flLerp, CamPos.Z, f(1.1), delta2)
-		
-		fcmp CamPos.Z, f(1)
-		.IF (!Carry?)
-			.IF (MazeState != MAZE_CROA)
-				mov PlrCanControl, TRUE
-				mov PlrState, PLAYER_GAME
-			.ELSE
-				mov PlrState, PLAYER_STOP
-			.ENDIF
-		.ENDIF
-		ret
-	.ELSEIF (PlrState == PLAYER_EXIT_DOOR)
-		mov PlrCanControl, 0
-		
-		.IF (MazeLevel == 63)
-			mov CamRot.X, rv(flLerp, CamRot.X, 0, delta2)
-		.ELSEIF (MazeState == MAZE_ENDING)
-			mov CamRot.X, rv(flLerp, CamRot.X, f(-0.33), delta2)
-		.ELSE
-			mov CamRot.X, rv(flLerp, CamRot.X, f(0.33), delta2)
-		.ENDIF
 		mov CamRot.Y, rv(flLerpAngle, CamRot.Y, PI, delta2)
-		
-		.IF (Kubale != KUBALE_ACTIVE)
-			mov Kubale, KUBALE_INACTIVE
-		.ENDIF
-		
-		invoke Vector32DLerp, ADDR CamPos, ADDR MazeDoorPos, delta2
-		
-		.IF (MazeCheck)
-			.IF ((MazeState == MAZE_GAME) || (PlrGlyphs == 7))
-				invoke alGetSourcef, SndMus[8], AL_GAIN, ADDR fltVal
-				mov fltVal, rv(flLerp, fltVal, 0, delta2)
-				invoke alSourcef, SndMus[8], AL_GAIN, fltVal
-				mov MazeCheckDoorRot, \
-				rv(flLerp, MazeCheckDoorRot, (-100), delta2)
-				push MazeCheckDoorRot
-			.ELSE
-				mov MazeDoorRot, rv(flLerp, MazeDoorRot, (-100), delta2)
-				push MazeDoorRot
-			.ENDIF
-		.ELSE
-			mov MazeDoorRot, rv(flLerp, MazeDoorRot, (-100), delta2)
-			push MazeDoorRot
-		.ENDIF
-		
-		fcmp REAL4 PTR [psp], f(-90)
-		add psp, 4
-		.IF (Carry?)
-			fld MazeDoorPos.Z
-			fadd f(2)
-			fstp MazeDoorPos.Z
-			
+		fcmp CamAnimPlr.Timer, f(40)
+		.IF (!Carry?) && !(UIFade)
 			mov UIFade, UI_FADE_OUT
+			mov UIFadeCallback, OFFSET plrExitFade
 			mov UIFadeVal, 0
-			
-			mov PlrState, PLAYER_EXITING
-			.IF (MazeCheck)
-				.IF (MazeState == MAZE_GAME)
-					invoke alSourcePlay, SndAmb
-				.ENDIF
-				invoke alSourceStop, SndMus[8]
-			.ENDIF
 		.ENDIF
-		ret
 	.ENDIF
 	ret
+	
+	plrEnterFade:
+		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamWalk
+		mov PlrCanControl, TRUE
+		mov PlrState, PLAYER_GAME
+		ret
+	plrExitFade:
+		mov PlrState, PLAYER_ENTER
+		call Maze_Progress
+		ret
 Plr_ProcessState ENDP
+
+Plr_Step PROC EXPORT HalfStep:BPBool
+	LOCAL flVal:REAL4
+	mov al, HalfStep
+	.IF (PlrPlayStep == al)
+		not al
+		mov PlrPlayStep, al
+		
+		invoke PlayRandomSnd, ADDR SndStep, 4
+		push pax
+		fld PlrSpeedScaled
+		fmul st, st
+		fstp flVal
+		invoke alSourcef, eax, AL_GAIN, flVal
+		
+		invoke flRandRange, f(0.9), f(1.1)
+		pop pcx
+		invoke alSourcef, ecx, AL_PITCH, eax
+	.ENDIF
+	ret
+Plr_Step ENDP
+
+Plr_Teleport PROC EXPORT X:REAL4, Y:REAL4
+	invoke Vector32DSet, ADDR CamPos, X, Y
+	invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
+	ret
+Plr_Teleport ENDP
 
 Plr_Process PROC EXPORT
 	LOCAL flVal:REAL4
@@ -254,12 +285,27 @@ Plr_Process PROC EXPORT
 		call Plr_Control
 	.ENDIF
 	
-	fld deltaTime
-	fmul CamRotSmooth
-	fstp flVal
-	invoke Vector3LerpAngle, ADDR CamRotL, ADDR CamRot, flVal
-	invoke Vector3LerpAngle, ADDR CamPosL, ADDR CamPos, delta10
+	invoke bpProcessAnimPlayer, ADDR CamAnimPlr, deltaTime
+	.IF (CamAnimPlr.TrackPtr == OFFSET AnimCamWalk)
+		.IF (al)	; Frame changed
+			.IF (CamAnimPlr.FrameOffset >= 6 * SIZEOF BPAnimFramePRS)
+				invoke Plr_Step, 255
+			.ELSE
+				invoke Plr_Step, 0
+			.ENDIF
+		.ENDIF
+		
+		fld PlrSpeedScaled
+		fsqrt
+		fmul f(1.5)
+		fstp CamAnimPlr.Speed
+	.ELSE
+		bpMEM32 CamAnimPlr.Speed, f(1)
+	.ENDIF
 	
+	call Plr_ProcessState
+	
+	; Health that affects afterimage
 	fld PlrHealth
 	.IF (FXAfterimageHighFPS)
 		fmul f(3)
@@ -278,3 +324,10 @@ Plr_Process PROC EXPORT
 	mov FXAfterimageEnd, pcx
 	ret
 Plr_Process ENDP
+
+Plr_Create PROC EXPORT
+	mov CamAnimPlr.Position, OFFSET CamPosA	; Init player animator
+	mov CamAnimPlr.Rotation, OFFSET CamRotA
+	mov CamAnimPlr.TrackPtr, OFFSET AnimCamWalk
+	ret
+Plr_Create ENDP

@@ -7,7 +7,7 @@ FXAfterimageAmount		BPPtr 0	; Count of afterimage frames (set with
 								; FX_SetAfterimage)
 FXAfterimageNow			BPPtr 0	; Count of afterimage frames displayed now
 FXAfterimageZoom		REAL4 0.0
-FXNoiseAmplitude		REAL4 0.5
+FXNoiseAmplitude		REAL4 0.6
 FXNoiseTexScale			Vector2 <0.0, 0.0>
 FXAfterimageFPSTimer	DWORD 10
 
