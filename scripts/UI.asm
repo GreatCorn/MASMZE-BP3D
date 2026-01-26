@@ -210,10 +210,8 @@ UI_Button PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ButtonAlign:BPEnum
 	.ENDIF
 	
 	.IF (UISmallButtons)
-		mov UIFocusType, UI_BUTTON_SMALL
 		invoke UI_DrawRectangle, UI_BTN_WS, UI_BTN_H
 	.ELSE
-		mbm UIFocusType, UIButtonType
 		invoke UI_DrawRectangle, UI_BTN_W, UI_BTN_H
 	.ENDIF
 	call glPopMatrix
@@ -221,8 +219,15 @@ UI_Button PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ButtonAlign:BPEnum
 	.IF !(UIDisabled)
 		mov al, UIID
 		.IF (UIFocus == al)
+			.IF (UISmallButtons)
+				mov UIFocusType, UI_BUTTON_SMALL
+			.ELSE
+				mbm UIFocusType, UIButtonType
+			.ENDIF
+		
 			.IF (UIButtonJump)
 				mov UIButtonJump, FALSE
+				mov al, UIID
 				.IF (UIComboboxMenu) && (al & 128)
 					uiFindMenu:
 					mov eax, Y
@@ -299,12 +304,13 @@ UI_Checkbox PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, BoolPtr:BPPtr
 	mov bl, UIID
 	
 	sub X, UI_BTN_W/2
-	invoke UI_MouseFocus, X, Y, UIID
 	
 	.IF (UIDisabled)
 		mov UIDisabled, FALSE
 		invoke glColor4fv, OFFSET clGray
 	.ELSE
+		invoke UI_MouseFocus, X, Y, UIID
+		
 		.IF (UIFocus == bl)	
 			mov UIFocusType, UI_CHECKBOX
 			invoke glColor4fv, OFFSET clLightGray
@@ -560,6 +566,47 @@ UI_HR PROC EXPORT X:SDWORD, Y:SDWORD
 	ret
 UI_HR ENDP
 
+UI_KeyMapper PROC EXPORT BindType:BPEnum, X:SDWORD, Y:SDWORD, MapPtr:BPPtr, \
+ActionStrPtr:BPPtr
+	pushb UIButtonType
+	mov UIButtonType, UI_MAPPER
+	invoke UI_Button, 0, X, Y, BP_ALIGN_CENTER
+	.IF (al)
+		mbm UIBinding, BindType
+		bpMEM32 UIBindAction, MapPtr
+		bpMEM32 UIBindStr, ActionStrPtr
+		mbm UIFocusBeforePopup, UIFocus
+		mov UIPopupMenu, UIPP_BIND
+	.ENDIF
+	popb UIButtonType
+	call glPushMatrix
+	sub X, 4*UI_SCALE
+	add Y, (UI_BTN_H-8*UI_SCALE)/2
+	invoke glTranslatei, X, Y, 0
+	invoke glScalef, f(%(8*UI_SCALE)), f(%(8*UI_SCALE)), 0
+	mov pax, MapPtr
+	movzx pax, BYTE PTR [pax]
+	shl pax, 2
+	.IF (BindType == BIND_KEY_MOUSE)
+		;add pax, OFFSET FntKeys
+		mov pax, FntKeys[pax]
+	.ELSEIF (BindType == BIND_JOYSTICK)
+		;add pax, OFFSET FntJoystick
+		.IF (XInput)
+			mov pax, FntXB[pax]
+		.ELSE
+			mov pax, FntPS[pax]
+		.ENDIF
+	.ENDIF
+	invoke glBindTexture, GL_TEXTURE_2D, pax
+	invoke glEnable, GL_BLEND
+	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+	invoke glCallList, ScreenQuad
+	invoke glDisable, GL_BLEND
+	call glPopMatrix
+	ret
+UI_KeyMapper ENDP
+
 UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	LOCAL xFrom:SDWORD, yFrom:SDWORD, boolRet:BPPtr
 	
@@ -675,9 +722,15 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 			.ENDIF
 			
 			.IF (InputUILeft || InputUIRight)
-				fld UISliderStep
-				fadd deltaUnscaled
-				fstp UISliderStep
+				.IF (UISliderZeros)
+					fld UISliderStep
+					fadd deltaUnscaled
+					fstp UISliderStep
+				.ELSE
+					fld1
+					fdiv deltaUnscaled
+					fstp UISliderStep
+				.ENDIF
 				mov boolRet, TRUE
 			.ELSE
 				bpMEM32 UISliderStep, f(0.5)
@@ -692,6 +745,10 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 				fstp REAL4 PTR [pcx]
 				mov REAL4 PTR [pcx], \
 				rv(flClamp, REAL4 PTR [pcx], UISliderRange[0], UISliderRange[4])
+				
+				.IF !(UISliderZeros)
+					mov InputUILeft, FALSE
+				.ENDIF
 			.ELSEIF (InputUIRight)
 				mov pcx, ValuePtr
 				fld REAL4 PTR [pcx]
@@ -701,6 +758,10 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 				fstp REAL4 PTR [pcx]
 				mov REAL4 PTR [pcx], \
 				rv(flClamp, REAL4 PTR [pcx], UISliderRange[0], UISliderRange[4])
+				
+				.IF !(UISliderZeros)
+					mov InputUIRight, FALSE
+				.ENDIF
 			.ENDIF
 			
 			.IF (Keys[VK_LBUTTON] && InputUIConfirmT)
@@ -1042,10 +1103,221 @@ UI_DrawMenuSettings PROC EXPORT
 UI_DrawMenuSettings ENDP
 
 UI_DrawMenuSettingsControls PROC EXPORT
+	UI_MENU_CONTROLS_HEIGHT	EQU UI_BTN_H*6 + UI_BTN_M*3 + UI_HR_H*3
+	
+	mov ebx, ScreenHalf.Y
+	sub ebx, UI_MENU_CONTROLS_HEIGHT/2
+	
+	; Mouse section
+	invoke Vector2Set, ADDR UISliderRange, f(0.05), f(2.5)
+	invoke UI_Slider, StrMenuMouseSens, UIXFrom, ebx, \
+	OFFSET SettingsControlsMouseSensitivity
+	.IF (al)
+		invoke Settings_SetOption, OFFSET SettingsControlsMouseSensitivity
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	IFDEF BP_COMPATIBILITY_W9X
+		mov UIDisabled, TRUE
+	ENDIF
+	invoke UI_Checkbox, StrMenuMouseRaw, UIXFrom, ebx, \
+	OFFSET SettingsControlsRawMouse
+	add ebx, UI_BTN_H
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	; Joystick section
+	invoke UI_Checkbox, StrMenuUseGpad, UIXFrom, ebx, \
+	OFFSET SettingsControlsJoystick
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke Vector2Set, ADDR UISliderRange, f(0.5), f(8.0)
+	invoke UI_Slider, StrMenuGpadSpd, UIXFrom, ebx, \
+	OFFSET SettingsControlsJoystickSpeed
+	.IF (al)
+		invoke Settings_SetOption, OFFSET SettingsControlsJoystickSpeed
+	.ENDIF
+	add ebx, UI_BTN_H
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	; Bindings
+	invoke UI_Button, StrMenuBindings, UIXFrom, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		.IF (UIComboboxMenu)
+			mov UIComboboxMenu, 0
+		.ENDIF
+		mov UIState, UI_STATE_MENU_SETTINGS_CONTROLS_BINDINGS
+	.ENDIF
+	add ebx, UI_BTN_H
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	mov UISmallButtons, TRUE
+	mov edx, UIXFrom
+	sub edx, UI_BTN_WS + UI_BTN_M/2
+	invoke UI_Button, StrMenuCancel, edx, ebx, BP_ALIGN_LEFT
+	.IF (al)
+		.IF (UIComboboxMenu > 0)
+			call UI_HandleMenuEscape
+		.ENDIF
+		call UI_HandleMenuEscape
+	.ENDIF
+	
+	mov edx, UIXFrom
+	add edx, UI_BTN_M/2
+	invoke UI_Button, StrMenuOK, edx, ebx, BP_ALIGN_LEFT
+	.IF (al)
+		invoke Settings_Save, OFFSET SettingsIniControls
+		.IF (UIComboboxMenu > 0)
+			call UI_HandleMenuEscape
+		.ENDIF
+		call UI_HandleMenuEscape
+	.ENDIF
+	
+	mov UISmallButtons, FALSE
+	
 	ret
 UI_DrawMenuSettingsControls ENDP
 
 UI_DrawMenuSettingsControlsBindings PROC EXPORT
+	LOCAL leftPos:REAL4, rightPos:REAL4
+	
+	UI_MENU_BINDINGS_WIDTH	EQU UI_BTN_WS*3 + UI_BTN_M*2
+	UI_MENU_BINDINGS_HEIGHT	EQU UI_BTN_H*14 + UI_BTN_M*11 + UI_HR_H*2
+	
+	mov ebx, ScreenHalf.Y
+	sub ebx, UI_MENU_BINDINGS_HEIGHT/2
+	
+	mov eax, ScreenHalf.X
+	sub eax, UI_MENU_BINDINGS_WIDTH/2
+	mov leftPos, eax
+	add eax, UI_BTN_WS*2 + UI_BTN_M*2 + (UI_BTN_WS/2)
+	mov rightPos, eax
+	
+	mov eax, ScreenHalf.X
+	sub eax, UI_BTN_WS + UI_BTN_M
+	invoke UI_Text, StrMenuAction, eax, ebx, BP_ALIGN_CENTER, 0
+	invoke UI_Text, StrMenuKey, ScreenHalf.X, ebx, BP_ALIGN_CENTER, 0
+	mov eax, ScreenHalf.X
+	add eax, UI_BTN_WS + UI_BTN_M
+	invoke UI_Text, StrMenuGamepad, eax, ebx, BP_ALIGN_CENTER, 0
+	add ebx, UI_BTN_H
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	mov UISmallButtons, TRUE
+	
+	; Up
+	invoke UI_Text, StrMenuInUp, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBUp, \
+	StrMenuInUp
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBUp, \
+	StrMenuInUp
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Down
+	invoke UI_Text, StrMenuInDown, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBDown, \
+	StrMenuInDown
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBDown, \
+	StrMenuInDown
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Left
+	invoke UI_Text, StrMenuInLeft, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBLeft, \
+	StrMenuInLeft
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBLeft, \
+	StrMenuInLeft
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Right
+	invoke UI_Text, StrMenuInRight, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBRight, \
+	StrMenuInRight
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBRight, \
+	StrMenuInRight
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Look up
+	invoke UI_Text, StrMenuInLookUp, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBLookUp, \
+	StrMenuInLookUp
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBLookUp, \
+	StrMenuInLookUp
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Look down
+	invoke UI_Text, StrMenuInLookDown, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBLookDown, \
+	StrMenuInLookDown
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBLookDown, \
+	StrMenuInLookDown
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Look left
+	invoke UI_Text, StrMenuInLookLeft, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBLookLeft, \
+	StrMenuInLookLeft
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBLookLeft, \
+	StrMenuInLookLeft
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Look right
+	invoke UI_Text, StrMenuInLookRight, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBLookRight, \
+	StrMenuInLookRight
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBLookRight, \
+	StrMenuInLookRight
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Crouch
+	invoke UI_Text, StrMenuInCrouch, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBCrouch, \
+	StrMenuInCrouch
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBCrouch, \
+	StrMenuInCrouch
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Glyph
+	invoke UI_Text, StrMenuInGlyph, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBGlyph, \
+	StrMenuInGlyph
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBGlyph, \
+	StrMenuInGlyph
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Action
+	invoke UI_Text, StrMenuInAction, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBAction, \
+	StrMenuInAction
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBAction, \
+	StrMenuInAction
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Confirm
+	invoke UI_Text, StrMenuInConfirm, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBConfirm, \
+	StrMenuInConfirm
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBConfirm, \
+	StrMenuInConfirm
+	add ebx, UI_BTN_H
+	
+	
+	mov UISmallButtons, FALSE
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	invoke UI_Button, StrMenuBack, UIXFrom, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		call UI_HandleMenuEscape
+	.ENDIF
 	ret
 UI_DrawMenuSettingsControlsBindings ENDP
 
@@ -1366,7 +1638,7 @@ UI_DrawMenuSettingsGraphicsGamma PROC EXPORT
 	.IF (SettingsGraphicsGammaBypass)
 		mov UIDisabled, TRUE
 	.ENDIF
-	invoke Vector2Set, ADDR UISliderRange, f(0), f(1)
+	invoke Vector2Set, ADDR UISliderRange, f(0.1), f(1)
 	invoke UI_Slider, StrMenuGamma, UIXFrom, ebx, OFFSET SettingsGraphicsGamma
 	.IF (al)
 		invoke Settings_SetOption, OFFSET SettingsGraphicsGamma
@@ -1661,12 +1933,7 @@ UI_Draw PROC EXPORT
 	; Full-screen effects
 	.IF !(Loading)
 		invoke glScalei, FXRenderSize.X, FXRenderSize.Y, 1
-	
-		; Noise
-		.IF (SettingsGraphicsNoise)
-			call FX_DrawNoise
-		.ENDIF
-		
+			
 		; Vignette
 		.IF (SettingsGraphicsVignette)
 			invoke glEnable, GL_BLEND
@@ -1676,11 +1943,26 @@ UI_Draw PROC EXPORT
 			invoke glDisable, GL_BLEND
 		.ENDIF
 		
+		; Fade
+		.IF (UIFade)
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+			invoke glBindTexture, GL_TEXTURE_2D, 0
+			invoke glColor4f, 0, 0, 0, UIFadeVal
+			invoke glCallList, ScreenQuad
+			invoke glDisable, GL_BLEND
+		.ENDIF
+		
 		; Gamma
 		.IF !(SettingsGraphicsGammaBypass)
 			invoke FX_DrawGamma, SettingsGraphicsGamma
 		.ENDIF
 	
+		; Noise
+		.IF (SettingsGraphicsNoise)
+			call FX_DrawNoise
+		.ENDIF
+		
 		.IF (SettingsGraphicsAfterimage)
 			call FX_PushAfterimage
 		.ENDIF
@@ -1719,6 +2001,7 @@ UI_Draw PROC EXPORT
 	; UI Drawing
 	call glLoadIdentity
 	
+	FontSize 4, 8
 	
 	.IF (Loading)
 		invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
@@ -1789,12 +2072,7 @@ UI_Draw PROC EXPORT
 		mov UIID, 128
 		call UI_DrawPopupMenu
 	.ENDIF
-	
-	.IF (UIFade)
-		call glLoadIdentity
-		invoke UI_DrawFullscreen, UIFadeVal
-	.ENDIF
-	
+		
 	IFDEF MODE_DEBUG
 	.IF (UIDebug)
 		call UI_DrawDebug
@@ -1844,6 +2122,82 @@ UI_Process PROC EXPORT
 	
 	; Do menu stuff
 	.IF (UIState != UI_STATE_GAME)
+		.IF (UIFocusType == UI_BUTTON_SMALL)	; Small button func shit
+			.IF (UIMove == 1)
+				mov InputUIDown, TRUE
+				mov UIMove, 2
+			.ELSEIF (UIMove == -1)
+				mov InputUIUp, TRUE
+				mov UIMove, 2
+			.ENDIF
+		.ELSE
+			mov UIMove, 0
+		.ENDIF
+		.IF (InputUIRight)
+			.IF (UIFocusType == UI_COMBOBOX)
+				mbm UIPressed, UIFocus
+			.ELSEIF (UIFocusType == UI_BUTTON_SMALL)
+				mov InputUIDown, TRUE
+			.ENDIF
+		.ELSEIF (InputUILeft)
+			.IF (UIComboboxMenu > 0)
+				call UI_HandleMenuEscape
+			.ELSEIF (UIFocusType == UI_BUTTON_SMALL)
+				mov InputUIUp, TRUE
+			.ENDIF
+		.ENDIF
+		.IF (InputUIUp)
+			mov UIButtonJump, TRUE
+			.IF (UIFocus == 129)
+				mov pax, UIComboboxCount
+				add al, 128
+				mov UIFocus, al
+			.ELSEIF (UIFocus <= 1)
+				mov pax, UIState
+				mov al, UIID
+				mov UIFocus, al
+			.ELSE
+				dec UIFocus
+				.IF !(UIMove) && !(InputUILeft) \
+				&& (UIFocusType == UI_BUTTON_SMALL)
+					mov UIMove, -1
+				.ENDIF
+			.ENDIF
+		.ELSEIF (InputUIDown)
+			mov UIButtonJump, TRUE
+			.IF (UIFocus & 128)
+				mov pax, UIComboboxCount
+				add al, 128
+			.ELSE
+				mov pax, UIState
+				mov al, UIID
+				;mov al, UIElements[pax]
+			.ENDIF
+			.IF (UIFocus >= al)
+				.IF (UIFocus & 128)
+					mov UIFocus, 129
+				.ELSE
+					mov UIFocus, 1
+				.ENDIF
+			.ELSE
+				inc UIFocus
+				.IF !(UIMove) && !(InputUIRight) \
+				&& (UIFocusType == UI_BUTTON_SMALL)
+					mov UIMove, 1
+				.ENDIF
+			.ENDIF
+		.ENDIF
+		
+		.IF (UIFocusType != UI_SLIDER)
+			mov InputUILeft, FALSE
+			mov InputUIRight, FALSE
+		.ENDIF
+		mov UIFocusType, UI_NONE
+		
+		.IF (UIMove == 2)
+			mov UIMove, 0
+		.ENDIF
+		
 		fild ScreenHalf.X
 		.IF (UIComboboxMenu == -1)
 			fcmp UIComboboxXLerp, f(0.99)

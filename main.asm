@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-BP_COMPATIBILITY_W9X	EQU <1>
+;BP_COMPATIBILITY_W9X	EQU <1>
 BP_ERROR_PASS			EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
 IFDEF MODE_DEBUG
@@ -14,8 +14,10 @@ include ..\BoilPlate3D\src\BP3D.asm
 
 IFDEF BP_COMPATIBILITY_W9X
 	MOUSE_RAW EQU 0
+	JOYSTICK_RAW EQU BP_IF_JOYSTICK
 ELSE
 	MOUSE_RAW EQU BP_IF_RAW_MOUSE
+	JOYSTICK_RAW EQU BP_IF_RAW_JOYSTICK
 ENDIF
 
 IFDEF BP_WININC
@@ -136,9 +138,9 @@ IFNDEF SWITCH
 		stat TEXTEQU <>
 		FOR var,<Args>
 			IF argc EQ 1
-				stat CATSTR <||>
+				stat CATSTR stat, < || >
 			ENDIF
-			stat CATSTR <pax == var>
+			stat CATSTR stat, <pax == var>
 			argc = 1
 		ENDM
 		IF swCases EQ 0
@@ -293,6 +295,7 @@ GAMEPAD_RS_H	EQU 66
 GAMEPAD_RS_V	EQU 67
 GAMEPAD_TRIG_L	EQU 68
 GAMEPAD_TRIG_R	EQU 68 or GAMEPAD_NEG
+
 ; Joystick binds
 JBUp		BPPtr GAMEPAD_LS_V or GAMEPAD_NEG
 JBDown		BPPtr GAMEPAD_LS_V
@@ -349,6 +352,8 @@ FPS			REAL4 ?
 
 FPUCW	WORD ?	; To store the x87 FPU codeword
 
+XInput BPBool ?
+
 ; Screen stuffs
 ScreenHalf	Vector2 <?, ?>
 ScreenSizeF	Vector2 <?, ?>
@@ -379,24 +384,15 @@ include scripts\UI.asm
 
 .CODE
 
+GPadParse PROTO :BPEnum, :BPPtr
+
 CreateScene PROC EXPORT
 	call Maze_Create
 	ret
 CreateScene ENDP
 
 DrawScene PROC EXPORT
-	.IF (Maze)
-		call Maze_Draw
-	.ENDIF
-	invoke glBindTexture, GL_TEXTURE_2D, TexHbd
-	call glPushMatrix
-	invoke glTranslatef, 0, 0, f(-1)
-	.IF (Keys["V"])
-		invoke glRotatef, f(-90), 0, f(1), 0
-		;int 3
-	.ENDIF
-	invoke glCallList, MdlHbd
-	call glPopMatrix
+	call Maze_Draw
 	ret
 DrawScene ENDP
 
@@ -404,9 +400,7 @@ FixedScene PROC EXPORT
 	fld bpFixedInterval
 	fmul deltaScale
 	fstp deltaFixed
-	.IF (Maze) && !(MazeGenerating)
-		call Maze_Fixed
-	.ENDIF
+	call Maze_Fixed
 	ret
 FixedScene ENDP
 
@@ -431,6 +425,148 @@ GameStart PROC EXPORT
 	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
 	ret
 GameStart ENDP
+
+GPadInput PROC EXPORT InType:BPEnum, InStruct:BPPtr, Input:BPPtr, \
+ValPtr:BPPtr	
+	mov pbx, InStruct
+	invoke GPadParse, InType, pbx
+	
+	.IF (InType == BP_INPUT_JOY_AXIS)	; Fix parallel axes
+		mov pcx, pax
+		and pcx, not GAMEPAD_NEG
+		mov pdx, Input
+		and pdx, not GAMEPAD_NEG
+		.IF (pcx == pdx)
+			ASSUME pbx:PTR BPInJoyAxis
+			.IF (pax != Input)
+				mov pax, ValPtr
+				mov REAL4 PTR [pax], 0
+				ret
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	.IF (Input == pax)
+		mov pax, ValPtr
+		.IF (InType == BP_INPUT_JOY_AXIS)
+			ASSUME pbx:PTR BPInJoyAxis
+			mov ecx, [pbx].Position
+			and ecx, not FLT_NEG
+			mov REAL4 PTR [pax], ecx
+		.ELSE
+			ASSUME pbx:PTR BPInJoyButton
+			.IF ([pbx].Pressed)
+				mov DWORD PTR [pax], FLT_1
+			.ELSE
+				mov DWORD PTR [pax], 0
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	ret
+	.IF (Input >= GAMEPAD_LS_H) && (InType == BP_INPUT_JOY_AXIS)
+		ASSUME pbx:PTR BPInJoyAxis
+		.IF (Input & GAMEPAD_NEG)
+			fcmp [pbx].Position
+			.IF (!Carry?) && (!Zero?)
+				ret
+			.ENDIF
+		.ELSE
+			fcmp [pbx].Position
+			.IF (Carry?) && (!Zero?)
+				ret
+			.ENDIF
+		.ENDIF
+		mov eax, Input
+		and eax, not GAMEPAD_NEG
+		
+		.IF (XInput)
+			.IF (eax == GAMEPAD_RS_H)
+				mov eax, BP_JOY_AXIS_U+64
+			.ELSEIF (eax == GAMEPAD_TRIG_L)
+				mov eax, BP_JOY_AXIS_Z+64
+			.ENDIF
+		.ENDIF
+		sub eax, 64
+		
+		.IF ([pbx].Axis == eax)
+			mov pax, ValPtr
+			mov pcx, [pbx].Position
+			and pcx, not FLT_NEG
+			mov REAL4 PTR [pax], pcx
+		.ENDIF
+	.ELSE
+		ASSUME pbx:PTR BPInJoyButton
+		
+		mov eax, Input
+		.IF (!XInput)
+			.IF (eax & GAMEPAD_TRIG_L)
+				.IF (eax & GAMEPAD_NEG)
+					mov [pbx].Button, 7
+				.ELSE
+					mov [pbx].Button, 8
+				.ENDIF
+			.ENDIF
+		.ENDIF
+		
+		.IF ([pbx].Button == eax)
+			print str$([pbx].Button), 13, 10
+		.ENDIF
+	.ENDIF
+	ASSUME pbx:nothing
+	ret
+GPadInput ENDP
+
+GPadParse PROC EXPORT InType:BPEnum, InStruct:BPPtr
+	mov pbx, InStruct
+	.IF (InType == BP_INPUT_JOY_AXIS)
+		ASSUME pbx:PTR BPInJoyAxis
+		
+		mov eax, [pbx].Axis
+		
+		.IF (XInput)
+			.IF ([pbx].Axis == BP_JOY_AXIS_Z)
+				mov eax, GAMEPAD_TRIG_L-64
+			.ELSEIF ([pbx].Axis == BP_JOY_AXIS_U)
+				mov eax, GAMEPAD_RS_H-64
+			.ENDIF
+		.ELSE
+			.IF ([pbx].Axis == BP_JOY_AXIS_V)
+				mov eax, GAMEPAD_RS_V-64
+			.ENDIF
+		.ENDIF
+		
+		add eax, 64
+		
+		fcmp [pbx].Position
+		.IF (Carry?)
+			or eax, GAMEPAD_NEG
+		.ENDIF
+		
+	.ELSE
+		ASSUME pbx:PTR BPInJoyButton
+		
+		mov eax, [pbx].Button
+		
+		.IF (XInput)
+			.IF (eax == 0)
+				mov eax, 1
+			.ELSEIF (eax == 1)
+				mov eax, 2
+			.ELSEIF (eax == 2)
+				mov eax, 0
+			.ELSEIF (eax >= 6) && (eax < BP_JOY_DPAD_UP)
+				add eax, 2
+			.ENDIF
+		.ELSE
+			.IF (eax == 6)
+				mov eax, GAMEPAD_TRIG_L
+			.ELSEIF (eax == 7)
+				mov eax, GAMEPAD_TRIG_R
+			.ENDIF
+		.ENDIF
+		
+	.ENDIF
+	ret
+GPadParse ENDP
 
 ;   Manually initialize an ARB-compatible OpenGL context on FMain
 InitARBContext PROC EXPORT
@@ -513,15 +649,17 @@ InitGraphics PROC EXPORT
 	
 	invoke glEnable, GL_LIGHTING
 	invoke glEnable, GL_LIGHT0
-	invoke glLightfv, GL_LIGHT0, GL_SPECULAR, OFFSET clGray
-	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, f(1)
+	invoke glLightModelfv, GL_LIGHT_MODEL_AMBIENT, OFFSET clBlack
+	invoke glLightfv, GL_LIGHT0, GL_SPECULAR, OFFSET clWhite
+	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0
+	invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, f(0.5)
 	
 	invoke glEnable, GL_FOG
 	
 	invoke glColorMaterial, GL_FRONT, GL_DIFFUSE
 	
 	invoke glMaterialf, GL_FRONT, GL_SHININESS, f(64)
-	invoke glMaterialfv, GL_FRONT, GL_SPECULAR, OFFSET clGray
+	invoke glMaterialfv, GL_FRONT, GL_SPECULAR, OFFSET clWhite
 	
 	ret
 InitGraphics ENDP
@@ -552,6 +690,7 @@ OnFixed PROC EXPORT
 OnFixed ENDP
 
 OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
+	LOCAL axisVal:REAL4;, joyInfo:JOYINFOEX
 	; Set current input method
 	.IF (BPInType == BP_INPUT_MOUSE_BUTTON || BPInType == BP_INPUT_KEY)
 		mov InputMethod, INPUT_KEYBOARD_MOUSE
@@ -615,7 +754,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputUIConfirm, TRUE
 					mov InputUIConfirmT, TRUE
 				
-				CASE VK_F4
+				CASE VK_F4, VK_F11
 					.IF (Keys[VK_MENU])
 						invoke bpDestroyForm, ADDR FMain
 					.ENDIF
@@ -650,10 +789,10 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE '0'
 					invoke Plr_Teleport, f(1), f(1)
 				CASE 'X'
-					mov PlrState, PLAYER_ENTER
+					mov PlrState, PLAYER_STATE_ENTER
 				CASE 'T'
 					invoke Plr_Teleport, MazeDoorPos.X, MazeDoorPos.Z
-					mov PlrState, PLAYER_EXIT
+					mov PlrState, PLAYER_STATE_EXIT
 				CASE VK_F3
 					not UIDebug
 				ENDIF
@@ -738,7 +877,78 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputConfirm, 0
 			ENDSW
 		.ENDIF
+	.ELSEIF (BPInType == BP_INPUT_JOY_AXIS) || (BPInType == BP_INPUT_JOY_BUTTON)		
+		mov eax, DWORD PTR [pbx]
+		mov ecx, SIZEOF BPJoystick
+		mul ecx
+		.IF (bpJoysticks[eax].NumAxes == 4)
+			mov XInput, FALSE
+		.ELSE
+			mov XInput, TRUE
+		.ENDIF
+		
+		mov LastInput, 0
+		bpMEM32 LastInputTimer, f(0.2)
+		
+		.IF (UIBinding == BIND_JOYSTICK)
+			.IF (BPInType == BP_INPUT_JOY_AXIS)
+				ASSUME pbx:PTR BPInJoyAxis
+				bpMEM32 axisVal, [pbx].Position
+				and axisVal, not FLT_NEG
+				fcmp axisVal, f(0.3)
+				jc skipBind	; axisVal < 0.3
+			.ENDIF
+			mov pcx, UIBindAction
+			mov BPPtr PTR [pcx], rv(GPadParse, BPInType, pbx)
+			print str$(BPPtr PTR [pcx]), 13, 10
+			call UI_HandleMenuEscape
+			mov SettingsChanged, TRUE
+			skipBind:
+		.ELSE
+			invoke GPadInput, BPInType, pbx, JBUIUp, ADDR InputUIUp
+			.IF (InputUIUp)
+				mov LastInput, OFFSET InputUIUp
+			.ENDIF
+			invoke GPadInput, BPInType, pbx, JBUIDown, ADDR InputUIDown
+			.IF (InputUIDown)
+				mov LastInput, OFFSET InputUIDown
+			.ENDIF
+			invoke GPadInput, BPInType, pbx, JBUILeft, ADDR InputUILeft
+			invoke GPadInput, BPInType, pbx, JBUIRight, ADDR InputUIRight
+			invoke GPadInput, BPInType, pbx, JBUIConfirm, ADDR InputUIConfirm
+			bpMEM32 InputUIConfirmT, InputUIConfirm
+			
+			invoke GPadInput, BPInType, pbx, JBMenu, ADDR InputMenu
+			.IF (InputMenu)
+				call UI_HandleMenuEscape
+				mov InputMenu, FALSE
+			.ENDIF
+			invoke GPadInput, BPInType, pbx, JBCancel, ADDR InputMenu
+			.IF (InputMenu)
+				.IF (UIState >= UI_STATE_MENU_PAUSE)
+					call UI_HandleMenuEscape
+				.ENDIF
+				mov InputMenu, FALSE
+			.ENDIF
+		
+			; REBINDABLE
+			invoke GPadInput, BPInType, pbx, JBUp, ADDR InputAxes[0]
+			invoke GPadInput, BPInType, pbx, JBDown, ADDR InputAxes[4]
+			invoke GPadInput, BPInType, pbx, JBLeft, ADDR InputAxes[8]
+			invoke GPadInput, BPInType, pbx, JBRight, ADDR InputAxes[12]
+			
+			invoke GPadInput, BPInType, pbx, JBLookUp, ADDR InputAxes[16]
+			invoke GPadInput, BPInType, pbx, JBLookDown, ADDR InputAxes[20]
+			invoke GPadInput, BPInType, pbx, JBLookLeft, ADDR InputAxes[24]
+			invoke GPadInput, BPInType, pbx, JBLookRight, ADDR InputAxes[28]
+			
+			invoke GPadInput, BPInType, pbx, JBCrouch, ADDR InputCrouch
+			invoke GPadInput, BPInType, pbx, JBGlyph, ADDR InputGlyph
+			invoke GPadInput, BPInType, pbx, JBAction, ADDR InputAction
+			invoke GPadInput, BPInType, pbx, JBConfirm, ADDR InputConfirm
+		.ENDIF
 	.ENDIF
+	
 	ret
 OnInput ENDP
 
@@ -812,7 +1022,7 @@ OnRender PROC EXPORT
 		call GameStart
 	.ENDIF
 	
-	.IF (MazeState != MAZE_CROA)
+	.IF (MazeState != MAZE_STATE_CROA)
 		invoke glLightfv, GL_LIGHT0, GL_POSITION, ADDR CamLightPos	; Draw light
 	.ENDIF
 	
@@ -942,7 +1152,7 @@ start:
 		or FMain.InputFlags, MOUSE_RAW
 	.ENDIF
 	.IF (SettingsControlsJoystick)
-		or FMain.InputFlags, BP_IF_JOYSTICK
+		or FMain.InputFlags, JOYSTICK_RAW
 	.ENDIF
 	mov FMain.WindowStyle, WS_OVERLAPPED or WS_CAPTION or WS_SYSMENU or \
 	WS_MINIMIZEBOX

@@ -44,23 +44,23 @@ PIXELIZATION
 POSTERIZATION
 AFTERIMAGE
 PARTICLES
-Mouse sensitivity
-Raw mouse input
-Use gamepad
-Gamepad look speed
-Edit bindings
+MOUSE SENSITIVITY
+RAW MOUSE INPUT
+GAMEPAD
+GAMEPAD LOOK SPEED
+BINDINGS
 Waiting for input to rebind:
-Action
-Key
-Gamepad
+ACTION
+KEY
+GAMEPAD
 Up
 Down
 Left
 Right
-Look up
-Look down
-Look left
-Look right
+Look U
+Look D
+Look L
+Look R
 Crouch
 Glyph
 Action

@@ -13,9 +13,9 @@ AnimCamExit			BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
 
 ; ----- FONTS -----
-FntKeys		DWORD 255 dup (0)
-FntPS		DWORD 255 dup (0)
-FntXB		DWORD 255 dup (0)
+FntKeys		DWORD 256 dup (0)
+FntPS		DWORD 256 dup (0)
+FntXB		DWORD 256 dup (0)
 
 Loading		BPBool FALSE
 LoadState	BPEnum 0
@@ -284,8 +284,10 @@ LoadResources PROC EXPORT
 		invoke bpLoadFont, StrLangFontPath, OFFSET bpDefaultFont	; Main
 		mov bpTextNL, '#'
 		LoadFont "font\input\", OFFSET FntKeys	; Direct mapping to keys/axes
+		mov bpTextureFiltering, TRUE
 		LoadFont "font\input\ps\", OFFSET FntPS
 		LoadFont "font\input\xb\", OFFSET FntXB
+		mov bpTextureFiltering, FALSE
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_ANIMATIONS)
 		print "Loading animations...", 9
@@ -523,9 +525,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexRoof,			"assets\textures\roof.bpt"
 		LoadBPT OFFSET TexShadow,		"assets\textures\shadow.bpt"
 		LoadBPT OFFSET TexSigns,		"assets\textures\signs.bpt"
+		mov bpTextureFiltering, TRUE
 		LoadBPT OFFSET TexSky,			"assets\textures\sky.bpt"
-		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR
-		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR
+		mov bpTextureFiltering, FALSE
 		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP
 		LoadBPT OFFSET TexTaburetka,	"assets\textures\taburetka.bpt"
 		LoadBPT OFFSET TexTileBig,		"assets\textures\tileBig.bpt"
@@ -537,9 +539,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexUICircle,		"assets\textures\uiCircle.bpt"
 		LoadBPT OFFSET TexVas,			"assets\textures\vas.bpt"
 		LoadBPT OFFSET TexVebra,		"assets\textures\vebra.bpt"
+		mov bpTextureFiltering, TRUE
 		LoadBPT OFFSET TexVignette,		"assets\textures\vignette.bpt"
-		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR
-		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR
+		mov bpTextureFiltering, FALSE
 		LoadBPT OFFSET TexVignetteRed,	"assets\textures\vignetteRed.bpt"
 		LoadBPT OFFSET TexVirdyaBlink,	"assets\textures\virdyaBlink.bpt"
 		LoadBPT OFFSET TexVirdyaDown,	"assets\textures\virdyaDown.bpt"

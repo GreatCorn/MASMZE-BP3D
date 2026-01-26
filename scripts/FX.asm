@@ -84,9 +84,10 @@ FX_DrawGamma PROC EXPORT Gamma:REAL4
 	;.IF (eax != f(0.5))
 		invoke glBindTexture, GL_TEXTURE_2D, 0
 		invoke glEnable, GL_BLEND
-		invoke glBlendFunc, GL_DST_COLOR, GL_DST_COLOR
+		invoke glBlendFunc, GL_DST_COLOR, GL_ONE
 		invoke glColor3f, Gamma, Gamma, Gamma
 		invoke glCallList, ScreenQuad
+		invoke glBlendFunc, GL_DST_COLOR, GL_SRC_COLOR
 		invoke glCallList, ScreenQuad	
 		invoke glColor3fv, OFFSET clWhite
 		invoke glDisable, GL_BLEND

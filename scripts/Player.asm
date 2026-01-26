@@ -1,28 +1,28 @@
 ENUML
-	E PLAYER_GAME
-	E PLAYER_ENTER
-	E PLAYER_EXIT
-	E PLAYER_EXITING
+	E PLAYER_STATE_GAME
+	E PLAYER_STATE_ENTER
+	E PLAYER_STATE_EXIT
+	E PLAYER_STATE_EXITING
 	
 	; Wmblyk strangle minigame
-	E PLAYER_STRANGLE
-	E PLAYER_STRANGLING
-	E PLAYER_GETUP
+	E PLAYER_STATE_STRANGLE
+	E PLAYER_STATE_STRANGLING
+	E PLAYER_STATE_GETUP
 	
-	E PLAYER_DYING
-	E PLAYER_DEAD
+	E PLAYER_STATE_DYING
+	E PLAYER_STATE_DEAD
 	
 	; Intro-related
-	E PLAYER_INTRO_DARK
-	E PLAYER_INTRO_CITY
-	E PLAYER_INTRO_TEXT1
-	E PLAYER_INTRO_OUTSKIRTS
-	E PLAYER_INTRO_TEXT2
-	E PLAYER_INTRO_WOODS
-	E PLAYER_INTRO_TEXT3
+	E PLAYER_STATE_INTRO_DARK
+	E PLAYER_STATE_INTRO_CITY
+	E PLAYER_STATE_INTRO_TEXT1
+	E PLAYER_STATE_INTRO_OUTSKIRTS
+	E PLAYER_STATE_INTRO_TEXT2
+	E PLAYER_STATE_INTRO_WOODS
+	E PLAYER_STATE_INTRO_TEXT3
 	
-	E PLAYER_STOP
-	E PLAYER_ETC
+	E PLAYER_STATE_STOP
+	E PLAYER_STATE_ETC
 	
 .CONST
 CamHeight		REAL4 1.2
@@ -54,7 +54,7 @@ CamFOV			REAL4 70.0
 PlrGlyphs		DWORD 7
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
-PlrState		DWORD PLAYER_ENTER
+PlrState		DWORD PLAYER_STATE_ENTER
 
 .CODE
 Plr_Control PROC EXPORT
@@ -178,7 +178,7 @@ Plr_LateProcess ENDP
 Plr_ProcessState PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
 	
-	.IF (PlrState == PLAYER_ENTER)		
+	.IF (PlrState == PLAYER_STATE_ENTER)		
 		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamEnter
 		invoke bpProcessAnimPlayer, ADDR CamAnimPlr, 0
@@ -201,20 +201,20 @@ Plr_ProcessState PROC EXPORT
 		mov UIFadeCallback, OFFSET plrEnterFade
 		bpMEM32 UIFadeVal, f(1)
 		
-		mov PlrState, PLAYER_ETC
+		mov PlrState, PLAYER_STATE_ETC
 		ret
-	.ELSEIF (PlrState == PLAYER_EXIT)
+	.ELSEIF (PlrState == PLAYER_STATE_EXIT)
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamExit
 		
 		mov PlrCanControl, FALSE
 		
 		mov UIFade, UI_FADE_NONE
 		
-		mov PlrState, PLAYER_EXITING
+		mov PlrState, PLAYER_STATE_EXITING
 		
 		invoke alSourcePlay, SndExit
 		ret
-	.ELSEIF (PlrState == PLAYER_EXITING)
+	.ELSEIF (PlrState == PLAYER_STATE_EXITING)
 		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-100), delta2)
 		invoke Vector3Lerp, ADDR CamPos, ADDR MazeDoorPos, delta2
 		mov CamRot.X, rv(flLerp, CamRot.X, 0, delta2)
@@ -231,10 +231,10 @@ Plr_ProcessState PROC EXPORT
 	plrEnterFade:
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamWalk
 		mov PlrCanControl, TRUE
-		mov PlrState, PLAYER_GAME
+		mov PlrState, PLAYER_STATE_GAME
 		ret
 	plrExitFade:
-		mov PlrState, PLAYER_ENTER
+		mov PlrState, PLAYER_STATE_ENTER
 		call Maze_Progress
 		ret
 Plr_ProcessState ENDP

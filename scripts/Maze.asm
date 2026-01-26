@@ -27,20 +27,20 @@ ENUM \
 	MAZE_SLAM_SLAM
 	
 ENUML
-	E MAZE_SAFE
-	E MAZE_GAME
-	E MAZE_STOP_SIREN
-	E MAZE_WAIT_IMPACT
-	E MAZE_SHAKE
-	E MAZE_ENDING
-	E MAZE_ASCEND
-	E MAZE_ASCENDED
-	E MAZE_WASTELAND_FADE_IN
-	E MAZE_WASTELAND
-	E MAZE_WASTELAND_FADE_OUT
-	E MAZE_END
-	E MAZE_CROA
-	E MAZE_BORDER
+	E MAZE_STATE_SAFE
+	E MAZE_STATE_GAME
+	E MAZE_STATE_STOP_SIREN
+	E MAZE_STATE_WAIT_IMPACT
+	E MAZE_STATE_SHAKE
+	E MAZE_STATE_ENDING
+	E MAZE_STATE_ASCEND
+	E MAZE_STATE_ASCENDED
+	E MAZE_STATE_WASTELAND_FADE_IN
+	E MAZE_STATE_WASTELAND
+	E MAZE_STATE_WASTELAND_FADE_OUT
+	E MAZE_STATE_END
+	E MAZE_STATE_CROA
+	E MAZE_STATE_BORDER
 	
 
 .DATA
@@ -688,7 +688,7 @@ Maze_Create PROC EXPORT
 	mov MazePartAmb.Count, 96
 	invoke Vector2Set, ADDR MazePartAmb.Distance, f(1), f(4)
 	mov MazePartAmb.Fade, PARTICLE_FADE_IN or PARTICLE_FADE_OUT
-	m2m MazePartAmb.Friction, f(0.1)
+	bpMEM32 MazePartAmb.Friction, f(0.1)
 	mov MazePartAmb.Looping, TRUE
 	mov MazePartAmb.VelocityAffects, PARTICLE_VELOCITY_POSITION
 	invoke Vector2Set, ADDR MazePartAmb.Lifetime, f(4), f(8)
@@ -701,80 +701,86 @@ Maze_Create PROC EXPORT
 Maze_Create ENDP
 
 Maze_Draw PROC EXPORT
-	call Maze_DrawLayout
-	
-	.IF (MazeLayer == 1)				; Tutorial
-		.IF (InputMethod == INPUT_KEYBOARD_MOUSE)
-			mov eax, TexTutorial
-		.ELSE
-			mov eax, TexTutorialJ
-		.ENDIF
-		invoke glBindTexture, GL_TEXTURE_2D, eax
-		invoke glEnable, GL_BLEND
-		invoke glDisable, GL_LIGHTING
-		invoke glDisable, GL_FOG
-		invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
-		call glPushMatrix
-		invoke glTranslatef, 0, 0, f(1.89)
-		invoke glRotatef, f(-90), f(1), 0, 0
-		invoke glCallList, MdlPlane
-		call glPopMatrix
-		invoke glDisable, GL_BLEND
-		invoke glEnable, GL_LIGHTING
-		invoke glEnable, GL_FOG
-	.ENDIF
-	.IF (PlrState == PLAYER_EXITING)	; Exit door stairs
-		call glPushMatrix
-		mov eax, MazeSize[8]
-		shl eax, 1
-		mov ecx, MazeSize[12]
-		inc ecx
-		shl ecx, 1
-		invoke glTranslatei, eax, 0, ecx
-		invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
-		invoke glCallList, MdlStairsM
+	.IF (Maze)
+		call Maze_DrawLayout
 		
-		invoke glBindTexture, GL_TEXTURE_2D, TexDoorBlur
-		invoke glScalef, f(1), f(0.99), f(1)
-		invoke glEnable, GL_BLEND
-		invoke glDisable, GL_LIGHTING
-		invoke glDisable, GL_FOG
-		invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
-		invoke glCallList, MdlStairsM
-		invoke glDisable, GL_BLEND
-		invoke glEnable, GL_LIGHTING
-		invoke glEnable, GL_FOG
-		call glPopMatrix
+		.IF (MazeLayer == 1)	; Tutorial
+			.IF (InputMethod == INPUT_KEYBOARD_MOUSE)
+				mov eax, TexTutorial
+			.ELSE
+				mov eax, TexTutorialJ
+			.ENDIF
+			invoke glBindTexture, GL_TEXTURE_2D, eax
+			invoke glEnable, GL_BLEND
+			invoke glDisable, GL_LIGHTING
+			invoke glDisable, GL_FOG
+			invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
+			call glPushMatrix
+			invoke glTranslatef, 0, 0, f(1.89)
+			invoke glRotatef, f(-90), f(1), 0, 0
+			invoke glCallList, MdlPlane
+			call glPopMatrix
+			invoke glDisable, GL_BLEND
+			invoke glEnable, GL_LIGHTING
+			invoke glEnable, GL_FOG
+		.ENDIF
+		.IF (PlrState == PLAYER_STATE_EXITING)	; Exit door stairs
+			call glPushMatrix
+			mov eax, MazeSize[8]
+			shl eax, 1
+			mov ecx, MazeSize[12]
+			inc ecx
+			shl ecx, 1
+			invoke glTranslatei, eax, 0, ecx
+			invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
+			invoke glCallList, MdlStairsM
+			
+			invoke glBindTexture, GL_TEXTURE_2D, TexDoorBlur
+			invoke glScalef, f(1), f(0.99), f(1)
+			invoke glEnable, GL_BLEND
+			invoke glDisable, GL_LIGHTING
+			invoke glDisable, GL_FOG
+			invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
+			invoke glCallList, MdlStairsM
+			invoke glDisable, GL_BLEND
+			invoke glEnable, GL_LIGHTING
+			invoke glEnable, GL_FOG
+			call glPopMatrix
+		.ENDIF
 	.ENDIF
 	
 	.IF (SettingsGraphicsParticles)
-		invoke glEnable, GL_BLEND
-		invoke glDepthMask, GL_FALSE
-		;invoke glDisable, GL_CULL_FACE
-		;invoke glDisable, GL_FOG
-		;invoke glDisable, GL_LIGHTING
-		
-		invoke glColor4fv, OFFSET clWhite
-		
-		invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
-		invoke glBindTexture, GL_TEXTURE_2D, TexAmbient
-		;bpMEM32 ParticleMaxAlpha, f(0.5)
-		invoke Particles_Draw, ADDR MazePartAmb
-		invoke glCallList, MdlPlaneC
-		
-		invoke glDisable, GL_BLEND
-		invoke glDepthMask, GL_TRUE
-		;invoke glEnable, GL_CULL_FACE
-		;invoke glEnable, GL_FOG
-		;invoke glEnable, GL_LIGHTING
+		.IF (MazeState == MAZE_STATE_GAME)
+			invoke glEnable, GL_BLEND
+			invoke glDepthMask, GL_FALSE
+			;invoke glDisable, GL_CULL_FACE
+			;invoke glDisable, GL_FOG
+			;invoke glDisable, GL_LIGHTING
+			
+			invoke glColor4fv, OFFSET clWhite
+			
+			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+			invoke glBindTexture, GL_TEXTURE_2D, TexAmbient
+			;bpMEM32 ParticleMaxAlpha, f(0.5)
+			invoke Particles_Draw, ADDR MazePartAmb
+			invoke glCallList, MdlPlaneC
+			
+			invoke glDisable, GL_BLEND
+			invoke glDepthMask, GL_TRUE
+			;invoke glEnable, GL_CULL_FACE
+			;invoke glEnable, GL_FOG
+			;invoke glEnable, GL_LIGHTING
+		.ENDIF
 	.ENDIF
 	ret
 Maze_Draw ENDP
 
 Maze_Fixed PROC EXPORT
 	.IF (SettingsGraphicsParticles)
-		vinvoke Vector3Copy, OFFSET MazePartAmb.Position, OFFSET CamPos
-		invoke Particles_Process, ADDR MazePartAmb
+		.IF (MazeState == MAZE_STATE_GAME)
+			vinvoke Vector3Copy, OFFSET MazePartAmb.Position, OFFSET CamPos
+			invoke Particles_Process, ADDR MazePartAmb
+		.ENDIF
 	.ENDIF
 	ret
 Maze_Fixed ENDP
@@ -789,15 +795,17 @@ Maze_Process PROC EXPORT
 	fistp MazePlrPos.Y
 	invoke fpuSetRounding, FPU_ROUND_ROUND
 	
-	vinvoke Maze_Collide, OFFSET CamPos
-	
-	; Detect exit door
-	.IF (MazeLocked == MAZE_LOCK_NONE) || (MazeLocked == MAZE_LOCK_UNLOCKED)
-		vinvoke Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeDoorPos
-		fstp flVal
-		fcmp flVal, f(0.7)
-		.IF (Carry?) && (PlrState == PLAYER_GAME)
-			mov PlrState, PLAYER_EXIT
+	.IF (Maze)
+		vinvoke Maze_Collide, OFFSET CamPos
+		
+		; Detect exit door
+		.IF (MazeLocked == MAZE_LOCK_NONE) || (MazeLocked == MAZE_LOCK_UNLOCKED)
+			vinvoke Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeDoorPos
+			fstp flVal
+			fcmp flVal, f(0.7)
+			.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)
+				mov PlrState, PLAYER_STATE_EXIT
+			.ENDIF
 		.ENDIF
 	.ENDIF
 	ret

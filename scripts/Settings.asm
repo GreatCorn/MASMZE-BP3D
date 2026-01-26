@@ -561,6 +561,57 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 Settings_Save ENDP
 
 Settings_SaveBindings PROC EXPORT
+	; Keyboard/mouse
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBUp, str$(IBUp), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBDown, str$(IBDown), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLeft, str$(IBLeft), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBRight, str$(IBRight), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLookUp, str$(IBLookUp), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLookDown, str$(IBLookDown), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLookLeft, str$(IBLookLeft), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBLookRight, str$(IBLookRight), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBCrouch, str$(IBCrouch), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBGlyph, str$(IBGlyph), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBAction, str$(IBAction), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBConfirm, str$(IBConfirm), ADDR SettingsIniPathAbs
+	
+	; Joystick
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBUp, str$(JBUp), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBDown, str$(JBDown), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLeft, str$(JBLeft), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBRight, str$(JBRight), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLookUp, str$(JBLookUp), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLookDown, str$(JBLookDown), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLookLeft, str$(JBLookLeft), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBLookRight, str$(JBLookRight), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBCrouch, str$(JBCrouch), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBGlyph, str$(JBGlyph), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBAction, str$(JBAction), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBConfirm, str$(JBConfirm), ADDR SettingsIniPathAbs
 	
 	ret
 Settings_SaveBindings ENDP
@@ -585,9 +636,9 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		.IF (FMain.Handle)
 			mov al, FMain.InputFlags
 			.IF (SettingsControlsJoystick)
-				or al, BP_IF_RAW_JOYSTICK
+				or al, JOYSTICK_RAW
 			.ELSE
-				and al, not BP_IF_RAW_JOYSTICK
+				and al, not JOYSTICK_RAW
 			.ENDIF
 			invoke bpSetInputFlags, OFFSET FMain, al
 		.ENDIF
