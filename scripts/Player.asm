@@ -212,6 +212,30 @@ Plr_DrawIntro PROC EXPORT
 	ret
 Plr_DrawIntro ENDP
 
+;   Checks if a point is in the (2D) frustum of the player camera
+Plr_FrustumDot PROC EXPORT Position:BPPtr
+	LOCAL Dot:Vector2
+	
+	mov pax, Position
+	fld REAL4 PTR [pax]
+	fsub CamPos.X
+	fstp Dot.X
+	fld REAL4 PTR [pax+8]
+	fsub CamPos.Z
+	fstp Dot.Y
+	
+	invoke Vector2Normalize, ADDR Dot
+	fld Dot.X
+	fmul PlrForward.X
+	fld Dot.Y
+	fmul PlrForward.Z
+	fadd
+	sub psp, SIZEOF BPPtr
+	fstp REAL4 PTR [psp]
+	pop pax
+	ret
+Plr_FrustumDot ENDP
+
 Plr_LateProcess PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
 	
@@ -396,7 +420,7 @@ Plr_ProcessState PROC EXPORT
 		ret		
 Plr_ProcessState ENDP
 
-; Shake screen
+;   Shake screen (through CamRotL)
 Plr_Shake PROC Amplitude:REAL4
 	LOCAL v3Val:Vector3
 	mov eax, Amplitude

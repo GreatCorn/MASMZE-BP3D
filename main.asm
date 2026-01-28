@@ -377,10 +377,14 @@ include scripts\Resources.asm
 
 include scripts\FX.asm
 include scripts\Collide.asm
+PARTICLES_DOT_CULL	EQU <1>
 include scripts\Particles.asm
 include scripts\Maze.asm
-include scripts\Kubale.asm
+
 include scripts\Player.asm
+
+include scripts\Kubale.asm
+include scripts\Wmblyk.asm
 
 include scripts\Settings.asm
 include scripts\UI.asm
@@ -406,6 +410,9 @@ DrawScene PROC EXPORT
 		call Plr_DrawIntro
 	.ENDIF
 	call Maze_Draw
+	.IF (Wmblyk)
+		call Wmblyk_Draw
+	.ENDIF
 	IFDEF MODE_DEBUG
 		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
 		invoke glEnable, GL_TEXTURE_2D
@@ -700,6 +707,9 @@ ProcessScene PROC EXPORT
 	.IF (Maze)
 		call Maze_Process
 	.ENDIF
+	.IF (Wmblyk)
+		call Wmblyk_Process
+	.ENDIF
 	ret
 ProcessScene ENDP
 
@@ -828,6 +838,12 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'T'
 					invoke Plr_Teleport, MazeDoorPos.X, MazeDoorPos.Z
 					mov PlrState, PLAYER_STATE_EXIT
+				CASE 'B'
+					.IF (Keys[VK_SHIFT])
+						invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
+					.ELSE
+						invoke Wmblyk_Spawn, WMBLYK_STILL
+					.ENDIF
 				CASE 'X'
 					mov PlrState, PLAYER_STATE_ENTER
 				CASE VK_OEM_PLUS
@@ -847,17 +863,19 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE '0'
 					bpMEM32 MazeCurWallMDL, MdlWall
 				CASE '1'
-					bpMEM32 MazeCurWallMDL, MdlWallB
+					bpMEM32 MazeCurWallMDL, MdlWallClerestory
 				CASE '2'
-					bpMEM32 MazeCurWallMDL, MdlWallD
+					bpMEM32 MazeCurWallMDL, MdlWallWainscot
 				CASE '3'
-					bpMEM32 MazeCurWallMDL, MdlWallM
+					bpMEM32 MazeCurWallMDL, MdlWallColumn
 				CASE '4'
-					bpMEM32 MazeCurWallMDL, MdlWallT
+					bpMEM32 MazeCurWallMDL, MdlWallArch
 				CASE '5'
-					bpMEM32 MazeCurWallMDL, MdlWallT2
+					bpMEM32 MazeCurWallMDL, MdlWallTunnel
 				CASE '6'
-					bpMEM32 MazeCurWallMDL, MdlWallW
+					bpMEM32 MazeCurWallMDL, MdlWallSlit
+				CASE '7'
+					bpMEM32 MazeCurWallMDL, MdlWallSlant
 
 				ENDIF
 			ENDSW

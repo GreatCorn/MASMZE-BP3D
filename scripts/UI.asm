@@ -159,8 +159,8 @@ UI_DrawDebug PROC EXPORT
 	RenderText "HEAP:", 16, 152
 	RenderText str$(heapAllocated), 112, 152
 	ENDIF
-	RenderText "FPU:", 16, 152
-	RenderText str$(rv(fpuGetStackTop)), 112, 152
+	RenderText "FPU:", 16, 176
+	RenderText str$(rv(fpuGetStackTop)), 112, 176
 	
 	
 	pop bpFontHeight
@@ -1975,24 +1975,37 @@ UI_Draw PROC EXPORT
 			invoke glBindTexture, GL_TEXTURE_2D, TexNoise
 			call FX_DrawNoise
 		.ENDIF
-		
-		; Rain
-		.IF !(SettingsGraphicsParticles)
-			.IF (PlrState == PLAYER_STATE_INTRO_CITY) \
-			|| (PlrState == PLAYER_STATE_INTRO_OUTSKIRTS) \
-			|| (PlrState == PLAYER_STATE_INTRO_WOODS)
-				invoke glBindTexture, GL_TEXTURE_2D, TexRain
-				push FXNoiseAmplitude
-				bpMEM32 FXNoiseAmplitude, f(0.1)
-				call FX_DrawNoise
-				pop FXNoiseAmplitude
-			.ENDIF
-		.ENDIF
-		
+			
 		.IF (SettingsGraphicsAfterimage)
 			call FX_PushAfterimage
 		.ENDIF
 	.ENDIF
+	
+	
+	; Rain
+	.IF !(SettingsGraphicsParticles)
+		.IF (PlrState == PLAYER_STATE_INTRO_CITY) \
+		|| (PlrState == PLAYER_STATE_INTRO_OUTSKIRTS) \
+		|| (PlrState == PLAYER_STATE_INTRO_WOODS)
+			invoke glBindTexture, GL_TEXTURE_2D, TexRain
+			push FXNoiseAmplitude
+			bpMEM32 FXNoiseAmplitude, f(0.1)
+			call FX_DrawNoise
+			pop FXNoiseAmplitude
+		.ENDIF
+	.ENDIF
+	
+	; Wmblyk jumpscare
+	.IF (Wmblyk == WMBLYK_JUMPSCARE)
+		invoke glBindTexture, GL_TEXTURE_2D, TexWmblykJumpscare
+		invoke glEnable, GL_BLEND
+		invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+		invoke glColor4f, f(1), f(1), f(1), WmblykStateVal
+		invoke glCallList, ScreenQuad
+		invoke glDisable, GL_BLEND
+		invoke glColor4fv, OFFSET clWhite
+	.ENDIF
+	
 	
 	; Initialize full-scale projection
 	invoke glMatrixMode, GL_PROJECTION

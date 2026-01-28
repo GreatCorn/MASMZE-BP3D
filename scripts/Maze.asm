@@ -347,6 +347,10 @@ Maze_DrawLayout ENDP
 Maze_Finish PROC EXPORT
 	LOCAL bounds:Vector4
 	
+	; Clear all elements
+	mov MazeLocked, MAZE_LOCK_NONE
+	mov Wmblyk, WMBLYK_NONE
+	
 	fild MazeSize[8]
 	fmul f(2)
 	fadd f(1)
@@ -414,17 +418,19 @@ Maze_Finish PROC EXPORT
 			CASE 0
 				bpMEM32 MazeCurWallMDL, MdlWall
 			CASE 1
-				bpMEM32 MazeCurWallMDL, MdlWallB
+				bpMEM32 MazeCurWallMDL, MdlWallClerestory
 			CASE 2
-				bpMEM32 MazeCurWallMDL, MdlWallD
+				bpMEM32 MazeCurWallMDL, MdlWallWainscot
 			CASE 3
-				bpMEM32 MazeCurWallMDL, MdlWallM
+				bpMEM32 MazeCurWallMDL, MdlWallColumn
 			CASE 4
-				bpMEM32 MazeCurWallMDL, MdlWallT
+				bpMEM32 MazeCurWallMDL, MdlWallArch
 			CASE 5
-				bpMEM32 MazeCurWallMDL, MdlWallT2
+				bpMEM32 MazeCurWallMDL, MdlWallTunnel
 			CASE 6
-				bpMEM32 MazeCurWallMDL, MdlWallW
+				bpMEM32 MazeCurWallMDL, MdlWallSlit
+			CASE 7
+				bpMEM32 MazeCurWallMDL, MdlWallSlant
 		ENDSW
 		invoke nRand, 3
 		SWITCH eax
@@ -659,10 +665,8 @@ Maze_GetRandomPos PROC EXPORT PosPtr:BPPtr
 	
 	mazeRandPosLoop:
 	mov eax, MazeSize[8]
-	dec eax
 	mov pos.X, rv(intRandRange, 1, eax)
 	mov eax, MazeSize[12]
-	dec eax
 	mov pos.Y, rv(intRandRange, 1, eax)
 	
 	shl pos.X, 1

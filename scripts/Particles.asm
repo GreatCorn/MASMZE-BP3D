@@ -97,7 +97,7 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 			.CONTINUE
 		.ENDIF
 		IFDEF PARTICLES_DOT_CULL
-		mov Alpha, rv(Plr_FrustumDot, ADDR [pbx].Position)
+		mov Alpha, vrv(Plr_FrustumDot, ADDR [pbx].Position)
 		fcmp Alpha, f(0.2)
 		.IF (Carry?)
 			add pbx, SIZEOF Particle

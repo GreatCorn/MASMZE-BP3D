@@ -12,6 +12,7 @@ ENUM	LOADING_TEXT, \
 AnimCamEnter		BPAnimTrack <>
 AnimCamExit			BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
+AnimWmblykWalk		BPAnimTrack <>
 
 ; ----- FONTS -----
 FntKeys		DWORD 256 dup (0)
@@ -65,6 +66,7 @@ MdlPlaneR			DWORD ?
 MdlPlanks			DWORD ?
 MdlRubble			DWORD ?
 MdlRubbleFacade		DWORD ?
+MdlShop				DWORD ?
 MdlSigil			DWORD ?, ?
 MdlSigns			DWORD ?
 MdlSky				DWORD ?
@@ -93,14 +95,14 @@ MdlVirdyaWalk		DWORD ?, ?, ?, ?, ?, ?, ?, ?
 ; Vertex animations create abominations
 MdlVirdyaWave		DWORD ?, ?, ?, ?, ?, ?, ?, ?, ?
 MdlWall				DWORD ?
-MdlWallB			DWORD ?
-MdlWallD			DWORD ?
-MdlWallM			DWORD ?
-MdlWallS			DWORD ?
-MdlWallT			DWORD ?
-MdlWallT2			DWORD ?
-MdlWallTR			DWORD ?
-MdlWallW			DWORD ?
+MdlWallArch			DWORD ?
+MdlWallClerestory	DWORD ?
+MdlWallColumn		DWORD ?
+MdlWallSlant		DWORD ?
+MdlWallSlit			DWORD ?
+MdlWallTrench		DWORD ?
+MdlWallTunnel		DWORD ?
+MdlWallWainscot		DWORD ?
 MdlWbAttack			DWORD ?, ?, ?
 MdlWbbk				DWORD ?
 MdlWbIdle			DWORD ?, ?
@@ -294,6 +296,7 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimCamExit,			"assets\anim\camExit.bpa"
 		LoadBPA OFFSET AnimCamWalk,			"assets\anim\camWalk.bpa"
 		mov AnimCamWalk.Looping, TRUE
+		LoadBPA OFFSET AnimWmblykWalk,		"assets\anim\wmblykWalk.bpa"
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_FONTS)
 		; ----- FONTS -----
@@ -358,6 +361,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlPlanks,			"assets\models\planks.bpl"
 		LoadBPL OFFSET MdlRubble,			"assets\models\rubble.bpl"
 		LoadBPL OFFSET MdlRubbleFacade,		"assets\models\rubbleFacade.bpl"
+		LoadBPL OFFSET MdlShop,				"assets\models\shop.bpl"
 		LoadBPL OFFSET MdlSigil[0],			"assets\models\sigil1.bpl"
 		LoadBPL OFFSET MdlSigil[4],			"assets\models\sigil2.bpl"
 		LoadBPL OFFSET MdlSigns,			"assets\models\signs.bpl"
@@ -421,14 +425,14 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlVirdyaWave[28],	"assets\models\virdyaWave4.bpl"
 		LoadBPL OFFSET MdlVirdyaWave[32],	"assets\models\virdyaWave2.bpl"
 		LoadBPL OFFSET MdlWall,				"assets\models\wall.bpl"
-		LoadBPL OFFSET MdlWallB,			"assets\models\wallB.bpl"
-		LoadBPL OFFSET MdlWallD,			"assets\models\wallD.bpl"
-		LoadBPL OFFSET MdlWallM,			"assets\models\wallM.bpl"
-		LoadBPL OFFSET MdlWallS,			"assets\models\wallS.bpl"
-		LoadBPL OFFSET MdlWallT,			"assets\models\wallT.bpl"
-		LoadBPL OFFSET MdlWallT2,			"assets\models\wallT2.bpl"
-		LoadBPL OFFSET MdlWallTR,			"assets\models\wallTR.bpl"
-		LoadBPL OFFSET MdlWallW,			"assets\models\wallW.bpl"
+		LoadBPL OFFSET MdlWallArch,			"assets\models\wallArch.bpl"
+		LoadBPL OFFSET MdlWallClerestory,	"assets\models\wallClerestory.bpl"
+		LoadBPL OFFSET MdlWallColumn,		"assets\models\wallColumn.bpl"
+		LoadBPL OFFSET MdlWallSlit,			"assets\models\wallSlit.bpl"
+		LoadBPL OFFSET MdlWallSlant,		"assets\models\wallSlant.bpl"
+		LoadBPL OFFSET MdlWallTrench,		"assets\models\wallTrench.bpl"
+		LoadBPL OFFSET MdlWallTunnel,		"assets\models\wallTunnel.bpl"
+		LoadBPL OFFSET MdlWallWainscot,		"assets\models\wallWainscot.bpl"
 		LoadBPL OFFSET MdlWbAttack[0],		"assets\models\wbAttack1.bpl"
 		LoadBPL OFFSET MdlWbAttack[4],		"assets\models\wbAttack2.bpl"
 		LoadBPL OFFSET MdlWbAttack[8],		"assets\models\wbAttack3.bpl"

@@ -172,7 +172,7 @@ FX_ScreenTexture PROC EXPORT GLTexturePtr:BPPtr
 	.ENDIF
 	
 	;   On Windows XP (VirtualBox), this produces GL_INVALID_ENUM. Is 
-	; glReadPixels supported on XP at all?
+	; glReadPixels supported on XP at all or is it a VB thing?
 	invoke glReadPixels, 0, 0, FXRenderSize.X, FXRenderSize.Y, GL_RGB, \
 	colorMode, FXScreenTextureBuffer
 	

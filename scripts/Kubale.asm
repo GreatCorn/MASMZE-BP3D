@@ -26,7 +26,7 @@ Kubale_Spawn ENDP
 Kubale_Draw	PROC EXPORT
 	call glPushMatrix
 		invoke glTranslate3fv, OFFSET KubalePos
-		invoke glRotatef, KubaleRot, 0, f(1), 0
+		invoke glRotatefr, KubaleRot, 0, f(1), 0
 		invoke glBindTexture, GL_TEXTURE_2D, TexKubale
 		invoke glCallList, KubaleList
 	call glPopMatrix
