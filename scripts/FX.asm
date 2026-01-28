@@ -7,7 +7,7 @@ FXAfterimageAmount		BPPtr 0	; Count of afterimage frames (set with
 								; FX_SetAfterimage)
 FXAfterimageNow			BPPtr 0	; Count of afterimage frames displayed now
 FXAfterimageZoom		REAL4 0.0
-FXNoiseAmplitude		REAL4 0.6
+FXNoiseAmplitude		REAL4 0.5
 FXNoiseTexScale			Vector2 <0.0, 0.0>
 FXAfterimageFPSTimer	DWORD 10
 
@@ -108,7 +108,6 @@ FX_DrawNoise PROC EXPORT
 
 	invoke glEnable, GL_BLEND
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
-	invoke glBindTexture, GL_TEXTURE_2D, TexNoise
 	invoke glColor4f, f(1), f(1), f(1), FXNoiseAmplitude
 	invoke glCallList, ScreenQuad
 	invoke glColor4fv, ADDR clWhite
@@ -199,12 +198,23 @@ FX_Create PROC EXPORT
 FX_Create ENDP
 
 FX_Resize PROC EXPORT
-	fld ScreenSizeF.X
-	fmul FXNoiseScale
-	fstp FXNoiseTexScale.X
-	fld ScreenSizeF.Y
-	fmul FXNoiseScale
-	fstp FXNoiseTexScale.Y
+	.IF (SettingsGraphicsPixelization)
+		fld ScreenSizeF.X
+		fmul FXNoiseScale
+		fstp FXNoiseTexScale.X
+		fld ScreenSizeF.Y
+		fmul FXNoiseScale
+		fstp FXNoiseTexScale.Y
+	.ELSE
+		fld ScreenSizeF.X
+		fmul FXNoiseScale
+		fmul f(0.2)
+		fstp FXNoiseTexScale.X
+		fld ScreenSizeF.Y
+		fmul FXNoiseScale
+		fmul f(0.2)
+		fstp FXNoiseTexScale.Y
+	.ENDIF
 
 	.IF (SettingsGraphicsPixelization)
 		mov eax, FMain.ScreenSize.y

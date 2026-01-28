@@ -105,6 +105,9 @@ UISliderZeros		BPBool TRUE
 UISmallButtons		BPBool FALSE
 UIXFrom				SDWORD 0
 
+UISubtitlesStr		BPPtr 0
+UISubtitlesTimer	REAL4 0.0
+
 UISTTPos			SDWORD 0
 UISTTDir 			BPBool FALSE
 
@@ -1851,7 +1854,10 @@ UI_HandleMenuEscape PROC EXPORT
 		mbm UIFocus, UIFocusBeforePopup
 		ret
 	.ENDIF
-	.IF (UIState == UI_STATE_GAME)
+	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
+	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
+		call GameStart
+	.ELSEIF (UIState == UI_STATE_GAME)
 		invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_VISIBLE
 		mov deltaScale, 0
 		invoke PauseSounds, TRUE
@@ -1911,6 +1917,12 @@ UI_MouseFocus PROC EXPORT X:SDWORD, Y:SDWORD, ID:BYTE
 	ret
 UI_MouseFocus ENDP
 
+UI_ShowSubtitles PROC EXPORT String:BPPtr, Duration:REAL4
+	bpMPM UISubtitlesStr, String
+	bpMEM32 UISubtitlesTimer, Duration
+	ret
+UI_ShowSubtitles ENDP
+
 
 UI_Draw PROC EXPORT
 	.IF (SettingsGraphicsMSAA)
@@ -1960,7 +1972,21 @@ UI_Draw PROC EXPORT
 	
 		; Noise
 		.IF (SettingsGraphicsNoise)
+			invoke glBindTexture, GL_TEXTURE_2D, TexNoise
 			call FX_DrawNoise
+		.ENDIF
+		
+		; Rain
+		.IF !(SettingsGraphicsParticles)
+			.IF (PlrState == PLAYER_STATE_INTRO_CITY) \
+			|| (PlrState == PLAYER_STATE_INTRO_OUTSKIRTS) \
+			|| (PlrState == PLAYER_STATE_INTRO_WOODS)
+				invoke glBindTexture, GL_TEXTURE_2D, TexRain
+				push FXNoiseAmplitude
+				bpMEM32 FXNoiseAmplitude, f(0.1)
+				call FX_DrawNoise
+				pop FXNoiseAmplitude
+			.ENDIF
 		.ENDIF
 		
 		.IF (SettingsGraphicsAfterimage)
@@ -2004,26 +2030,24 @@ UI_Draw PROC EXPORT
 	FontSize 4, 8
 	
 	.IF (Loading)
-		invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
-		
-		invoke glColor4fv, OFFSET clBlack
-		invoke glCallList, bpFontQuad
 		invoke glColor4fv, OFFSET clWhite
 		
-		call glLoadIdentity
-		.IF (LoadState == LOADING_ANIMATIONS)
-			mov pax, StrLoadAnimations
-		.ELSEIF (LoadState == LOADING_MODELS)
-			mov pax, StrLoadModels
-		.ELSEIF (LoadState == LOADING_TEXTURES)
-			mov pax, StrLoadTextures
-		.ELSEIF (LoadState == LOADING_SOUNDS)
-			mov pax, StrLoadSounds
-		.ELSEIF (LoadState == LOADING_FINISHED)
-			mov pax, StrLoadFinished
-		.ELSE
-			mov pax, StrLoading
-		.ENDIF
+		SWITCH LoadState
+			CASE LOADING_ANIMATIONS
+				mov pax, StrLoadAnimations
+			CASE LOADING_FONTS
+				mov pax, StrLoadFonts
+			CASE LOADING_MODELS
+				mov pax, StrLoadModels
+			CASE LOADING_TEXTURES
+				mov pax, StrLoadTextures
+			CASE LOADING_SOUNDS
+				mov pax, StrLoadSounds
+			CASE LOADING_FINISHED
+				mov pax, StrLoadFinished
+			DEFAULT
+				mov pax, StrLoading
+		ENDSW
 		
 		invoke UI_Text, pax, ScreenHalf.X, ScreenHalf.Y, BP_ALIGN_CENTER, \
 		BP_ALIGN_CENTER
@@ -2040,6 +2064,25 @@ UI_Draw PROC EXPORT
 	.ENDIF
 	
 	invoke glColor4fv, OFFSET clWhite
+	
+	SWITCH PlrState
+		CASE PLAYER_STATE_INTRO_TEXT1
+			invoke UI_Text, StrIntroText1, ScreenHalf.X, ScreenHalf.Y, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+		CASE PLAYER_STATE_INTRO_TEXT2
+			invoke UI_Text, StrIntroText2, ScreenHalf.X, ScreenHalf.Y, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+		CASE PLAYER_STATE_INTRO_TEXT3
+			invoke UI_Text, OFFSET AppName, ScreenHalf.X, ScreenHalf.Y, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+	ENDSW
+	
+	.IF (UISubtitlesStr)
+		mov eax, FMain.ScreenSize.y
+		sub eax, UI_BTN_H*2
+		invoke UI_Text, UISubtitlesStr, ScreenHalf.X, eax, \
+		BP_ALIGN_CENTER, BP_ALIGN_CENTER
+	.ENDIF
 	
 	; Draw combobox menus
 	.IF (UIComboboxMenu > 0)
@@ -2226,6 +2269,18 @@ UI_Process PROC EXPORT
 			fmul f(12)
 			fstp flVal
 			mov UIComboboxXLerp, rv(flLerp, UIComboboxXLerp, f(1), flVal)
+		.ENDIF
+	.ENDIF
+	
+	.IF (UISubtitlesStr)
+		fld UISubtitlesTimer
+		fsub deltaTime
+		fstp UISubtitlesTimer
+		
+		fcmp UISubtitlesTimer
+		.IF (Carry?)
+			mov UISubtitlesStr, 0
+			mov UISubtitlesTimer, 0
 		.ENDIF
 	.ENDIF
 	ret

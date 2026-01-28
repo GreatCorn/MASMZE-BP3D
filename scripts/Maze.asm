@@ -55,8 +55,10 @@ MazeLayerPopupY		REAL4 -48.0
 MazeLayerPopupTimer	REAL4 0.0
 MazeLocked 			BPEnum MAZE_LOCK_NONE
 MazeSeed			DWORD 0		; Sneed's Feed & Seed (Formerly Chuck's)
-MazeSize			DWORD 6, 6, ?, ?	; Width, height, width-1, height-1
+MazeSize			DWORD 5, 5, ?, ?	; Width, height, width-1, height-1
 MazeState 			BPEnum 0	; Used with intro and endings
+MazeStateCallback	BPPtr 0
+MazeStateTimer		REAL4 0.0
 MazeType			BPEnum MAZE_TYPE_NORMAL
 
 MazeCheck			BPEnum FALSE	; Checkpoint state
@@ -79,7 +81,6 @@ MazeKeyPos		Vector3 <0.0, 0.0, 0.0>	; Key position
 MazeKeyRot		REAL4 0.0, 0.0			; Key rotation + target
 
 MazeSiren		REAL4 0.0	; Siren gain etc (intro)
-MazeSirenTimer	REAL4 51.0	; Siren timer (intro)
 
 MazeTeleport		BPBool FALSE			; Teleporters state
 MazeTeleportPos1	Vector3 <0.0, 0.0, 0.0>	; First tele position
@@ -95,6 +96,8 @@ MazeTramPos		Vector3 <0.0, 0.0, 0.0>	; Tram position
 MazeTramSpeed	REAL4 0.0			; Tram speed to accelerate
 MazeTramSnd		DWORD 0				; Tram announcement sound index
 MazeTramWait	REAL4 0.0			; Tram wait at stop timer
+
+MazeTrench		BPBool FALSE
 
 MazeShop		BPBool FALSE
 
@@ -297,15 +300,21 @@ Maze_DrawLayout PROC EXPORT
 					call glPopMatrix
 				.ENDIF
 				
-				; Draw border walls
+				; Draw border walls and exit
 				mov eax, Pos.Y
 				.IF (eax == MazeSize[12])
 					mov eax, Pos.X
 					.IF (eax == MazeSize[8])
 						call glPushMatrix	; Draw exit door
 						invoke glTranslatef, 0, 0, f(2)
-						invoke glCallList, MdlDoorwayM		
+						invoke glCallList, MdlDoorwayM
 						invoke Maze_DrawDoor, MazeDoorRot
+						.IF (MazeLocked)
+							invoke glCallList, MdlDoorFrameLock
+							.IF (MazeLocked == MAZE_LOCK_LOCKED)
+								invoke glCallList, MdlPadlock
+							.ENDIF
+						.ENDIF
 						invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall	
 						call glPopMatrix
 					.ELSE
@@ -439,6 +448,10 @@ Maze_Finish PROC EXPORT
 			CASE 4
 				bpMEM32 MazeCurFloor, TexTileBig
 		ENDSW
+	.ENDIF
+	
+	.IF !(MazeTrench)
+		call Maze_SpawnElements
 	.ENDIF
 	
 	mov MazeGenerating, FALSE
@@ -642,7 +655,25 @@ Maze_GetCellI PROC EXPORT X:SDWORD, Y:SDWORD
 Maze_GetCellI ENDP
 
 Maze_GetRandomPos PROC EXPORT PosPtr:BPPtr
+	LOCAL pos:Vector2
 	
+	mazeRandPosLoop:
+	mov eax, MazeSize[8]
+	dec eax
+	mov pos.X, rv(intRandRange, 1, eax)
+	mov eax, MazeSize[12]
+	dec eax
+	mov pos.Y, rv(intRandRange, 1, eax)
+	
+	shl pos.X, 1
+	inc pos.X
+	shl pos.Y, 1
+	inc pos.Y
+	mov pax, PosPtr
+	fild pos.X
+	fstp REAL4 PTR [pax]
+	fild pos.Y
+	fstp REAL4 PTR [pax+8]
 	ret
 Maze_GetRandomPos ENDP
 
@@ -667,11 +698,140 @@ Maze_OrCellI PROC EXPORT X:SDWORD, Y:SDWORD, Val:BYTE
 	ret
 Maze_OrCellI ENDP
 
+Maze_ProcessState PROC EXPORT
+	LOCAL flVal:REAL4
+	
+	.IF (MazeState == MAZE_STATE_SAFE)	; Play siren
+		.IF !(MazeStateTimer)
+			bpMEM32 MazeStateTimer, f(51)
+			mov MazeStateCallback, OFFSET mazeSafe
+		.ENDIF
+		
+		fild MazeLayer
+		fmul f(0.2)
+		fsubr f(1)
+		fstp flVal
+		
+		fcmp flVal
+		.IF (Carry?)
+			mov flVal, 0
+		.ENDIF
+		
+		mov MazeSiren, rv(flLerp, MazeSiren, flVal, delta2)
+		invoke alSourcef, SndSiren, AL_GAIN, MazeSiren
+	.ELSEIF (MazeState == MAZE_STATE_STOP_SIREN)
+		.IF !(MazeStateTimer)
+			bpMEM32 MazeStateTimer, f(10)
+			mov MazeStateCallback, OFFSET mazeStopSiren
+		.ENDIF
+		
+		mov MazeSiren, rv(flLerp, MazeSiren, 0, delta2)
+		invoke alSourcef, SndSiren, AL_GAIN, MazeSiren
+	.ELSEIF (MazeState == MAZE_STATE_WAIT_IMPACT)
+		.IF !(MazeStateTimer)
+			fild MazeLayer
+			fmul f(0.1)
+			fstp MazeStateTimer
+			mov MazeStateCallback, OFFSET mazeWaitImpact
+		.ENDIF
+	.ELSEIF (MazeState == MAZE_STATE_SHAKE)
+		.IF !(MazeStateTimer)
+			bpMEM32 MazeStateTimer, f(3)
+			mov MazeStateCallback, OFFSET mazeShake
+		.ENDIF
+		
+		mov MazeSiren, rv(flLerp, MazeSiren, 0, delta2)
+		vinvoke Plr_Shake, MazeSiren
+	.ENDIF
+		
+	.IF (MazeStateTimer)
+		fld MazeStateTimer
+		fsub deltaTime
+		fstp MazeStateTimer
+		
+		fcmp MazeStateTimer
+		.IF (Carry?)
+			mov MazeStateTimer, 0
+			.IF (MazeStateCallback)
+				call MazeStateCallback
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	ret
+	
+	mazeSafe:
+		mov MazeState, MAZE_STATE_STOP_SIREN
+		ret
+	mazeStopSiren:
+		mov MazeState, MAZE_STATE_WAIT_IMPACT
+		
+		fild MazeLayer
+		fsub f(1)
+		fmul f(0.1)
+		fsubr f(1)
+		fstp flVal
+		
+		invoke alSourcef, SndExplosion, AL_GAIN, flVal
+		invoke alSourcePlay, SndExplosion
+			
+		invoke alSourceStop, SndSiren
+		ret
+	mazeWaitImpact:
+		mov MazeState, MAZE_STATE_SHAKE
+		
+		fild MazeLayer
+		fsub f(1)
+		fmul f(0.14)
+		fsubr f(1)
+		fstp flVal
+		
+		fcmp flVal
+		.IF (Carry?)
+			mov flVal, 0
+		.ENDIF
+		
+		fld flVal
+		fmul f(48)
+		sub psp, SIZEOF BPPtr
+		fistp REAL4 PTR [psp]
+		
+		invoke alSourcef, SndImpact, AL_GAIN, flVal
+		invoke alSourcePlay, SndImpact
+		invoke alSourcef, SndCrumble, AL_GAIN, f(0.2)
+		invoke alSourcePlay, SndCrumble
+		
+		vinvoke Vector32DCopy, OFFSET MazePartDust.Position, OFFSET CamPos
+		bpMEM32 MazePartDust.Position.Y, f(2)
+		pop pax
+		IFDEF MODE_DEBUG
+			push pax
+			print str$(pax), 32
+			print "particles released", 13, 10
+			pop pax
+		ENDIF
+		invoke Particles_Spawn, ADDR MazePartDust, pax
+		
+		
+		fld flVal
+		fmul f(0.1)
+		fstp flVal
+		bpMEM32 MazeSiren, flVal
+		ret
+	mazeShake:
+		mov MazeState, MAZE_STATE_GAME
+		invoke alSourcePlay, SndAmb
+		invoke nRand, 2
+		.IF (al)
+			invoke alSourcePlay, SndMus[4]
+		.ENDIF
+		ret
+Maze_ProcessState ENDP
+
 Maze_Progress PROC EXPORT
 	call Maze_Free
 	inc MazeLayer
 	
-	invoke nRand, 5
+	invoke nRand, 7
 	.IF (al == 0)
 		inc MazeSize[0]
 	.ELSEIF (al == 1)
@@ -682,9 +842,22 @@ Maze_Progress PROC EXPORT
 	ret
 Maze_Progress ENDP
 
+Maze_SpawnElements PROC EXPORT
+	.IF (MazeState == MAZE_STATE_GAME)
+		invoke nRand, MazeLayer	; Key
+		.IF (al > 7)
+			print "Locked maze, key at "
+			mov MazeLocked, MAZE_LOCK_LOCKED
+			invoke Maze_GetRandomPos, ADDR MazeKeyPos
+			Vector3Print MazeKeyPos
+		.ENDIF
+	.ENDIF
+	ret
+Maze_SpawnElements ENDP
+
 
 Maze_Create PROC EXPORT
-	mov MazePartAmb.Billboard, TRUE
+	mov MazePartAmb.Billboard, PARTICLE_BILLBOARD_Y or PARTICLE_BILLBOARD_X
 	mov MazePartAmb.Count, 96
 	invoke Vector2Set, ADDR MazePartAmb.Distance, f(1), f(4)
 	mov MazePartAmb.Fade, PARTICLE_FADE_IN or PARTICLE_FADE_OUT
@@ -694,8 +867,21 @@ Maze_Create PROC EXPORT
 	invoke Vector2Set, ADDR MazePartAmb.Lifetime, f(4), f(8)
 	invoke Vector2Set, ADDR MazePartAmb.Scale, f(0.01), f(0.04)
 	invoke Vector2Set, ADDR MazePartAmb.Velocity, f(0.02), f(0.1)
-	vinvoke Vector3Copy, OFFSET MazePartAmb.Position, OFFSET CamPos
 	invoke Particles_Create, ADDR MazePartAmb
+	
+	mov MazePartDust.Billboard, PARTICLE_BILLBOARD_Y or PARTICLE_BILLBOARD_X
+	mov MazePartDust.Count, 64
+	mov MazePartDust.Gravity, TRUE
+	mov MazePartDust.Rotate, TRUE
+	invoke Vector2Set, ADDR MazePartDust.Distance, f(0.5), f(3)
+	mov MazePartDust.Fade, PARTICLE_FADE_OUT
+	bpMEM32 MazePartDust.Friction, f(0.7)
+	mov MazePartDust.VelocityAffects, PARTICLE_VELOCITY_POSITION \
+	or PARTICLE_VELOCITY_ROTATION
+	invoke Vector2Set, ADDR MazePartDust.Lifetime, f(0.4), f(0.6)
+	invoke Vector2Set, ADDR MazePartDust.Scale, f(0.9), f(1.2)
+	invoke Vector2Set, ADDR MazePartDust.Velocity, f(0.7), f(1)
+	invoke Particles_Create, ADDR MazePartDust
 	
 	ret
 Maze_Create ENDP
@@ -747,39 +933,80 @@ Maze_Draw PROC EXPORT
 			invoke glEnable, GL_FOG
 			call glPopMatrix
 		.ENDIF
+		.IF (MazeLocked == MAZE_LOCK_LOCKED)	; Key
+			call glPushMatrix
+			invoke glTranslate3fv, ADDR MazeKeyPos
+			invoke glRotatefr, MazeKeyRot[0], 0, f(1), 0
+			invoke glBindTexture, GL_TEXTURE_2D, TexKey
+			invoke glEnable, GL_ALPHA_TEST
+			invoke glCallList, MdlKey
+			invoke glDisable, GL_ALPHA_TEST
+			call glPopMatrix
+		.ENDIF
 	.ENDIF
 	
 	.IF (SettingsGraphicsParticles)
+		invoke glEnable, GL_BLEND
+		invoke glDepthMask, GL_FALSE
+		invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+		
 		.IF (MazeState == MAZE_STATE_GAME)
-			invoke glEnable, GL_BLEND
-			invoke glDepthMask, GL_FALSE
 			;invoke glDisable, GL_CULL_FACE
 			;invoke glDisable, GL_FOG
 			;invoke glDisable, GL_LIGHTING
 			
-			invoke glColor4fv, OFFSET clWhite
-			
-			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 			invoke glBindTexture, GL_TEXTURE_2D, TexAmbient
 			;bpMEM32 ParticleMaxAlpha, f(0.5)
 			invoke Particles_Draw, ADDR MazePartAmb
-			invoke glCallList, MdlPlaneC
 			
-			invoke glDisable, GL_BLEND
-			invoke glDepthMask, GL_TRUE
 			;invoke glEnable, GL_CULL_FACE
 			;invoke glEnable, GL_FOG
 			;invoke glEnable, GL_LIGHTING
 		.ENDIF
+		
+		invoke glDisable, GL_DEPTH_TEST
+		invoke glBindTexture, GL_TEXTURE_2D, TexDust
+		bpMEM32 ParticleMaxAlpha, f(0.5)
+		invoke Particles_Draw, ADDR MazePartDust
+		bpMEM32 ParticleMaxAlpha, f(1)
+		invoke glEnable, GL_DEPTH_TEST
+		
+		invoke glDisable, GL_BLEND
+		invoke glDepthMask, GL_TRUE
 	.ENDIF
 	ret
 Maze_Draw ENDP
 
 Maze_Fixed PROC EXPORT
+	LOCAL flVal:REAL4
+	
 	.IF (SettingsGraphicsParticles)
 		.IF (MazeState == MAZE_STATE_GAME)
 			vinvoke Vector3Copy, OFFSET MazePartAmb.Position, OFFSET CamPos
-			invoke Particles_Process, ADDR MazePartAmb
+			invoke Particles_Process, ADDR MazePartAmb, deltaFixed
+		.ENDIF
+		invoke Particles_Process, ADDR MazePartDust, deltaFixed
+	.ENDIF
+	
+	.IF (MazeLocked == MAZE_LOCK_LOCKED)	; Key
+		mov flVal, rv(flDistance, MazeKeyRot[0], MazeKeyRot[4])
+		fcmp flVal, f(0.02)
+		.IF (Carry?)
+			mov MazeKeyRot[4], rv(flRandRange, 0, PI2)
+		.ENDIF
+		fld deltaFixed
+		fmul f(0.2)
+		fstp flVal
+		mov MazeKeyRot[0], rv(flLerpAngle, MazeKeyRot[0], MazeKeyRot[4], flVal)
+		
+		vinvoke Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeKeyPos
+		fstp flVal
+		fcmp flVal, f(1)
+		.IF (Carry?)
+			mov MazeLocked, MAZE_LOCK_UNLOCKED
+			vinvoke UI_ShowSubtitles, StrCCKey, f(2)
+			invoke SndSetPos, SndKey, ADDR MazeKeyPos
+			invoke alSourcePlay, SndKey
 		.ENDIF
 	.ENDIF
 	ret
@@ -794,6 +1021,8 @@ Maze_Process PROC EXPORT
 	fld CamPos.Z
 	fistp MazePlrPos.Y
 	invoke fpuSetRounding, FPU_ROUND_ROUND
+	
+	call Maze_ProcessState
 	
 	.IF (Maze)
 		vinvoke Maze_Collide, OFFSET CamPos

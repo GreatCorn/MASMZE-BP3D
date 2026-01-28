@@ -86,7 +86,7 @@ ENDM
 
 PauseSounds PROC EXPORT Paused:BPBool
 	lea pbx, SndSectionStart
-	add pbx, 4
+	inc pbx
 	.WHILE (pbx < OFFSET SndSectionEnd)
 		invoke SndPlaying, DWORD PTR [pbx]
 		.IF (Paused) && (eax == AL_PLAYING)
@@ -112,7 +112,7 @@ MulSoundPitch PROC EXPORT Factor:REAL4
 	LOCAL pitch:REAL4
 	; Persistent
 	lea pbx, SndSectionStart
-	add pbx, 4
+	inc pbx
 	.WHILE (pbx < OFFSET SndSectionEnd)
 		invoke alGetSourcef, DWORD PTR [pbx], AL_PITCH, ADDR pitch
 		fld pitch
@@ -130,3 +130,10 @@ SndPlaying PROC EXPORT ALSound:DWORD
 	mov eax, playVal
 	ret
 SndPlaying ENDP
+
+SndSetPos PROC EXPORT ALSound:DWORD, PosPtr:BPPtr
+	mov pax, PosPtr
+	vinvoke alSource3f, ALSound, AL_POSITION, REAL4 PTR [pax], CamPosL.Y, \
+	REAL4 PTR [pax+8]
+	ret
+SndSetPos ENDP

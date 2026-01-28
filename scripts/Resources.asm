@@ -1,5 +1,6 @@
 ENUM	LOADING_TEXT, \
 		LOADING_ANIMATIONS, \
+		LOADING_FONTS, \
 		LOADING_MODELS, \
 		LOADING_TEXTURES, \
 		LOADING_SOUNDS, \
@@ -18,7 +19,7 @@ FntPS		DWORD 256 dup (0)
 FntXB		DWORD 256 dup (0)
 
 Loading		BPBool FALSE
-LoadState	BPEnum 0
+LoadState	DWORD 0
 
 .DATA?
 
@@ -131,6 +132,7 @@ TexDiamond		DWORD ?
 TexDirt			DWORD ?
 TexDoor			DWORD ?
 TexDoorBlur		DWORD ?
+TexDust			DWORD ?
 TexEBD			DWORD ?, ?, ?
 TexEBDShadow	DWORD ?
 TexFacade		DWORD ?
@@ -205,6 +207,7 @@ SndAmb			DWORD ?
 SndAmbT			DWORD ?
 SndAmbW			DWORD ?, ?, ?, ?
 SndCheckpoint	DWORD ?
+SndCrumble		DWORD ?
 SndDeath		DWORD ?
 SndDig			DWORD ?
 SndDistress		DWORD ?
@@ -276,18 +279,14 @@ LoadResources PROC EXPORT
 	mov Loading, TRUE
 	
 	.IF (LoadState == LOADING_TEXT)
+		; ----- TEXT ESSENTIALS -----
+		print "Loading text...", 9
 		; Load language strings
 		vinvoke LoadStrings, OFFSET SettingsMiscLanguage
 		
 		print "Loading fonts...", 9
-		; ----- FONTS -----
 		invoke bpLoadFont, StrLangFontPath, OFFSET bpDefaultFont	; Main
 		mov bpTextNL, '#'
-		LoadFont "font\input\", OFFSET FntKeys	; Direct mapping to keys/axes
-		mov bpTextureFiltering, TRUE
-		LoadFont "font\input\ps\", OFFSET FntPS
-		LoadFont "font\input\xb\", OFFSET FntXB
-		mov bpTextureFiltering, FALSE
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_ANIMATIONS)
 		print "Loading animations...", 9
@@ -295,6 +294,15 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimCamExit,			"assets\anim\camExit.bpa"
 		LoadBPA OFFSET AnimCamWalk,			"assets\anim\camWalk.bpa"
 		mov AnimCamWalk.Looping, TRUE
+		print "...done!", 13, 10
+	.ELSEIF (LoadState == LOADING_FONTS)
+		; ----- FONTS -----
+		print "Loading fonts...", 9
+		LoadFont "font\input\", OFFSET FntKeys	; Direct mapping to keys/axes
+		mov bpTextureFiltering, TRUE
+		LoadFont "font\input\ps\", OFFSET FntPS
+		LoadFont "font\input\xb\", OFFSET FntXB
+		mov bpTextureFiltering, FALSE
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_MODELS)
 		; ----- MODELS -----
@@ -481,6 +489,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexDirt,			"assets\textures\dirt.bpt"
 		LoadBPT OFFSET TexDoor,			"assets\textures\door.bpt"
 		LoadBPT OFFSET TexDoorBlur,		"assets\textures\doorBlur.bpt"
+		LoadBPT OFFSET TexDust,			"assets\textures\dust.bpt"
 		LoadBPT OFFSET TexEBD[0],		"assets\textures\EBD1.bpt"
 		LoadBPT OFFSET TexEBD[4],		"assets\textures\EBD2.bpt"
 		LoadBPT OFFSET TexEBD[8],		"assets\textures\EBD3.bpt"
@@ -533,6 +542,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexTileBig,		"assets\textures\tileBig.bpt"
 		LoadBPT OFFSET TexTilefloor,	"assets\textures\tilefloor.bpt"
 		LoadBPT OFFSET TexTone,			"assets\textures\tone.bpt"
+		LoadBPT OFFSET TexTree,			"assets\textures\tree.bpt"
 		LoadBPT OFFSET TexTutorial,		"assets\textures\tutorial.bpt"
 		LoadBPT OFFSET TexTutorialJ,	"assets\textures\tutorialJ.bpt"
 		LoadBPT OFFSET TexUIArrow,		"assets\textures\uiArrow.bpt"
@@ -578,6 +588,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndAmbW[8],		"assets\sounds\ambW3.bps"
 		LoadBPS OFFSET SndAmbW[12],		"assets\sounds\ambW4.bps"
 		LoadBPS OFFSET SndCheckpoint,	"assets\sounds\checkpoint.bps"
+		LoadBPS OFFSET SndCrumble,		"assets\sounds\crumble.bps"
 		LoadBPS OFFSET SndDeath,		"assets\sounds\death.bps"
 		LoadBPS OFFSET SndDig,			"assets\sounds\dig.bps"
 		LoadBPS OFFSET SndDistress,		"assets\sounds\distress.bps"
@@ -921,6 +932,13 @@ Vector32DF PROC EXPORT A:BPPtr
 Vector32DF ENDP
 
 Vector32DLerp PROC EXPORT A:BPPtr, B:BPPtr, T:REAL4
+	IFNDEF BP_LERP_UNCLAMPED
+		fcmp T, f(1)
+		.IF (!Carry?) || (Zero?)
+			invoke Vector32DCopy, A, B
+			ret
+		.ENDIF
+	ENDIF
 	mov pax, A
 	mov pcx, B
 	
@@ -939,6 +957,13 @@ Vector32DLerp PROC EXPORT A:BPPtr, B:BPPtr, T:REAL4
 Vector32DLerp ENDP
 
 Vector32DLerpAngle PROC EXPORT A:BPPtr, B:BPPtr, T:REAL4
+	IFNDEF BP_LERP_UNCLAMPED
+		fcmp T, f(1)
+		.IF (!Carry?) || (Zero?)
+			invoke Vector32DCopy, A, B
+			ret
+		.ENDIF
+	ENDIF
 	mov pdx, A
 	mov pcx, B
 	

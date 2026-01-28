@@ -3,6 +3,7 @@ SV	StrLanguageName
 SV	StrLangFontPath
 SV	StrLoading
 SV	StrLoadAnimations
+SV	StrLoadFonts
 SV	StrLoadModels
 SV	StrLoadTextures
 SV	StrLoadSounds
@@ -65,5 +66,8 @@ SV	StrMenuInCrouch
 SV	StrMenuInGlyph
 SV	StrMenuInAction
 SV	StrMenuInConfirm
+SV	StrIntroText1
+SV	StrIntroText2
+SV	StrCCKey
 
 StrSectionEnd		BYTE ?

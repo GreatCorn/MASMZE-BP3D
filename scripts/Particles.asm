@@ -1,3 +1,6 @@
+PARTICLE_BILLBOARD_Y	EQU 1
+PARTICLE_BILLBOARD_X	EQU 2
+
 PARTICLE_FADE_IN	EQU 1
 PARTICLE_FADE_OUT	EQU 2
 PARTICLE_FADE_DOT	EQU 4
@@ -21,7 +24,7 @@ Particle STRUCT
 Particle ENDS
 
 ParticleSystem STRUCT
-	Billboard		BPBool FALSE
+	Billboard		BPEnum 0
 	Count			BPPtr 0
 	Distance		Vector2 <0.0, 0.0>
 	EndAddr			BPPtr ?
@@ -41,6 +44,7 @@ ParticleSystem ENDS
 
 .DATA
 ParticleColor		REAL4 1.0, 1.0, 1.0, 1.0
+ParticleGravity		REAL4 9.1
 ParticleMaxAlpha	REAL4 1.0
 ParticleFadeDist	REAL4 0.022
 
@@ -50,6 +54,7 @@ ListParticle	DWORD ?
 .CODE
 Particles_Create PROC EXPORT ParSysPtr:BPPtr
 	ASSUME pcx:PTR ParticleSystem
+	ASSUME pbx:PTR Particle
 	
 	mov pcx, ParSysPtr
 	mov pax, [pcx].Count
@@ -68,11 +73,13 @@ Particles_Create PROC EXPORT ParSysPtr:BPPtr
 	mov pbx, [pcx].Particles
 	.WHILE (pbx < [pcx].EndAddr)
 		call Particle_Init
+		mov [pbx].Lifetime, 0
 		add pbx, SIZEOF Particle
 	.ENDW
 	pop pbx
 	
 	ASSUME pcx:nothing
+	ASSUME pbx:nothing
 	ret
 Particles_Create ENDP
 
@@ -131,10 +138,16 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		
 		mov pcx, ParSysPtr
 		.IF ([pcx].Billboard)
-			vinvoke glRotatefr, CamRotL.Y, 0, f(-1), 0
-			vinvoke glRotatefr, CamRotL.X, f(-1), 0, 0
+			.IF ([pcx].Billboard & PARTICLE_BILLBOARD_Y)
+				vinvoke glRotatefr, CamRotL.Y, 0, f(-1), 0
+				mov pcx, ParSysPtr
+			.ENDIF
+			.IF ([pcx].Billboard & PARTICLE_BILLBOARD_X)
+				vinvoke glRotatefr, CamRotL.X, f(-1), 0, 0
+			.ENDIF
+			invoke glRotatefr, [pbx].Rotation, 0, 0, f(1)
 		.ELSE
-			invoke glRotatefr, ADDR [pbx].Rotation, 0, f(1), 0
+			invoke glRotatefr, [pbx].Rotation, 0, f(1), 0
 			
 			mov pcx, ParSysPtr
 			.IF ([pcx].Fade & PARTICLE_FADE_DOT)
@@ -203,7 +216,22 @@ Particles_Free PROC EXPORT ParSysPtr:BPPtr
 	ret
 Particles_Free ENDP
 
-Particles_Process PROC EXPORT ParSysPtr:BPPtr
+Particles_Kill PROC EXPORT ParSysPtr:BPPtr
+	ASSUME pcx:PTR ParticleSystem
+	ASSUME pbx:PTR Particle
+	
+	mov pcx, ParSysPtr
+	mov pbx, [pcx].Particles
+	.WHILE (pbx < [pcx].EndAddr)
+		mov [pbx].Lifetime, 0
+		add pbx, SIZEOF Particle
+	.ENDW
+	ASSUME pcx:nothing
+	ASSUME pbx:nothing
+	ret
+Particles_Kill ENDP
+
+Particles_Process PROC EXPORT ParSysPtr:BPPtr, Delta:REAL4
 	LOCAL DeltaFriction:REAL4
 	ASSUME pcx:PTR ParticleSystem
 	ASSUME pbx:PTR Particle
@@ -212,7 +240,7 @@ Particles_Process PROC EXPORT ParSysPtr:BPPtr
 	
 	mov pcx, ParSysPtr
 	fld [pcx].Friction
-	fmul deltaFixed
+	fmul Delta
 	fstp DeltaFriction
 	
 	mov pbx, [pcx].Particles
@@ -229,7 +257,7 @@ Particles_Process PROC EXPORT ParSysPtr:BPPtr
 		.ENDIF
 		
 		fld [pbx].Lifetime
-		fsub deltaFixed
+		fsub Delta
 		fstp [pbx].Lifetime
 		
 		fcmp [pbx].Lifetime
@@ -239,28 +267,28 @@ Particles_Process PROC EXPORT ParSysPtr:BPPtr
 		
 		.IF ([pcx].VelocityAffects & PARTICLE_VELOCITY_POSITION)
 			fld [pbx].Velocity.X
-			fmul deltaFixed
+			fmul Delta
 			fadd [pbx].Position.X
 			fstp [pbx].Position.X
 			fld [pbx].Velocity.Y
-			fmul deltaFixed
+			fmul Delta
 			fadd [pbx].Position.Y
 			fstp [pbx].Position.Y
 			fld [pbx].Velocity.Z
-			fmul deltaFixed
+			fmul Delta
 			fadd [pbx].Position.Z
 			fstp [pbx].Position.Z
 		.ENDIF
 		
 		.IF ([pcx].VelocityAffects & PARTICLE_VELOCITY_ROTATION)
 			fld [pbx].Velocity.W
-			fmul deltaFixed
+			fmul Delta
 			fadd [pbx].Rotation
 			fstp [pbx].Rotation
 		.ENDIF
 		.IF ([pcx].VelocityAffects & PARTICLE_VELOCITY_SCALE)
 			fld [pbx].Velocity.W
-			fmul deltaFixed
+			fmul Delta
 			fadd [pbx].Scale
 			fstp [pbx].Scale
 		.ENDIF
@@ -269,6 +297,13 @@ Particles_Process PROC EXPORT ParSysPtr:BPPtr
 		mov [pbx].Velocity.Y, rv(flLerp, [pbx].Velocity.Y, 0, DeltaFriction)
 		mov [pbx].Velocity.Z, rv(flLerp, [pbx].Velocity.Z, 0, DeltaFriction)
 		mov [pbx].Velocity.W, rv(flLerp, [pbx].Velocity.W, 0, DeltaFriction)
+		
+		.IF ([pcx].Gravity)
+			fld ParticleGravity
+			fmul Delta
+			fsubr [pbx].Velocity.Y
+			fstp [pbx].Velocity.Y
+		.ENDIF
 		
 		add pbx, SIZEOF Particle
 		mov pcx, ParSysPtr

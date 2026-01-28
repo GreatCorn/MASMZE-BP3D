@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-;BP_COMPATIBILITY_W9X	EQU <1>
+BP_COMPATIBILITY_W9X	EQU <1>
 BP_ERROR_PASS			EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
 IFDEF MODE_DEBUG
@@ -149,6 +149,9 @@ IFNDEF SWITCH
 		ELSE
 			.ELSEIF stat
 		ENDIF
+	ENDM
+	DEFAULT MACRO
+		.ELSE
 	ENDM
 	ENDSW MACRO
 		.ENDIF
@@ -392,7 +395,21 @@ CreateScene PROC EXPORT
 CreateScene ENDP
 
 DrawScene PROC EXPORT
+	IFDEF MODE_DEBUG
+		.IF (Keys[VK_MBUTTON])
+			invoke glPolygonMode, GL_FRONT_AND_BACK, GL_LINE
+			invoke glDisable, GL_TEXTURE_2D
+		.ENDIF
+	ENDIF
+	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
+	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
+		call Plr_DrawIntro
+	.ENDIF
 	call Maze_Draw
+	IFDEF MODE_DEBUG
+		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
+		invoke glEnable, GL_TEXTURE_2D
+	ENDIF
 	ret
 DrawScene ENDP
 
@@ -404,25 +421,40 @@ FixedScene PROC EXPORT
 	ret
 FixedScene ENDP
 
-;   Game start (everything loaded in, could be a bind to FMain.OnStart, but
+;   Game initialize (everything loaded in, could be a bind to FMain.OnStart, but
 ; we're using staged resource loading)
-GameStart PROC EXPORT
+GameInit PROC EXPORT
 	call Plr_Create
 	print "Finished game object initialization.", 13, 10
 	
-	;.IF !(rv(Settings_LoadGame))
+	.IF !(rv(Settings_LoadGame))
 		; If no save game is present start intro sequence
-	;	mov PlrState, PLAYER_INTRO_DARK
-	;	invoke alSourcePlay, SndIntro
-	;.ENDIF
+		mov PlrState, PLAYER_STATE_INTRO_DARK
+	.ENDIF
 	call CreateScene
 	
 	bpMEM32 ListParticle, MdlParticle
 	
-	invoke Maze_Generate, 822896678
-	invoke alSourcePlay, SndAmb
+	;invoke Maze_Generate, 822896678
+	;invoke alSourcePlay, SndAmb
 	
 	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+	ret
+GameInit ENDP
+
+GameStart PROC EXPORT
+	mov PlrState, PLAYER_STATE_ENTER
+	mov PlrStateCallback, 0
+	
+	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0
+	invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, f(0.5)
+	
+	bpMEM32 FogDensity, f(0.5)
+	invoke alSourceStop, SndIntro
+	invoke alSourcePlay, SndSiren
+	
+	mov MazeState, MAZE_STATE_SAFE
+	invoke Maze_Generate, nRandSeed
 	ret
 GameStart ENDP
 
@@ -783,18 +815,50 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				IFDEF MODE_DEBUG
 				CASE 'F'
 					bpMEM32 deltaScale, f(4)
+					invoke MulSoundPitch, f(4)
+				CASE 'I'
+					mov MazeState, MAZE_STATE_WAIT_IMPACT
+					mov MazeStateTimer, 0
+					invoke alSourceStop, SndSiren
 				CASE 'R'
-					call Maze_Free
-					invoke Maze_Generate, nRandSeed
-				CASE '0'
-					invoke Plr_Teleport, f(1), f(1)
-				CASE 'X'
-					mov PlrState, PLAYER_STATE_ENTER
+					.IF (Maze)
+						call Maze_Free
+						invoke Maze_Generate, nRandSeed
+					.ENDIF
 				CASE 'T'
 					invoke Plr_Teleport, MazeDoorPos.X, MazeDoorPos.Z
 					mov PlrState, PLAYER_STATE_EXIT
+				CASE 'X'
+					mov PlrState, PLAYER_STATE_ENTER
+				CASE VK_OEM_PLUS
+					.IF (Keys[VK_SHIFT])
+						add MazeLayer, 5
+					.ELSE
+						inc MazeLayer
+					.ENDIF
+				CASE VK_OEM_MINUS
+					.IF (Keys[VK_SHIFT])
+						sub MazeLayer, 5
+					.ELSE
+						dec MazeLayer
+					.ENDIF
 				CASE VK_F3
 					not UIDebug
+				CASE '0'
+					bpMEM32 MazeCurWallMDL, MdlWall
+				CASE '1'
+					bpMEM32 MazeCurWallMDL, MdlWallB
+				CASE '2'
+					bpMEM32 MazeCurWallMDL, MdlWallD
+				CASE '3'
+					bpMEM32 MazeCurWallMDL, MdlWallM
+				CASE '4'
+					bpMEM32 MazeCurWallMDL, MdlWallT
+				CASE '5'
+					bpMEM32 MazeCurWallMDL, MdlWallT2
+				CASE '6'
+					bpMEM32 MazeCurWallMDL, MdlWallW
+
 				ENDIF
 			ENDSW
 			
@@ -846,6 +910,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				IFDEF MODE_DEBUG
 				CASE 'F'
 					bpMEM32 deltaScale, f(1)
+					invoke MulSoundPitch, f(0.25)
 				ENDIF
 			ENDSW
 			
@@ -996,7 +1061,7 @@ OnRender PROC EXPORT
 			.ENDIF
 		.ENDIF
 	.ENDIF
-		
+				
 	invoke glViewport, 0, 0, FXRenderSize.X, FXRenderSize.Y
 	invoke glClear, GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT
 	invoke glStencilOp, GL_KEEP, GL_KEEP, GL_REPLACE
@@ -1019,7 +1084,15 @@ OnRender PROC EXPORT
 		ret
 	.ELSEIF (LoadState == LOADING_FINISHED)
 		mov LoadState, LOADING_TEXT
-		call GameStart
+		call GameInit
+	.ENDIF
+	
+	; Processing
+	call UI_Process
+	.IF (deltaTime)
+		call Plr_Process
+		call ProcessScene
+		call Plr_LateProcess
 	.ENDIF
 	
 	.IF (MazeState != MAZE_STATE_CROA)
@@ -1032,17 +1105,30 @@ OnRender PROC EXPORT
 	invoke glTranslate3fv, ADDR CamPosL
 	Vector3Pop CamPosL
 	
-	; Processing
-	call UI_Process
-	.IF (deltaTime)
-		call Plr_Process
-		call ProcessScene
-		call Plr_LateProcess
-	.ENDIF
-	
 	; Drawing
+	invoke glColor4fv, OFFSET clWhite
 	invoke glFogf, GL_FOG_DENSITY, FogDensity
 	invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
+	
+	IFDEF MODE_DEBUG
+	.IF (UIDebug)
+		invoke glBindTexture, GL_TEXTURE_2D, 0
+		invoke glDisable, GL_LIGHTING
+		invoke glDisable, GL_FOG
+		invoke glColor4fv, ADDR clRed
+		invoke glBegin, GL_LINES
+		Vector3Push CamPosL
+		bpMEM32 CamPosL.Y, f(0.5)
+		invoke glVertex3fv, ADDR CamPosL
+		invoke Vector3Add, ADDR CamPosL, ADDR PlrForward
+		invoke glVertex3fv, ADDR CamPosL
+		Vector3Pop CamPosL
+		invoke glEnd
+		invoke glEnable, GL_LIGHTING
+		invoke glEnable, GL_FOG
+		invoke glColor4fv, ADDR clWhite
+	.ENDIF
+	ENDIF
 	
 	call DrawScene
 	call UI_Draw

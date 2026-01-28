@@ -54,7 +54,12 @@ CamFOV			REAL4 70.0
 PlrGlyphs		DWORD 7
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
-PlrState		DWORD PLAYER_STATE_ENTER
+
+PlrState			DWORD PLAYER_STATE_ENTER
+PlrStateCallback	BPPtr 0
+PlrStateTimer		REAL4 0.0
+
+PlrPartRain	ParticleSystem	<>
 
 .CODE
 Plr_Control PROC EXPORT
@@ -148,6 +153,65 @@ Plr_Control PROC EXPORT
 	ret
 Plr_Control ENDP
 
+Plr_DrawIntro PROC EXPORT
+	SWITCH PlrState
+		CASE PLAYER_STATE_INTRO_CITY
+			invoke glBindTexture, GL_TEXTURE_2D, TexRoof
+			invoke glCallList, MdlCityConcrete
+			invoke glBindTexture, GL_TEXTURE_2D, TexFacade
+			invoke glCallList, MdlCityFacade
+			invoke glBindTexture, GL_TEXTURE_2D, TexFloor
+			invoke glCallList, MdlCityTerrain
+		CASE PLAYER_STATE_INTRO_OUTSKIRTS
+			invoke glBindTexture, GL_TEXTURE_2D, TexRoof
+			invoke glCallList, MdlOutskirtsRoad
+			invoke glBindTexture, GL_TEXTURE_2D, TexFloor
+			invoke glCallList, MdlOutskirtsTerrain
+			invoke glEnable, GL_ALPHA_TEST
+			invoke glBindTexture, GL_TEXTURE_2D, TexTree
+			invoke glCallList, MdlOutskirtsTrees
+			invoke glDisable, GL_ALPHA_TEST
+		CASE PLAYER_STATE_INTRO_WOODS
+			invoke glBindTexture, GL_TEXTURE_2D, TexFloor
+			invoke glCallList, MdlOutskirtsTerrain
+			invoke glEnable, GL_ALPHA_TEST
+			invoke glBindTexture, GL_TEXTURE_2D, TexTree
+			invoke glCallList, MdlOutskirtsTrees
+			invoke glDisable, GL_ALPHA_TEST
+			invoke glBindTexture, GL_TEXTURE_2D, TexDoor
+			invoke glCallList, MdlOutskirtsBunker
+	ENDSW
+	
+	.IF (SettingsGraphicsParticles)
+		.IF (PlrState == PLAYER_STATE_INTRO_CITY) \
+		|| (PlrState == PLAYER_STATE_INTRO_OUTSKIRTS) \
+		|| (PlrState == PLAYER_STATE_INTRO_WOODS)
+			invoke glEnable, GL_BLEND
+			invoke glDepthMask, GL_FALSE
+			invoke glDisable, GL_LIGHTING
+			;invoke glDisable, GL_CULL_FACE
+			
+			invoke glColor4f, f(0.5), f(0.5), f(0.5), f(0.5)
+			
+			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+			invoke glBindTexture, GL_TEXTURE_2D, 0
+			call glPushMatrix
+			invoke glScalef, f(1), f(8), f(1)
+			;invoke glRotatef, f(180), 0, f(1), 0
+			invoke Particles_Draw, ADDR PlrPartRain
+			call glPopMatrix
+			
+			invoke glDisable, GL_BLEND
+			invoke glDepthMask, GL_TRUE
+			invoke glEnable, GL_LIGHTING
+			;invoke glEnable, GL_CULL_FACE
+			
+			invoke glColor4fv, OFFSET clWhite
+		.ENDIF
+	.ENDIF
+	ret
+Plr_DrawIntro ENDP
+
 Plr_LateProcess PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
 	
@@ -164,13 +228,17 @@ Plr_LateProcess PROC EXPORT
 	invoke Vector3Add, ADDR v3Val, ADDR CamRot
 	invoke Vector3LerpAngle, ADDR CamRotL, ADDR v3Val, flVal
 	
-	
-	invoke Vector32DDistanceSqr, ADDR CamPos, ADDR CamPosP
-	fsqrt
-	fdiv deltaTime
-	fst PlrSpeed
-	fdiv PlrSpeedWalk
-	fstp PlrSpeedScaled
+	.IF (PlrCanControl)
+		invoke Vector32DDistanceSqr, ADDR CamPos, ADDR CamPosP
+		fsqrt
+		fdiv deltaTime
+		fst PlrSpeed
+		fdiv PlrSpeedWalk
+		fstp PlrSpeedScaled
+	.ELSE
+		mov PlrSpeed, 0
+		mov PlrSpeedScaled, 0
+	.ENDIF
 	invoke Vector32DCopy, ADDR CamPosP, ADDR CamPos
 	ret
 Plr_LateProcess ENDP
@@ -225,6 +293,90 @@ Plr_ProcessState PROC EXPORT
 			mov UIFadeCallback, OFFSET plrExitFade
 			mov UIFadeVal, 0
 		.ENDIF
+	.ELSEIF (PlrState >= PLAYER_STATE_INTRO_DARK) \
+	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
+		.IF (MazeState != MAZE_STATE_END)
+			.IF !(PlrStateTimer)
+				.IF (PlrState == PLAYER_STATE_INTRO_DARK)
+					bpMEM32 PlrStateTimer, f(5)
+					
+					mov PlrStateCallback, OFFSET plrIntroProgress
+					
+					invoke Vector3Set, ADDR CamPos, 0, CamHeight, 0
+					invoke Vector2Set, ADDR CamRot, f(-0.5), f(-3.1)
+					mov PlrCanControl, FALSE
+					invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, f(1)
+					invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, 0
+					
+					bpMEM32 FogDensity, f(0.1)
+					invoke alSourcePlay, SndIntro
+				.ELSEIF (PlrState == PLAYER_STATE_INTRO_TEXT3)
+					bpMEM32 PlrStateTimer, f(5)
+					
+					mov PlrStateCallback, OFFSET GameStart
+				.ELSE
+					bpMEM32 PlrStateTimer, f(4)
+				.ENDIF
+			.ENDIF
+			SWITCH PlrState
+				CASE PLAYER_STATE_INTRO_CITY
+					fld deltaTime
+					fmul f(0.1)
+					fstp flVal
+					mov CamRot.X, rv(flLerp, CamRot.X, f(-0.6), flVal)
+					mov CamRot.Y, rv(flLerp, CamRot.Y, f(-3), deltaTime)
+					
+					mov FogDensity, rv(flLerp, FogDensity, f(0.5), flVal)
+				CASE PLAYER_STATE_INTRO_TEXT1
+					invoke Vector32DSet, ADDR CamPos, 0, f(7)
+					invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
+					invoke Vector2Set, ADDR CamRot, 0, PI
+					invoke Vector2Copy, ADDR CamRotL, ADDR CamRot
+				CASE PLAYER_STATE_INTRO_OUTSKIRTS
+					bpMEM32 PlrSpeedScaled, f(2)
+					fld deltaTime
+					fmul f(6)
+					fadd CamPos.Z
+					fstp CamPos.Z
+					
+					mov FogDensity, rv(flLerp, FogDensity, f(0.1), deltaTime)
+				CASE PLAYER_STATE_INTRO_TEXT2
+					invoke Vector32DSet, ADDR CamPos, 0, f(16)
+					invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
+					
+					bpMEM32 FogDensity, f(0.5)
+				CASE PLAYER_STATE_INTRO_WOODS
+					bpMEM32 PlrSpeedScaled, f(2)
+					fld deltaTime
+					fmul f(6)
+					fadd CamPos.Z
+					fstp CamPos.Z
+					
+					mov FogDensity, rv(flLerp, FogDensity, f(0.1), deltaTime)
+			ENDSW
+			.IF (SettingsGraphicsParticles)
+				fld CamPos.Z
+				;fchs
+				fadd f(4)
+				fstp PlrPartRain.Position.Z
+				bpMEM32 PlrPartRain.Position.Y, CamPos.Y
+				invoke Particles_Process, ADDR PlrPartRain, deltaTime
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	
+	.IF (PlrStateTimer)
+		fld PlrStateTimer
+		fsub deltaTime
+		fstp PlrStateTimer
+		
+		fcmp PlrStateTimer
+		.IF (Carry?)
+			mov PlrStateTimer, 0
+			.IF (PlrStateCallback)
+				call PlrStateCallback
+			.ENDIF
+		.ENDIF
 	.ENDIF
 	ret
 	
@@ -232,12 +384,33 @@ Plr_ProcessState PROC EXPORT
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamWalk
 		mov PlrCanControl, TRUE
 		mov PlrState, PLAYER_STATE_GAME
+		mov UIFadeCallback, 0
 		ret
 	plrExitFade:
 		mov PlrState, PLAYER_STATE_ENTER
 		call Maze_Progress
+		mov UIFadeCallback, 0
 		ret
+	plrIntroProgress:
+		inc PlrState
+		ret		
 Plr_ProcessState ENDP
+
+; Shake screen
+Plr_Shake PROC Amplitude:REAL4
+	LOCAL v3Val:Vector3
+	mov eax, Amplitude
+	or eax, FLT_NEG
+	push pax
+	mov v3Val.X, rv(flRandRange, eax, Amplitude)
+	pop pax
+	push pax
+	mov v3Val.Y, rv(flRandRange, eax, Amplitude)
+	pop pax
+	mov v3Val.Z, rv(flRandRange, eax, Amplitude)
+	invoke Vector3Add, ADDR CamRotL, ADDR v3Val
+	ret
+Plr_Shake ENDP
 
 Plr_Step PROC EXPORT HalfStep:BPBool
 	LOCAL flVal:REAL4
@@ -266,6 +439,7 @@ Plr_Teleport PROC EXPORT X:REAL4, Y:REAL4
 	ret
 Plr_Teleport ENDP
 
+
 Plr_Process PROC EXPORT
 	LOCAL flVal:REAL4
 	
@@ -285,6 +459,8 @@ Plr_Process PROC EXPORT
 		call Plr_Control
 	.ENDIF
 	
+	call Plr_ProcessState
+	
 	invoke bpProcessAnimPlayer, ADDR CamAnimPlr, deltaTime
 	.IF (CamAnimPlr.TrackPtr == OFFSET AnimCamWalk)
 		.IF (al)	; Frame changed
@@ -303,7 +479,9 @@ Plr_Process PROC EXPORT
 		bpMEM32 CamAnimPlr.Speed, f(1)
 	.ENDIF
 	
-	call Plr_ProcessState
+	; Sound stuff
+	invoke alListenerfv, AL_POSITION, ADDR CamPosL
+	invoke alListenerfv, AL_ORIENTATION, ADDR PlrForward
 	
 	; Health that affects afterimage
 	fld PlrHealth
@@ -329,5 +507,17 @@ Plr_Create PROC EXPORT
 	mov CamAnimPlr.Position, OFFSET CamPosA	; Init player animator
 	mov CamAnimPlr.Rotation, OFFSET CamRotA
 	mov CamAnimPlr.TrackPtr, OFFSET AnimCamWalk
+	
+	
+	mov PlrPartRain.Billboard, PARTICLE_BILLBOARD_Y
+	mov PlrPartRain.Count, 256
+	invoke Vector2Set, ADDR PlrPartRain.Distance, 0, f(4)
+	mov PlrPartRain.Looping, TRUE
+	mov PlrPartRain.VelocityAffects, PARTICLE_VELOCITY_POSITION
+	invoke Vector2Set, ADDR PlrPartRain.Lifetime, f(0.4), f(0.8)
+	mov PlrPartRain.Gravity, TRUE
+	invoke Vector2Set, ADDR PlrPartRain.Scale, f(0.01), f(0.03)
+	vinvoke Vector3Copy, OFFSET PlrPartRain.Position, OFFSET CamPos
+	invoke Particles_Create, ADDR PlrPartRain
 	ret
 Plr_Create ENDP
