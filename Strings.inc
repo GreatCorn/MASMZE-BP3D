@@ -45,6 +45,7 @@ SV	StrMenuPixelization
 SV	StrMenuPosterization
 SV	StrMenuAfterimage
 SV	StrMenuParticles
+SV	StrMenuInterpolation
 SV	StrMenuMouseSens
 SV	StrMenuMouseRaw
 SV	StrMenuUseGpad

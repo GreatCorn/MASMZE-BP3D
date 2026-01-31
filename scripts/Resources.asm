@@ -1,3 +1,5 @@
+BPMesh? TEXTEQU <BPMesh <?, ?, ?, ?, ?, ?>>
+
 ENUM	LOADING_TEXT, \
 		LOADING_ANIMATIONS, \
 		LOADING_FONTS, \
@@ -12,6 +14,9 @@ ENUM	LOADING_TEXT, \
 AnimCamEnter		BPAnimTrack <>
 AnimCamExit			BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
+AnimWmblykCrawl		BPAnimTrack <>
+AnimWmblykDead		BPAnimTrack <>
+AnimWmblykStrangle	BPAnimTrack <>
 AnimWmblykWalk		BPAnimTrack <>
 
 ; ----- FONTS -----
@@ -60,8 +65,6 @@ MdlParticle			DWORD ?
 MdlPipe				DWORD ?
 MdlPlane			DWORD ?
 MdlPlaneC			DWORD ?
-MdlPlaneH			DWORD ?
-MdlPlaneM			DWORD ?
 MdlPlaneR			DWORD ?
 MdlPlanks			DWORD ?
 MdlRubble			DWORD ?
@@ -118,6 +121,8 @@ MdlWmblykStrL		DWORD ?, ?, ?
 MdlWmblykStrW		DWORD ?, ?, ?
 MdlWmblykTram		DWORD ?
 MdlWmblykWalk		DWORD ?, ?, ?, ?
+
+MeshWmblyk			BPMesh?
 
 ScreenQuad	DWORD ?
 
@@ -296,7 +301,14 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimCamExit,			"assets\anim\camExit.bpa"
 		LoadBPA OFFSET AnimCamWalk,			"assets\anim\camWalk.bpa"
 		mov AnimCamWalk.Looping, TRUE
+		LoadBPA OFFSET AnimWmblykCrawl,		"assets\anim\wmblykCrawl.bpa"
+		mov AnimWmblykCrawl.Looping, TRUE
+		LoadBPA OFFSET AnimWmblykDead,		"assets\anim\wmblykDead.bpa"
+		LoadBPA OFFSET AnimWmblykStrangle,	"assets\anim\wmblykStrangle.bpa"
+		;mov AnimWmblykStrangle.Looping, TRUE
 		LoadBPA OFFSET AnimWmblykWalk,		"assets\anim\wmblykWalk.bpa"
+		mov AnimWmblykWalk.Looping, TRUE
+		
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_FONTS)
 		; ----- FONTS -----
@@ -355,8 +367,6 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlPipe,				"assets\models\pipe.bpl"
 		LoadBPL OFFSET MdlPlane,			"assets\models\plane.bpl"
 		LoadBPL OFFSET MdlPlaneC,			"assets\models\planeC.bpl"
-		LoadBPL OFFSET MdlPlaneH,			"assets\models\planeH.bpl"
-		LoadBPL OFFSET MdlPlaneM,			"assets\models\planeM.bpl"
 		LoadBPL OFFSET MdlPlaneR,			"assets\models\planeR.bpl"
 		LoadBPL OFFSET MdlPlanks,			"assets\models\planks.bpl"
 		LoadBPL OFFSET MdlRubble,			"assets\models\rubble.bpl"
@@ -463,6 +473,8 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlWmblykWalk[4],	"assets\models\wmblykWalk2.bpl"
 		LoadBPL OFFSET MdlWmblykWalk[8],	"assets\models\wmblykWalk3.bpl"
 		LoadBPL OFFSET MdlWmblykWalk[12],	"assets\models\wmblykWalk4.bpl"
+		
+		LoadBPM OFFSET MeshWmblyk,			"assets\models\wmblyk.bpm"
 
 		mov ScreenQuad, rv(glGenLists, 1)
 		invoke glNewList, ScreenQuad, GL_COMPILE
@@ -859,153 +871,3 @@ StrToFl PROC EXPORT StrPtr:BPPtr, FlPtr:BPPtr
 	fstp REAL4 PTR [pax]
 	ret
 StrToFl ENDP
-
-Vector32DPop MACRO A:REQ
-	pop A.X
-	pop A.Z
-ENDM
-
-Vector32DPush MACRO A:REQ
-	push A.Z
-	push A.X
-ENDM
-
-Vector32DAdd PROC EXPORT A:BPPtr, B:BPPtr
-	mov pax, A
-	mov pcx, B
-	fld REAL4 PTR [pax]
-	fadd REAL4 PTR [pcx]
-	fstp REAL4 PTR [pax]
-	fld REAL4 PTR [pax+8]
-	fadd REAL4 PTR [pcx+8]
-	fstp REAL4 PTR [pax+8]
-	ret
-Vector32DAdd ENDP
-
-Vector32DAngle PROC EXPORT From:BPPtr, To:BPPtr
-	LOCAL Val:REAL4
-	
-	mov pax, From
-	mov pcx, To
-	
-	fld REAL4 PTR [pcx]
-	fsub REAL4 PTR [pax]
-	fld REAL4 PTR [pcx+8]
-	fsub REAL4 PTR [pax+8]
-	fpatan
-	fstp Val
-	
-	mov eax, Val
-	ret
-Vector32DAngle ENDP
-
-Vector32DCopy PROC EXPORT To:BPPtr, From:BPPtr
-	mov pax, From
-	push REAL4 PTR [pax]
-	push REAL4 PTR [pax+8]
-	mov pax, To
-	pop REAL4 PTR [pax+8]
-	pop REAL4 PTR [pax]
-	ret
-Vector32DCopy ENDP
-
-Vector32DDistanceSqr PROC EXPORT A:BPPtr, B:BPPtr
-	mov pax, A
-	mov pcx, B
-	fld REAL4 PTR [pcx]
-	fsub REAL4 PTR [pax]
-	fmul st, st
-	fld REAL4 PTR [pcx+8]
-	fsub REAL4 PTR [pax+8]
-	fmul st, st
-	fadd
-	;sub esp, 4
-	;fstp REAL4 PTR [esp]
-	;pop eax
-	ret
-Vector32DDistanceSqr ENDP
-
-Vector32DF PROC EXPORT A:BPPtr
-	mov pax, A
-	
-	fild REAL4 PTR [pax]
-	fstp REAL4 PTR [pax]
-	fild REAL4 PTR [pax+8]
-	fstp REAL4 PTR [pax+8]
-	ret
-Vector32DF ENDP
-
-Vector32DLerp PROC EXPORT A:BPPtr, B:BPPtr, T:REAL4
-	IFNDEF BP_LERP_UNCLAMPED
-		fcmp T, f(1)
-		.IF (!Carry?) || (Zero?)
-			invoke Vector32DCopy, A, B
-			ret
-		.ENDIF
-	ENDIF
-	mov pax, A
-	mov pcx, B
-	
-	fld REAL4 PTR [pcx]
-	fsub REAL4 PTR [pax]
-	fmul T
-	fadd REAL4 PTR [pax]
-	fstp REAL4 PTR [pax]
-	
-	fld REAL4 PTR [pcx+8]
-	fsub REAL4 PTR [pax+8]
-	fmul T
-	fadd REAL4 PTR [pax+8]
-	fstp REAL4 PTR [pax+8]
-	ret
-Vector32DLerp ENDP
-
-Vector32DLerpAngle PROC EXPORT A:BPPtr, B:BPPtr, T:REAL4
-	IFNDEF BP_LERP_UNCLAMPED
-		fcmp T, f(1)
-		.IF (!Carry?) || (Zero?)
-			invoke Vector32DCopy, A, B
-			ret
-		.ENDIF
-	ENDIF
-	mov pdx, A
-	mov pcx, B
-	
-	invoke flLerpAngle, REAL4 PTR [pdx], REAL4 PTR [pcx], T
-	mov REAL4 PTR [pdx], eax
-	invoke flLerpAngle, REAL4 PTR [pdx+8], REAL4 PTR [pcx+8], T
-	mov REAL4 PTR [pdx+8], eax
-	ret
-Vector32DLerpAngle ENDP
-
-Vector32DMulF PROC EXPORT A:BPPtr, B:REAL4
-	mov pax, A
-	fld REAL4 PTR [pax]
-	fmul B
-	fstp REAL4 PTR [pax]
-	fld REAL4 PTR [pax+8]
-	fmul B
-	fstp REAL4 PTR [pax+8]
-	ret
-Vector32DMulF ENDP
-
-Vector32DSet PROC EXPORT A:BPPtr, X:REAL4, Z:REAL4
-	mov pax, A
-	push X
-	pop REAL4 PTR [pax]
-	push Z
-	pop REAL4 PTR [pax+8]
-	ret
-Vector32DSet ENDP
-
-Vector32DSub PROC EXPORT A:BPPtr, B:BPPtr
-	mov pax, A
-	mov pcx, B
-	fld REAL4 PTR [pax]
-	fsub REAL4 PTR [pcx]
-	fstp REAL4 PTR [pax]
-	fld REAL4 PTR [pax+8]
-	fsub REAL4 PTR [pcx+8]
-	fstp REAL4 PTR [pax+8]
-	ret
-Vector32DSub ENDP

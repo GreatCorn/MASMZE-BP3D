@@ -6,7 +6,6 @@ ENUML
 	
 	; Wmblyk strangle minigame
 	E PLAYER_STATE_STRANGLE
-	E PLAYER_STATE_STRANGLING
 	E PLAYER_STATE_GETUP
 	
 	E PLAYER_STATE_DYING
@@ -62,6 +61,8 @@ PlrStateTimer		REAL4 0.0
 PlrPartRain	ParticleSystem	<>
 
 .CODE
+Plr_Shake PROTO :REAL4
+
 Plr_Control PROC EXPORT
 	LOCAL flVal:REAL4, movSpd:REAL4, velocity:Vector3
 	; Prepare movement from generic axes
@@ -94,7 +95,7 @@ Plr_Control PROC EXPORT
 		mov CamRot.X, rv(flClamp, CamRot.X, PIHalfN, PIHalf)
 		
 		fld InputLook.X
-		fadd CamRot.Y
+		fsubr CamRot.Y
 		fstp CamRot.Y
 		mov CamRot.Y, rv(flAngle, CamRot.Y)
 		mov CamRotL.Y, rv(flAngle, CamRotL.Y)
@@ -253,7 +254,8 @@ Plr_LateProcess PROC EXPORT
 	invoke Vector3LerpAngle, ADDR CamRotL, ADDR v3Val, flVal
 	
 	.IF (PlrCanControl)
-		invoke Vector32DDistanceSqr, ADDR CamPos, ADDR CamPosP
+		mov flVal, rv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET CamPosP)
+		fld flVal
 		fsqrt
 		fdiv deltaTime
 		fst PlrSpeed
@@ -276,7 +278,7 @@ Plr_ProcessState PROC EXPORT
 		invoke bpProcessAnimPlayer, ADDR CamAnimPlr, 0
 		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
 		
-		invoke Vector3Set, ADDR CamRot, 0, PI, 0
+		invoke Vector3Set, ADDR CamRot, 0, 0, 0
 		invoke Vector3Copy, ADDR v3Val, ADDR CamRotA
 		invoke Vector3Add, ADDR v3Val, ADDR CamRot
 		invoke Vector3Copy, ADDR CamRotL, ADDR v3Val
@@ -310,7 +312,7 @@ Plr_ProcessState PROC EXPORT
 		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-100), delta2)
 		invoke Vector3Lerp, ADDR CamPos, ADDR MazeDoorPos, delta2
 		mov CamRot.X, rv(flLerp, CamRot.X, 0, delta2)
-		mov CamRot.Y, rv(flLerpAngle, CamRot.Y, PI, delta2)
+		mov CamRot.Y, rv(flLerpAngle, CamRot.Y, 0, delta2)
 		fcmp CamAnimPlr.Timer, f(40)
 		.IF (!Carry?) && !(UIFade)
 			mov UIFade, UI_FADE_OUT
@@ -387,6 +389,28 @@ Plr_ProcessState PROC EXPORT
 				invoke Particles_Process, ADDR PlrPartRain, deltaTime
 			.ENDIF
 		.ENDIF
+	.ELSEIF (PlrState == PLAYER_STATE_STRANGLE)
+		mov PlrCanControl, FALSE
+		mov CamRot.Y, vrv(Vector32DAngle, OFFSET CamPos, OFFSET WmblykPos)
+		bpMEM32 CamRot.X, WmblykStateVal
+		fld WmblykStateVal
+		fmul f(0.5)
+		fmul f(0.2)
+		fabs
+		fsubr CamHeight
+		fstp CamPos.Y
+		
+		fld WmblykStateVal
+		fadd f(0.5)
+		fmul f(0.5)
+		fstp flVal
+		
+		invoke Vector32DCopy, ADDR v3Val, ADDR PlrForward
+		invoke Vector32DMulF, ADDR v3Val, flVal
+		invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
+		invoke Vector32DAdd, ADDR CamPosL, ADDR v3Val
+		
+		invoke Plr_Shake, f(0.01)
 	.ENDIF
 	
 	.IF (PlrStateTimer)
@@ -473,9 +497,9 @@ Plr_Process PROC EXPORT
 	; Get forward & right
 	fld CamRot.Y
 	fsincos
-	fst PlrRight.X
+	fst PlrForward.Z
 	fchs
-	fstp PlrForward.Z
+	fstp PlrRight.X
 	fst PlrForward.X
 	fstp PlrRight.Z
 	
@@ -488,7 +512,8 @@ Plr_Process PROC EXPORT
 	invoke bpProcessAnimPlayer, ADDR CamAnimPlr, deltaTime
 	.IF (CamAnimPlr.TrackPtr == OFFSET AnimCamWalk)
 		.IF (al)	; Frame changed
-			.IF (CamAnimPlr.FrameOffset >= 6 * SIZEOF BPAnimFramePRS)
+			print str$(CamAnimPlr.FrameOffset), 13, 10
+			.IF (CamAnimPlr.FrameOffset >= 5 * SIZEOF BPAnimFramePRS)
 				invoke Plr_Step, 255
 			.ELSE
 				invoke Plr_Step, 0

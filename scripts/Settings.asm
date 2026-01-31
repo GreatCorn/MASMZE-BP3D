@@ -40,6 +40,7 @@ SettingsIniAfterimage		DB "Afterimage", 0
 SettingsIniDisplay			DB "Display", 0
 SettingsIniGamma			DB "Gamma", 0
 SettingsIniGammaBypass		DB "GammaBypass", 0
+SettingsIniInterpolation	DB "Interpolation", 0
 SettingsIniMazeCull			DB "MazeCull", 0
 SettingsIniMSAA				DB "MSAA", 0
 SettingsIniNoise			DB "Noise", 0
@@ -93,6 +94,7 @@ SettingsGraphicsAfterimage		BPBool TRUE
 SettingsGraphicsDisplay			DWORD 0
 SettingsGraphicsGamma			REAL4 0.5
 SettingsGraphicsGammaBypass		BPBool FALSE
+SettingsGraphicsInterpolation	BPBool FALSE
 SettingsGraphicsMazeCull		DWORD 5
 SettingsGraphicsMSAA			DWORD 0
 SettingsGraphicsNoise			BPBool TRUE
@@ -208,6 +210,16 @@ Settings_Load PROC EXPORT
 	.IF (al != SettingsGraphicsGammaBypass)
 		mov SettingsGraphicsGammaBypass, al
 	.ENDIF
+	
+	; Animation interpolation
+	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+	ADDR SettingsIniInterpolation, ADDR SettingsIniFalse, \
+	ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+	call Settings_IsTrue
+	;.IF (al != SettingsGraphicsInterpolation)
+		mov SettingsGraphicsInterpolation, al
+		invoke Settings_SetOption, OFFSET SettingsGraphicsInterpolation
+	;.ENDIF
 	
 	; Maze cull radius
 	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
@@ -556,6 +568,15 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		.ENDIF
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniParticles, pax, ADDR SettingsIniPathAbs
+		
+		; Animation interpolation
+		.IF (SettingsGraphicsInterpolation)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniInterpolation, pax, ADDR SettingsIniPathAbs
 	.ENDIF
 	ret
 Settings_Save ENDP
@@ -663,6 +684,13 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		print "graphics/display", 13, 10
 		.IF (FMain.Handle)
 			invoke bpSetDisplayDevice, ADDR FMain, SettingsGraphicsDisplay
+		.ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsInterpolation)
+		print "graphics/interpolation", 13, 10
+		.IF (SettingsGraphicsInterpolation)
+			mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
+		.ELSE
+			mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 		.ENDIF
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsMSAA)
 		print "graphics/msaa", 13, 10

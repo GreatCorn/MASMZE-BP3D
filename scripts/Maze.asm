@@ -56,7 +56,7 @@ MazeLayerPopupTimer	REAL4 0.0
 MazeLocked 			BPEnum MAZE_LOCK_NONE
 MazeSeed			DWORD 0		; Sneed's Feed & Seed (Formerly Chuck's)
 MazeSize			DWORD 5, 5, ?, ?	; Width, height, width-1, height-1
-MazeState 			BPEnum 0	; Used with intro and endings
+MazeState 			BPEnum MAZE_STATE_GAME	; Used with intro and endings
 MazeStateCallback	BPPtr 0
 MazeStateTimer		REAL4 0.0
 MazeType			BPEnum MAZE_TYPE_NORMAL
@@ -349,7 +349,9 @@ Maze_Finish PROC EXPORT
 	
 	; Clear all elements
 	mov MazeLocked, MAZE_LOCK_NONE
-	mov Wmblyk, WMBLYK_NONE
+	
+	; Reset entities
+	vinvoke Wmblyk_Spawn, WMBLYK_NONE
 	
 	fild MazeSize[8]
 	fmul f(2)
@@ -644,21 +646,50 @@ Maze_GetCellF PROC EXPORT X:REAL4, Y:REAL4
 	fldcw fpucw
 	
 	invoke Maze_GetCellI, X, Y
+	mov ecx, X
+	mov edx, Y
 	ret
 Maze_GetCellF ENDP
 
 ;   Get maze cell data from maze cell int coordinates.
 Maze_GetCellI PROC EXPORT X:SDWORD, Y:SDWORD
+	mov eax, X
+	mov ecx, Y
+	.IF (SDWORD PTR eax > MazeSize[8]) || (SDWORD PTR ecx > MazeSize[12])
+		xor al, al
+		ret
+	.ENDIF
 	Maze_ClampXYI
 	invoke bp2DArrayGetOffset, X, Y, MazeSize[0], 1
-	
-	mov ecx, X
-	mov edx, Y
+	mov pcx, pax
 	
 	add pax, Maze
 	mov al, BYTE PTR [pax]
 	ret
 Maze_GetCellI ENDP
+
+Maze_GetCellOffsetF PROC EXPORT X:REAL4, Y:REAL4
+	LOCAL fpucw:WORD
+	fnstcw fpucw
+	or fpucw, FPU_ROUND_TRUNC
+	fldcw fpucw
+	
+	fld X
+	fistp X
+	fld Y
+	fistp Y
+	sar X, 1	; /2
+	sar Y, 1	; /2
+	
+	xor fpucw, FPU_ROUND_TRUNC
+	fldcw fpucw
+	
+	Maze_ClampXYI
+	invoke bp2DArrayGetOffset, X, Y, MazeSize[0], 1
+	mov ecx, X
+	mov edx, Y
+	ret
+Maze_GetCellOffsetF ENDP
 
 Maze_GetRandomPos PROC EXPORT PosPtr:BPPtr
 	LOCAL pos:Vector2
@@ -709,6 +740,7 @@ Maze_ProcessState PROC EXPORT
 		.IF !(MazeStateTimer)
 			bpMEM32 MazeStateTimer, f(51)
 			mov MazeStateCallback, OFFSET mazeSafe
+			invoke alSourcePlay, SndSiren
 		.ENDIF
 		
 		fild MazeLayer
@@ -855,6 +887,19 @@ Maze_SpawnElements PROC EXPORT
 			invoke Maze_GetRandomPos, ADDR MazeKeyPos
 			Vector3Print MazeKeyPos
 		.ENDIF
+	
+		invoke nRand, MazeLayer	; Wmblyk
+		.IF (al > 3)
+			invoke nRand, 3
+			SWITCH eax
+				CASE 0
+					vinvoke Wmblyk_Spawn, WMBLYK_STILL
+				CASE 1
+					vinvoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
+				CASE 2
+					vinvoke Wmblyk_Spawn, WMBLYK_WALK
+			ENDSW
+		.ENDIF
 	.ENDIF
 	ret
 Maze_SpawnElements ENDP
@@ -994,17 +1039,16 @@ Maze_Fixed PROC EXPORT
 	
 	.IF (MazeLocked == MAZE_LOCK_LOCKED)	; Key
 		mov flVal, rv(flDistance, MazeKeyRot[0], MazeKeyRot[4])
-		fcmp flVal, f(0.02)
+		fcmp flVal, f(0.05)
 		.IF (Carry?)
-			mov MazeKeyRot[4], rv(flRandRange, 0, PI2)
+			mov MazeKeyRot[4], rv(flRandRange, PIN, PI)
 		.ENDIF
 		fld deltaFixed
 		fmul f(0.2)
 		fstp flVal
 		mov MazeKeyRot[0], rv(flLerpAngle, MazeKeyRot[0], MazeKeyRot[4], flVal)
 		
-		vinvoke Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeKeyPos
-		fstp flVal
+		mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeKeyPos)
 		fcmp flVal, f(1)
 		.IF (Carry?)
 			mov MazeLocked, MAZE_LOCK_UNLOCKED
@@ -1033,8 +1077,7 @@ Maze_Process PROC EXPORT
 		
 		; Detect exit door
 		.IF (MazeLocked == MAZE_LOCK_NONE) || (MazeLocked == MAZE_LOCK_UNLOCKED)
-			vinvoke Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeDoorPos
-			fstp flVal
+			mov flVal,vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET MazeDoorPos)
 			fcmp flVal, f(0.7)
 			.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)
 				mov PlrState, PLAYER_STATE_EXIT

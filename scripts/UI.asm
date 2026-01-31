@@ -146,6 +146,7 @@ UI_DrawDebug PROC EXPORT
 	RenderText real4$(CamPos.X), 16, 32
 	RenderText real4$(CamPos.Y), 112, 32
 	RenderText real4$(CamPos.Z), 208, 32
+	RenderText real4$(CamRot.Y), 304, 32
 	RenderText real4$(PlrSpeed), 16, 56
 	RenderText real4$(PlrSpeedScaled), 112, 56
 	RenderText real4$(PlrHealth), 16, 80
@@ -1526,7 +1527,7 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	LOCAL pxFmts[256]:DWORD, numFmts:DWORD, samples:DWORD, wglsamples:DWORD
 	LOCAL nameStr[32]:BYTE
 
-	UI_MENU_EFFECTS_HEIGHT	EQU UI_BTN_H*6 + UI_BTN_M*4 + UI_HR_H
+	UI_MENU_EFFECTS_HEIGHT	EQU UI_BTN_H*7 + UI_BTN_M*5 + UI_HR_H
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_EFFECTS_HEIGHT/2
@@ -1600,6 +1601,11 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	; Particles
 	invoke UI_Checkbox, StrMenuParticles, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsParticles
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Animation interpolation
+	invoke UI_Checkbox, StrMenuInterpolation, UIXFrom, ebx, \
+	OFFSET SettingsGraphicsInterpolation
 	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx

@@ -139,11 +139,16 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		mov pcx, ParSysPtr
 		.IF ([pcx].Billboard)
 			.IF ([pcx].Billboard & PARTICLE_BILLBOARD_Y)
-				vinvoke glRotatefr, CamRotL.Y, 0, f(-1), 0
+				fld CamRotL.Y
+				fadd PI
+				fstp Alpha
+				vinvoke glRotatefr, Alpha, 0, f(1), 0
 				mov pcx, ParSysPtr
 			.ENDIF
 			.IF ([pcx].Billboard & PARTICLE_BILLBOARD_X)
-				vinvoke glRotatefr, CamRotL.X, f(-1), 0, 0
+				mov eax, CamRotL.X
+				xor eax, FLT_NEG
+				vinvoke glRotatefr, eax, f(1), 0, 0
 			.ENDIF
 			invoke glRotatefr, [pbx].Rotation, 0, 0, f(1)
 		.ELSE
@@ -174,7 +179,9 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		
 		mov pcx, ParSysPtr
 		.IF ([pcx].Fade & PARTICLE_FADE_DIST)
-			vinvoke Vector32DDistanceSqr, ADDR [pbx].Position, OFFSET CamPosL
+			mov Dot.X,\
+				vrv(Vector32DDistanceSqr,ADDR [pbx].Position,OFFSET CamPosL)
+			fld Dot.X
 			fmul ParticleFadeDist
 			fsub f(0.5)
 			fstp Dot.X
@@ -319,6 +326,10 @@ Particles_Process ENDP
 Particles_Spawn PROC EXPORT ParSysPtr:BPPtr, Amount:DWORD
 	ASSUME pcx:PTR ParticleSystem
 	ASSUME pbx:PTR Particle
+	
+	.IF !(Amount)
+		ret
+	.ENDIF
 	
 	mov pcx, ParSysPtr
 	mov pbx, [pcx].Particles

@@ -2,8 +2,9 @@
 .model flat,stdcall
 option casemap:none
 
-BP_COMPATIBILITY_W9X	EQU <1>
-BP_ERROR_PASS			EQU <1>
+BP_COMPATIBILITY_W9X		EQU <1>
+BP_ERROR_PASS				EQU <1>
+BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
 IFDEF MODE_DEBUG
 	ECHO Compiling MASMZE-BP3D in debug mode.
@@ -86,7 +87,7 @@ IFNDEF real4$
 		.DATA?
 			localDbl REAL8 ?
 		.CODE
-		IF (OPATTR (FlVal)) AND 00010000y	; Register
+		IF (OPATTR FlVal) AND 00010000b	; Register
 			push FlVal
 			fld REAL4 PTR [psp]
 			add psp, SIZEOF BPPtr
@@ -353,8 +354,6 @@ delta20		REAL4 ?
 deltaFixed	REAL4 ?
 FPS			REAL4 ?
 
-FPUCW	WORD ?	; To store the x87 FPU codeword
-
 XInput BPBool ?
 
 ; Screen stuffs
@@ -437,13 +436,14 @@ GameInit PROC EXPORT
 	.IF !(rv(Settings_LoadGame))
 		; If no save game is present start intro sequence
 		mov PlrState, PLAYER_STATE_INTRO_DARK
+		mov MazeState, MAZE_STATE_SAFE
+	.ELSE
+		call GameStart
+		invoke alSourcePlay, SndAmb
 	.ENDIF
 	call CreateScene
 	
 	bpMEM32 ListParticle, MdlParticle
-	
-	;invoke Maze_Generate, 822896678
-	;invoke alSourcePlay, SndAmb
 	
 	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
 	ret
@@ -458,9 +458,7 @@ GameStart PROC EXPORT
 	
 	bpMEM32 FogDensity, f(0.5)
 	invoke alSourceStop, SndIntro
-	invoke alSourcePlay, SndSiren
 	
-	mov MazeState, MAZE_STATE_SAFE
 	invoke Maze_Generate, nRandSeed
 	ret
 GameStart ENDP
@@ -679,6 +677,7 @@ InitGraphics PROC EXPORT
 	.ENDIF
 	
 	bpMEM32 bpAnimationFPS, f(24)
+	bpMEM32 bpAnimInterpolateSpeed, f(1.5)
 	
 	invoke glHint, GL_FOG_HINT, GL_FASTEST
 	invoke glHint, GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST
@@ -841,6 +840,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'B'
 					.IF (Keys[VK_SHIFT])
 						invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
+					.ELSEIF (Keys[VK_CONTROL])
+						invoke Wmblyk_Spawn, WMBLYK_WALK
 					.ELSE
 						invoke Wmblyk_Spawn, WMBLYK_STILL
 					.ENDIF
@@ -876,7 +877,6 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					bpMEM32 MazeCurWallMDL, MdlWallSlit
 				CASE '7'
 					bpMEM32 MazeCurWallMDL, MdlWallSlant
-
 				ENDIF
 			ENDSW
 			
@@ -1117,7 +1117,14 @@ OnRender PROC EXPORT
 		invoke glLightfv, GL_LIGHT0, GL_POSITION, ADDR CamLightPos	; Draw light
 	.ENDIF
 	
+	Vector3Push CamRotL
+	;invoke Vector3Negate, ADDR CamRotL
+	fld CamRotL.Y
+	fadd PI
+	fchs
+	fstp CamRotL.Y
 	invoke glRotate3fvr, ADDR CamRotL	; Cam matrix
+	Vector3Pop CamRotL
 	Vector3Push CamPosL
 	invoke Vector3Negate, ADDR CamPosL
 	invoke glTranslate3fv, ADDR CamPosL
