@@ -127,85 +127,83 @@ MeshWmblyk			BPMesh?
 ScreenQuad	DWORD ?
 
 ; ----- TEXTURES -----
-TexAmbient		DWORD ?
-TexBricks		DWORD ?
-TexCompass		DWORD ?
-TexCompassWorld	DWORD ?
-TexConcrete		DWORD ?
-TexConcreteRoof	DWORD ?
-TexCroa			DWORD ?
-TexCursor		DWORD ?
-TexDiamond		DWORD ?
-TexDirt			DWORD ?
-TexDoor			DWORD ?
-TexDoorBlur		DWORD ?
-TexDust			DWORD ?
-TexEBD			DWORD ?, ?, ?
-TexEBDShadow	DWORD ?
-TexFacade		DWORD ?
-TexFloor		DWORD ?
-TexGamma		DWORD ?
-TexGlyph		DWORD 7 DUP(?)
-TexGlyphs		DWORD ?
-TexHbd			DWORD ?
-TexKey			DWORD ?
-TexKoluplyk		DWORD ?
-TexKubale		DWORD ?
-TexKubaleV		DWORD 9 DUP(?)
-TexLamp			DWORD ?
-TexLight		DWORD ?
-TexMap			DWORD ?
-TexMetal		DWORD ?
-TexMetalFloor	DWORD ?
-TexMetalRoof	DWORD ?
-TexMotrya		DWORD ?
-TexNoise		DWORD ?
-TexPaper		DWORD ?
-TexPipe			DWORD ?
-TexPlanks		DWORD ?
-TexPlaster		DWORD ?
-TexRain			DWORD ?
-TexRoof			DWORD ?
-TexSigns		DWORD ?
-TexShadow		DWORD ?
-TexSky			DWORD ?
-TexTaburetka	DWORD ?
-TexTileBig		DWORD ?
-TexTilefloor	DWORD ?
-TexTone			DWORD ?
-TexTram			DWORD ?
-TexTree			DWORD ?
-TexTutorial		DWORD ?
-TexTutorialJ	DWORD ?
-TexUIArrow		DWORD ?
-TexUICircle		DWORD ?
-TexVas			DWORD ?
-TexVebra		DWORD ?
-TexVignette		DWORD ?
-TexVignetteRed	DWORD ?
+TexAmbient			DWORD ?
+TexBricks			DWORD ?
+TexCompass			DWORD ?
+TexCompassWorld		DWORD ?
+TexConcrete			DWORD ?
+TexConcreteRoof		DWORD ?
+TexCroa				DWORD ?
+TexCursor			DWORD ?
+TexDiamond			DWORD ?
+TexDirt				DWORD ?
+TexDoor				DWORD ?
+TexDoorBlur			DWORD ?
+TexDust				DWORD ?
+TexEBD				DWORD ?, ?, ?
+TexEBDShadow		DWORD ?
+TexFacade			DWORD ?
+TexFloor			DWORD ?
+TexFloorLinoleum	DWORD ?
+TexFloorParquet		DWORD ?
+TexGamma			DWORD ?
+TexGlyph			DWORD 7 DUP(?)
+TexGlyphs			DWORD ?
+TexHbd				DWORD ?
+TexKey				DWORD ?
+TexKoluplyk			DWORD ?
+TexKubale			DWORD ?
+TexKubaleV			DWORD 9 DUP(?)
+TexLamp				DWORD ?
+TexLight			DWORD ?
+TexMap				DWORD ?
+TexMetal			DWORD ?
+TexMetalFloor		DWORD ?
+TexMetalRoof		DWORD ?
+TexMotrya			DWORD ?
+TexNoise			DWORD ?
+TexPaper			DWORD ?
+TexPipe				DWORD ?
+TexPlanks			DWORD ?
+TexPlaster			DWORD ?
+TexRain				DWORD ?
+TexRoof				DWORD ?
+TexSigns			DWORD ?
+TexShadow			DWORD ?
+TexSky				DWORD ?
+TexTaburetka		DWORD ?
+TexTileBig			DWORD ?
+TexTilefloor		DWORD ?
+TexTone				DWORD ?
+TexTram				DWORD ?
+TexTree				DWORD ?
+TexTutorial			DWORD ?
+TexTutorialJ		DWORD ?
+TexUIArrow			DWORD ?
+TexUICircle			DWORD ?
+TexVas				DWORD ?
+TexVebra			DWORD ?
+TexVignette			DWORD ?
+TexVignetteRed		DWORD ?
 
-TexVirdyaBlink	DWORD ?
-TexVirdyaDown	DWORD ?
-TexVirdyaN		DWORD ?
-TexVirdyaNeut	DWORD ?
-TexVirdyaUp		DWORD ?
+TexVirdyaBlink		DWORD ?
+TexVirdyaDown		DWORD ?
+TexVirdyaN			DWORD ?
+TexVirdyaNeut		DWORD ?
+TexVirdyaUp			DWORD ?
 
-TexWall			DWORD ?
-TexWB			DWORD ?
-TexWBBK			DWORD ?
-TexWBBKP		DWORD ?
-TexWBBK1		DWORD ?
-TexWhitewall	DWORD ?
+TexWall				DWORD ?
+TexWallPainted		DWORD ?
+TexWB				DWORD ?
+TexWBBK				DWORD ?
+TexWBBKP			DWORD ?
+TexWBBK1			DWORD ?
+TexWhitewall		DWORD ?
 
 TexWmblykHappy		DWORD ?
 TexWmblykNeutral	DWORD ?
 TexWmblykJumpscare	DWORD ?
-TexWmblykStr		DWORD ?
-TexWmblykL1			DWORD ?
-TexWmblykL2			DWORD ?
-TexWmblykL3			DWORD ?
-TexWmblykW1			DWORD ?
-TexWmblykW2			DWORD ?
+TexWmblykStr		DWORD ?, ?, ?, ?, ?, ?, ?
 
 ; ----- SOUNDS -----
 SndSectionStart	BYTE ?
@@ -291,7 +289,6 @@ LoadResources PROC EXPORT
 		; Load language strings
 		vinvoke LoadStrings, OFFSET SettingsMiscLanguage
 		
-		print "Loading fonts...", 9
 		invoke bpLoadFont, StrLangFontPath, OFFSET bpDefaultFont	; Main
 		mov bpTextNL, '#'
 		print "...done!", 13, 10
@@ -314,10 +311,10 @@ LoadResources PROC EXPORT
 		; ----- FONTS -----
 		print "Loading fonts...", 9
 		LoadFont "font\input\", OFFSET FntKeys	; Direct mapping to keys/axes
-		mov bpTextureFiltering, TRUE
+		;mov bpTextureFiltering, TRUE
 		LoadFont "font\input\ps\", OFFSET FntPS
 		LoadFont "font\input\xb\", OFFSET FntXB
-		mov bpTextureFiltering, FALSE
+		;mov bpTextureFiltering, FALSE
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_MODELS)
 		; ----- MODELS -----
@@ -512,6 +509,8 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexEBDShadow,	"assets\textures\EBDShadow.bpt"
 		LoadBPT OFFSET TexFacade,		"assets\textures\facade.bpt"
 		LoadBPT OFFSET TexFloor,		"assets\textures\floor.bpt"
+		LoadBPT OFFSET TexFloorLinoleum,"assets\textures\floorLinoleum.bpt"
+		LoadBPT OFFSET TexFloorParquet,	"assets\textures\floorParquet.bpt"
 		LoadBPT OFFSET TexGamma,		"assets\textures\gamma.bpt"
 		LoadBPT OFFSET TexGlyph[0],		"assets\textures\glyph1.bpt"
 		LoadBPT OFFSET TexGlyph[4],		"assets\textures\glyph2.bpt"
@@ -575,20 +574,20 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexVirdyaNeut,	"assets\textures\virdyaNeut.bpt"
 		LoadBPT OFFSET TexVirdyaUp,		"assets\textures\virdyaUp.bpt"
 		LoadBPT OFFSET TexWall,			"assets\textures\wall.bpt"
+		LoadBPT OFFSET TexWallPainted,	"assets\textures\wallPainted.bpt"
 		LoadBPT OFFSET TexWB,			"assets\textures\WB.bpt"
 		LoadBPT OFFSET TexWBBK,			"assets\textures\WBBK.bpt"
 		LoadBPT OFFSET TexWBBK1,		"assets\textures\WBBK1.bpt"
 		LoadBPT OFFSET TexWBBKP,		"assets\textures\WBBKP.bpt"
 		LoadBPT OFFSET TexWhitewall,	"assets\textures\whitewall.bpt"
-		LoadBPT OFFSET TexWmblykHappy,	"assets\textures\wmblykHappy.bpt"
 		LoadBPT OFFSET TexWmblykJumpscare,"assets\textures\wmblykJumpscare.bpt"
-		LoadBPT OFFSET TexWmblykL1,		"assets\textures\wmblykL1.bpt"
-		LoadBPT OFFSET TexWmblykL2,		"assets\textures\wmblykL2.bpt"
-		LoadBPT OFFSET TexWmblykL3,		"assets\textures\wmblykL3.bpt"
 		LoadBPT OFFSET TexWmblykNeutral,"assets\textures\wmblykNeutral.bpt"
-		LoadBPT OFFSET TexWmblykStr,	"assets\textures\wmblykStr.bpt"
-		LoadBPT OFFSET TexWmblykW1,		"assets\textures\wmblykW1.bpt"
-		LoadBPT OFFSET TexWmblykW2,		"assets\textures\wmblykW2.bpt"
+		LoadBPT OFFSET TexWmblykStr[0],	"assets\textures\wmblykHappy.bpt"
+		LoadBPT OFFSET TexWmblykStr[4],	"assets\textures\wmblykW2.bpt"
+		LoadBPT OFFSET TexWmblykStr[8],	"assets\textures\wmblykW1.bpt"
+		LoadBPT OFFSET TexWmblykStr[12],"assets\textures\wmblykStr.bpt"
+		LoadBPT OFFSET TexWmblykStr[16],"assets\textures\wmblykL1.bpt"
+		LoadBPT OFFSET TexWmblykStr[20],"assets\textures\wmblykL2.bpt"
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_SOUNDS)
 		; ----- SOUNDS -----

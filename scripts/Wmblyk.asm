@@ -30,6 +30,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 	ENDIF
 	.IF (State == WMBLYK_NONE)
 		invoke alSourceStop, SndWmblykB
+		invoke alSourceStop, SndWmblykStrM
 	.ELSEIF (State == WMBLYK_STILL)
 		invoke Maze_GetRandomPos, ADDR WmblykPos
 		
@@ -51,6 +52,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		mov WmblykAnimPlr.Mesh, OFFSET MeshWmblyk
 		mov WmblykAnimPlr.MeshUseNormals, FALSE
 		invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
+		bpMEM32 WmblykAnimPlr.Speed, f(1)
 		
 		invoke alSourcePlay, SndWmblykB
 		
@@ -107,8 +109,16 @@ Wmblyk_Draw PROC EXPORT
 		.ELSEIF (Wmblyk >= WMBLYK_WALK)
 			.IF (Wmblyk == WMBLYK_DEAD)
 				invoke glColor4fv, ADDR clBlack
+			.ELSEIF (Wmblyk == WMBLYK_STRANGLE)
+				fld WmblykStateVal
+				fadd f(1.5)
+				fmul f(2)
+				fistp flVal
+				mov pax, flVal
+				invoke glBindTexture, GL_TEXTURE_2D, TexWmblykStr[pax*4]
+			.ELSE
+				invoke glBindTexture, GL_TEXTURE_2D, TexWmblykNeutral
 			.ENDIF
-			invoke glBindTexture, GL_TEXTURE_2D, TexWmblykNeutral
 			
 			invoke bpDrawMesh, ADDR MeshWmblyk
 		.ENDIF
@@ -403,6 +413,7 @@ Wmblyk_Process PROC EXPORT
 					.ENDIF
 				.ENDIF
 				
+				IFDEF MODE_DEBUG
 				print "Wmblyk "
 				.IF (ways & WMBLYK_FORWARD)
 					print "can go forward, "
@@ -417,6 +428,7 @@ Wmblyk_Process PROC EXPORT
 					print "can solely recede rearwards"
 				.ENDIF
 				print " ", 13, 10
+				ENDIF
 				
 				.IF (ways > WMBLYK_FORWARD)
 					.REPEAT
@@ -454,27 +466,39 @@ Wmblyk_Process PROC EXPORT
 		
 		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET CamPos)
 		fcmp flVal, f(0.75)
-		.IF (Carry?)
+		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)
 			mov PlrState, PLAYER_STATE_STRANGLE
 			mov Wmblyk, WMBLYK_STRANGLE
 			mov WmblykStateVal, 0
 			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykStrangle
 			bpMEM32 WmblykAnimPlr.Timer, f(10)
+			invoke alSourcePlay, SndWmblykStr
+			
+			invoke alSourcef, SndWmblykStrM, AL_GAIN, 0
+			invoke alSourcePlay, SndWmblykStrM
+			
+			mov UIFadeVal, 0
 		.ENDIF
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 	.ELSEIF (Wmblyk == WMBLYK_STRANGLE)
-		; StateVal is strangling state (-1.0 -- 1.0)
+		; StateVal is strangling state (-1.0 -- 1.2)		
 		mov WmblykRot, rv(Vector32DAngle, OFFSET WmblykPos, OFFSET CamPos)
+		fld WmblykRot
+		fsincos
+		fsubr CamPos.Z
+		fstp WmblykPos.Z
+		fsubr CamPos.X
+		fstp WmblykPos.X
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 		
 		fld deltaTime
-		fmul f(0.5)
+		fmul f(0.33333333)
 		fsubr WmblykStateVal
 		fst WmblykStateVal
 		fadd f(1)
-		fmul f(20)
+		fmul f(18)
 		fsub WmblykAnimPlr.Timer
 		fmul f(0.5)
 		fstp WmblykAnimPlr.Speed
@@ -482,23 +506,48 @@ Wmblyk_Process PROC EXPORT
 		.IF (InputAction)
 			fild MazeLayer
 			fsubr f(100)
-			fmul f(0.003)
+			fmul f(0.002)
 			fadd WmblykStateVal
 			fstp WmblykStateVal
 			mov InputAction, 0
 		.ENDIF
 		
-		print real4$(WmblykStateVal), 13, 10
+		.IF (PlrState == PLAYER_STATE_STRANGLE)
+			invoke alGetSourcef, SndWmblykStrM, AL_GAIN, ADDR flVal
+			mov flVal, rv(flLerp, flVal, f(1), deltaTime)
+			invoke alSourcef, SndWmblykStrM, AL_GAIN, flVal
+		.ENDIF
 		
-		fcmp WmblykStateVal, f(1)
-		.IF (!Carry?) || (Zero?)
+		fcmp WmblykStateVal, f(1.2)
+		.IF (!Carry?)
 			mov PlrState, PLAYER_STATE_GETUP
 			mov Wmblyk, WMBLYK_DEAD
 			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykDead
 			bpMEM32 WmblykAnimPlr.Speed, f(1)
+			invoke Vector32DCopy, ADDR CamPos, ADDR CamPosL
+			
+			invoke alGetSourcef, SndWmblykStrM, AL_GAIN, ADDR WmblykStateVal
+			invoke alSourceStop, SndWmblykB
 		.ENDIF
 	.ELSEIF (Wmblyk == WMBLYK_DEAD)
+		; StateVal is SndStrM gain
+		.IF (WmblykStateVal)
+			mov WmblykStateVal, rv(flLerp, WmblykStateVal, 0, delta2)
+			invoke alSourcef, SndWmblykStrM, AL_GAIN, WmblykStateVal
+			fcmp WmblykStateVal, f(0.01)
+			.IF (Carry?)
+				invoke alSourceStop, SndWmblykStrM
+				mov WmblykStateVal, 0
+			.ENDIF
+		.ENDIF
+		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
+		
+		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET CamPos)
+		fcmp flVal, f(32)
+		.IF (!Carry?)
+			mov Wmblyk, WMBLYK_NONE
+		.ENDIF
 	.ENDIF
 	ret
 Wmblyk_Process ENDP

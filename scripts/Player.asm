@@ -49,7 +49,7 @@ CamPosA			Vector3 <>
 CamRotA			Vector3 <>
 
 CamLightPos		Vector4 <0.0, 0.0, 0.0, 1.0>
-CamFOV			REAL4 70.0
+CamFOV			REAL4 75.0
 PlrGlyphs		DWORD 7
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
@@ -282,7 +282,11 @@ Plr_ProcessState PROC EXPORT
 		invoke Vector3Copy, ADDR v3Val, ADDR CamRotA
 		invoke Vector3Add, ADDR v3Val, ADDR CamRot
 		invoke Vector3Copy, ADDR CamRotL, ADDR v3Val
-		invoke Vector3Set, ADDR CamPos, f(1), CamHeight, f(1)
+		fild MazeEntranceCell
+		fmul f(2)
+		fadd f(1)
+		fstp CamPos.X
+		invoke Vector2Set, ADDR CamPos.Y, CamHeight, f(1)
 		invoke Vector3Copy, ADDR v3Val, ADDR CamPosA
 		invoke Vector3Add, ADDR v3Val, ADDR CamPos
 		invoke Vector3Copy, ADDR CamPosL, ADDR v3Val
@@ -324,12 +328,13 @@ Plr_ProcessState PROC EXPORT
 		.IF (MazeState != MAZE_STATE_END)
 			.IF !(PlrStateTimer)
 				.IF (PlrState == PLAYER_STATE_INTRO_DARK)
+					bpMEM32 CamFOV, f(60)
 					bpMEM32 PlrStateTimer, f(5)
 					
 					mov PlrStateCallback, OFFSET plrIntroProgress
 					
 					invoke Vector3Set, ADDR CamPos, 0, CamHeight, 0
-					invoke Vector2Set, ADDR CamRot, f(-0.5), f(-3.1)
+					invoke Vector2Set, ADDR CamRot, f(-0.5), 0
 					mov PlrCanControl, FALSE
 					invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, f(1)
 					invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, 0
@@ -350,13 +355,13 @@ Plr_ProcessState PROC EXPORT
 					fmul f(0.1)
 					fstp flVal
 					mov CamRot.X, rv(flLerp, CamRot.X, f(-0.6), flVal)
-					mov CamRot.Y, rv(flLerp, CamRot.Y, f(-3), deltaTime)
+					mov CamRot.Y, rv(flLerp, CamRot.Y, f(-0.1), deltaTime)
 					
 					mov FogDensity, rv(flLerp, FogDensity, f(0.5), flVal)
 				CASE PLAYER_STATE_INTRO_TEXT1
 					invoke Vector32DSet, ADDR CamPos, 0, f(7)
 					invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
-					invoke Vector2Set, ADDR CamRot, 0, PI
+					invoke Vector2Set, ADDR CamRot, 0, 0
 					invoke Vector2Copy, ADDR CamRotL, ADDR CamRot
 				CASE PLAYER_STATE_INTRO_OUTSKIRTS
 					bpMEM32 PlrSpeedScaled, f(2)
@@ -392,25 +397,58 @@ Plr_ProcessState PROC EXPORT
 	.ELSEIF (PlrState == PLAYER_STATE_STRANGLE)
 		mov PlrCanControl, FALSE
 		mov CamRot.Y, vrv(Vector32DAngle, OFFSET CamPos, OFFSET WmblykPos)
-		bpMEM32 CamRot.X, WmblykStateVal
+		;bpMEM32 CamRot.X, WmblykStateVal
 		fld WmblykStateVal
-		fmul f(0.5)
+		fmul st, st
+		fstp CamRot.X
+		.IF (WmblykStateVal & FLT_NEG)
+			xor CamRot.X, FLT_NEG
+		.ENDIF
+		fld CamRot.X
+		fsub f(0.3)
+		fstp CamRot.X
+		
+		; Change cam height
+		fld WmblykStateVal
+		fsub f(0.2)
 		fmul f(0.2)
 		fabs
 		fsubr CamHeight
 		fstp CamPos.Y
 		
+		; Translate by forward
 		fld WmblykStateVal
-		fadd f(0.5)
-		fmul f(0.5)
+		fadd f(1)
+		fmul f(0.6)
 		fstp flVal
-		
 		invoke Vector32DCopy, ADDR v3Val, ADDR PlrForward
 		invoke Vector32DMulF, ADDR v3Val, flVal
 		invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
 		invoke Vector32DAdd, ADDR CamPosL, ADDR v3Val
 		
+		; Time limit
+		fld deltaTime
+		fmul f(0.1)
+		fadd UIFadeVal
+		fstp UIFadeVal
+		
+		
 		invoke Plr_Shake, f(0.01)
+		
+		vinvoke UI_ShowSubtitles, StrCCFightBack, f(0.1)
+	.ELSEIF (PlrState == PLAYER_STATE_GETUP)
+		fld deltaTime
+		fmul f(0.3)
+		fstp flVal
+		
+		mov UIFadeVal, vrv(flMove, UIFadeVal, 0, flVal)
+		.IF !(UIFadeVal)
+			mov PlrCanControl, TRUE
+			mov PlrState, PLAYER_STATE_GAME
+		.ENDIF
+		
+		mov CamPos.Y, rv(flLerp, CamPos.Y, CamHeight, deltaTime)
+		mov CamRot.X, rv(flLerp, CamRot.X, 0, deltaTime)
 	.ENDIF
 	
 	.IF (PlrStateTimer)
@@ -512,7 +550,6 @@ Plr_Process PROC EXPORT
 	invoke bpProcessAnimPlayer, ADDR CamAnimPlr, deltaTime
 	.IF (CamAnimPlr.TrackPtr == OFFSET AnimCamWalk)
 		.IF (al)	; Frame changed
-			print str$(CamAnimPlr.FrameOffset), 13, 10
 			.IF (CamAnimPlr.FrameOffset >= 5 * SIZEOF BPAnimFramePRS)
 				invoke Plr_Step, 255
 			.ELSE

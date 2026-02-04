@@ -69,6 +69,7 @@ SV	StrMenuInAction
 SV	StrMenuInConfirm
 SV	StrIntroText1
 SV	StrIntroText2
+SV	StrCCFightBack
 SV	StrCCKey
 
 StrSectionEnd		BYTE ?

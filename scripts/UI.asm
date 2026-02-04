@@ -99,6 +99,7 @@ UIScroll			SDWORD 0
 UIScrollLimit		DWORD 0
 UIScrollPressed		BPBool FALSE
 UIScrollable		BPBool FALSE
+UIShadow			BPBool FALSE
 UISliderRange		REAL4 0.0, 1.0
 UISliderStep		REAL4 0.0
 UISliderZeros		BPBool TRUE
@@ -587,15 +588,13 @@ ActionStrPtr:BPPtr
 	sub X, 4*UI_SCALE
 	add Y, (UI_BTN_H-8*UI_SCALE)/2
 	invoke glTranslatei, X, Y, 0
-	invoke glScalef, f(%(8*UI_SCALE)), f(%(8*UI_SCALE)), 0
+	invoke glScalef, f(%(8*UI_SCALE)), f(%(8*UI_SCALE)), FLT_1
 	mov pax, MapPtr
 	movzx pax, BYTE PTR [pax]
 	shl pax, 2
 	.IF (BindType == BIND_KEY_MOUSE)
-		;add pax, OFFSET FntKeys
 		mov pax, FntKeys[pax]
 	.ELSEIF (BindType == BIND_JOYSTICK)
-		;add pax, OFFSET FntJoystick
 		.IF (XInput)
 			mov pax, FntXB[pax]
 		.ELSE
@@ -803,11 +802,77 @@ UI_Slider ENDP
 UI_Text PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, HorAlign:BPEnum, \
 VerAlign:BPEnum
 	invoke glEnable, GL_ALPHA_TEST
+	.IF (UIShadow)
+		sub psp, 16
+		invoke glGetFloatv, GL_CURRENT_COLOR, psp
+		invoke glColor4fv, ADDR clBlack
+		add X, UI_SCALE
+		add Y, UI_SCALE
+		invoke bpRenderText, String, X, Y, HorAlign, VerAlign
+		sub X, UI_SCALE
+		sub Y, UI_SCALE
+		call glColor4f
+	.ENDIF
 	invoke bpRenderText, String, X, Y, HorAlign, VerAlign
 	invoke glDisable, GL_ALPHA_TEST
 	ret
 UI_Text ENDP
 
+UI_TextInput PROC EXPORT String:BPPtr, InputKey:BPPtr, InputJ:BPPtr, X:SDWORD, \
+Y:SDWORD
+	LOCAL inPos:BPPtr
+	
+	call glPushMatrix
+	.IF (InputMethod == INPUT_KEYBOARD_MOUSE)
+		mov pax, InputKey
+		shl pax, 2
+		mov pax, FntKeys[pax]
+	.ELSE
+		mov pax, InputJ
+		shl pax, 2
+		.IF (XInput)
+			mov pax, FntXB[pax]
+		.ELSE
+			mov pax, FntPS[pax]
+		.ENDIF
+	.ENDIF
+	invoke glBindTexture, GL_TEXTURE_2D, pax
+
+	mov pax, String
+	.WHILE (BYTE PTR [pax])
+		.IF (BYTE PTR [pax] == '_') || (BYTE PTR [pax] == 255)
+			mov BYTE PTR [pax], 255
+			mov inPos, pax
+		.ENDIF
+		inc pax
+	.ENDW
+	mov pcx, String
+	sub pax, pcx
+	sub inPos, pcx
+	shl inPos, 1	; *2
+	sub pax, inPos
+	
+	push pax
+	fild BPPtr PTR [psp]
+	fmul bpFontWidth
+	fmul bpFontSpacing
+	fmul f(0.5)
+	fisubr X
+	fistp REAL4 PTR [psp]
+	pop pcx
+	mov eax, Y
+	sub eax, 4*UI_SCALE
+	invoke glTranslatei, ecx, eax, 0
+	invoke glEnable, GL_BLEND
+	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+	invoke glScalef, f(%(8*UI_SCALE)), f(%(8*UI_SCALE)), FLT_1
+	invoke glCallList, ScreenQuad
+	invoke glDisable, GL_BLEND
+	call glPopMatrix
+	
+	invoke UI_Text, String, X, Y, BP_ALIGN_CENTER, BP_ALIGN_CENTER
+	ret
+UI_TextInput ENDP
 
 UI_DrawComboboxMenu PROC EXPORT
 	LOCAL menuHeight:DWORD, actualHeight:DWORD
@@ -1334,6 +1399,9 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_GRAPHICS_HEIGHT/2
 	
+	.IF (SettingsGraphicsWindowMode == BP_WINDOW_MODE_FULLSCREEN)
+		mov UIDisabled, TRUE
+	.ENDIF
 	invoke UI_Combobox, StrMenuResolution, UIXFrom, ebx, UICB_RESOLUTION
 	.IF (al)
 		mov UIScroll, 0
@@ -1962,7 +2030,7 @@ UI_Draw PROC EXPORT
 		.ENDIF
 		
 		; Fade
-		.IF (UIFade)
+		.IF (UIFadeVal)
 			invoke glEnable, GL_BLEND
 			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 			invoke glBindTexture, GL_TEXTURE_2D, 0
@@ -2096,11 +2164,21 @@ UI_Draw PROC EXPORT
 			BP_ALIGN_CENTER, BP_ALIGN_CENTER
 	ENDSW
 	
+	; Subtitles
 	.IF (UISubtitlesStr)
-		mov eax, FMain.ScreenSize.y
-		sub eax, UI_BTN_H*2
-		invoke UI_Text, UISubtitlesStr, ScreenHalf.X, eax, \
-		BP_ALIGN_CENTER, BP_ALIGN_CENTER
+		mov UIShadow, TRUE
+		mov ecx, FMain.ScreenSize.y
+		sub ecx, UI_BTN_H*2
+		; Input hint subtitles
+		SWITCH UISubtitlesStr
+			CASE StrCCFightBack
+				invoke UI_TextInput, UISubtitlesStr, IBAction, JBAction, \
+				ScreenHalf.X, ecx
+			DEFAULT
+				invoke UI_Text, UISubtitlesStr, ScreenHalf.X, ecx, \
+				BP_ALIGN_CENTER, BP_ALIGN_CENTER
+		ENDSW
+		mov UIShadow, FALSE
 	.ENDIF
 	
 	; Draw combobox menus

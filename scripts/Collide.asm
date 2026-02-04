@@ -1,3 +1,51 @@
+Collide_Distance PROC EXPORT Pos:BPPtr, ColliderPos:BPPtr, Radius:REAL4, \
+Distance:REAL4
+	LOCAL dirAngle:REAL4
+	mov pax, Pos	; Pos uses only X and Z, omitting Y
+	mov pcx, ColliderPos
+	
+	.IF (!Distance)	; Distance isn't provided, calculate it
+		fld REAL4 PTR [pax]
+		fsub REAL4 PTR [pcx]
+		fmul st, st
+		fld REAL4 PTR [pax+8]
+		fsub REAL4 PTR [pcx+8]
+		fmul st, st
+		fadd
+		fstp Distance
+		fcmp Distance, Radius
+		.IF (Carry?)
+			mov pax, Pos
+			mov pcx, ColliderPos
+		.ELSE
+			ret
+		.ENDIF
+	.ENDIF
+	
+	fld REAL4 PTR [pax+8]	; Get the angle from collider to collidee
+	fsub REAL4 PTR [pcx+8]
+	fld REAL4 PTR [pax]
+	fsub REAL4 PTR [pcx]
+	fpatan
+	fstp dirAngle
+	
+	fld Radius		; Get the distance to push collidee out of radius
+	fsub Distance
+	fstp Radius
+	
+	fld dirAngle	; Push collidee's position by angle (cos & sin)
+	fsincos
+	
+	fmul Radius
+	fadd REAL4 PTR [pax]
+	fstp REAL4 PTR [pax]
+	
+	fmul Radius
+	fadd REAL4 PTR [pax+8]
+	fstp REAL4 PTR [pax+8]
+	ret
+Collide_Distance ENDP
+
 Collide_Rectangle PROC EXPORT Pos:BPPtr, ColliderPos:BPPtr, \
 ColliderWidth:REAL4, ColliderHeight:REAL4
 	LOCAL inRange:BYTE, localPos:Vector2

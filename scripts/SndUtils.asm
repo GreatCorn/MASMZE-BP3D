@@ -133,7 +133,8 @@ SndPlaying ENDP
 
 SndSetPos PROC EXPORT ALSound:DWORD, PosPtr:BPPtr
 	mov pax, PosPtr
-	vinvoke alSource3f, ALSound, AL_POSITION, REAL4 PTR [pax], CamPosL.Y, \
+	mov ecx, CamPosL.Y	; vinvoke messes something up in UASM
+	invoke alSource3f, ALSound, AL_POSITION, REAL4 PTR [pax], ecx, \
 	REAL4 PTR [pax+8]
 	ret
 SndSetPos ENDP
