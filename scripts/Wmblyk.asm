@@ -111,9 +111,10 @@ Wmblyk_Draw PROC EXPORT
 				invoke glColor4fv, ADDR clBlack
 			.ELSEIF (Wmblyk == WMBLYK_STRANGLE)
 				fld WmblykStateVal
-				fadd f(1.5)
-				fmul f(2)
+				fadd f(1)
+				fmul f(3)
 				fistp flVal
+				mov flVal, rv(intClamp, flVal, 0, (SIZEOF TexWmblykStr)/4-2)
 				mov pax, flVal
 				invoke glBindTexture, GL_TEXTURE_2D, TexWmblykStr[pax*4]
 			.ELSE
@@ -472,8 +473,10 @@ Wmblyk_Process PROC EXPORT
 			mov WmblykStateVal, 0
 			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykStrangle
 			bpMEM32 WmblykAnimPlr.Timer, f(10)
+					
+			bpMPM UIDeadTipStr, StrTipWmblyk
+						
 			invoke alSourcePlay, SndWmblykStr
-			
 			invoke alSourcef, SndWmblykStrM, AL_GAIN, 0
 			invoke alSourcePlay, SndWmblykStrM
 			
@@ -482,7 +485,8 @@ Wmblyk_Process PROC EXPORT
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 	.ELSEIF (Wmblyk == WMBLYK_STRANGLE)
-		; StateVal is strangling state (-1.0 -- 1.2)		
+		; StateVal is strangling state (-1.0 -- 1.0)
+		; WmblykHeadRot is cooldown timer for StateVal to prevent anim stutter
 		mov WmblykRot, rv(Vector32DAngle, OFFSET WmblykPos, OFFSET CamPos)
 		fld WmblykRot
 		fsincos
@@ -493,15 +497,22 @@ Wmblyk_Process PROC EXPORT
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 		
-		fld deltaTime
-		fmul f(0.33333333)
-		fsubr WmblykStateVal
-		fst WmblykStateVal
-		fadd f(1)
-		fmul f(18)
-		fsub WmblykAnimPlr.Timer
-		fmul f(0.5)
-		fstp WmblykAnimPlr.Speed
+		mov eax, WmblykHeadRot.X
+		.IF (eax & FLT_NEG)
+			fld deltaTime
+			fmul f(0.33333333)
+			fsubr WmblykStateVal
+			fst WmblykStateVal
+			fadd f(1)
+			fmul f(20)
+			fsub WmblykAnimPlr.Timer
+			fmul f(0.5)
+			fstp WmblykAnimPlr.Speed
+		.ELSE
+			fld WmblykHeadRot.X
+			fsub deltaTime
+			fstp WmblykHeadRot.X
+		.ENDIF
 		
 		.IF (InputAction)
 			fild MazeLayer
@@ -510,36 +521,31 @@ Wmblyk_Process PROC EXPORT
 			fadd WmblykStateVal
 			fstp WmblykStateVal
 			mov InputAction, 0
+			bpMEM32 WmblykHeadRot.X, f(0.1)
 		.ENDIF
 		
 		.IF (PlrState == PLAYER_STATE_STRANGLE)
-			invoke alGetSourcef, SndWmblykStrM, AL_GAIN, ADDR flVal
-			mov flVal, rv(flLerp, flVal, f(1), deltaTime)
-			invoke alSourcef, SndWmblykStrM, AL_GAIN, flVal
-		.ENDIF
+			invoke SndFade, SndWmblykStrM, f(1), deltaTime
 		
-		fcmp WmblykStateVal, f(1.2)
-		.IF (!Carry?)
-			mov PlrState, PLAYER_STATE_GETUP
-			mov Wmblyk, WMBLYK_DEAD
-			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykDead
-			bpMEM32 WmblykAnimPlr.Speed, f(1)
-			invoke Vector32DCopy, ADDR CamPos, ADDR CamPosL
-			
-			invoke alGetSourcef, SndWmblykStrM, AL_GAIN, ADDR WmblykStateVal
-			invoke alSourceStop, SndWmblykB
-		.ENDIF
-	.ELSEIF (Wmblyk == WMBLYK_DEAD)
-		; StateVal is SndStrM gain
-		.IF (WmblykStateVal)
-			mov WmblykStateVal, rv(flLerp, WmblykStateVal, 0, delta2)
-			invoke alSourcef, SndWmblykStrM, AL_GAIN, WmblykStateVal
-			fcmp WmblykStateVal, f(0.01)
-			.IF (Carry?)
-				invoke alSourceStop, SndWmblykStrM
-				mov WmblykStateVal, 0
+			fcmp WmblykStateVal, f(1)
+			.IF (!Carry?)
+				mov PlrState, PLAYER_STATE_GETUP
+				mov Wmblyk, WMBLYK_DEAD
+				invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykDead
+				bpMEM32 WmblykAnimPlr.Speed, f(1)
+				invoke Vector32DCopy, ADDR CamPos, ADDR CamPosL
+				
+				invoke alSourceStop, SndWmblykB
+			.ELSE
+				fcmp WmblykStateVal, f(-1)
+				.IF (Carry?)
+					mov PlrState, PLAYER_STATE_DYING
+					bpMEM32 WmblykStateVal, f(-1)
+				.ENDIF
 			.ENDIF
 		.ENDIF
+	.ELSEIF (Wmblyk == WMBLYK_DEAD)
+		invoke SndFade, SndWmblykStrM, 0, delta2
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 		

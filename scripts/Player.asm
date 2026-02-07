@@ -50,6 +50,7 @@ CamRotA			Vector3 <>
 
 CamLightPos		Vector4 <0.0, 0.0, 0.0, 1.0>
 CamFOV			REAL4 75.0
+CamBaseFOV		REAL4 75.0
 PlrGlyphs		DWORD 7
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
@@ -328,7 +329,7 @@ Plr_ProcessState PROC EXPORT
 		.IF (MazeState != MAZE_STATE_END)
 			.IF !(PlrStateTimer)
 				.IF (PlrState == PLAYER_STATE_INTRO_DARK)
-					bpMEM32 CamFOV, f(60)
+					bpMEM32 CamBaseFOV, f(60)
 					bpMEM32 PlrStateTimer, f(5)
 					
 					mov PlrStateCallback, OFFSET plrIntroProgress
@@ -400,6 +401,7 @@ Plr_ProcessState PROC EXPORT
 		;bpMEM32 CamRot.X, WmblykStateVal
 		fld WmblykStateVal
 		fmul st, st
+		fmul f(1.5)
 		fstp CamRot.X
 		.IF (WmblykStateVal & FLT_NEG)
 			xor CamRot.X, FLT_NEG
@@ -410,7 +412,7 @@ Plr_ProcessState PROC EXPORT
 		
 		; Change cam height
 		fld WmblykStateVal
-		fsub f(0.2)
+		fsub f(0.5)
 		fmul f(0.2)
 		fabs
 		fsubr CamHeight
@@ -418,9 +420,10 @@ Plr_ProcessState PROC EXPORT
 		
 		; Translate by forward
 		fld WmblykStateVal
-		fadd f(1)
-		fmul f(0.6)
+		fadd f(0.5)
+		;fmul f(2)
 		fstp flVal
+		mov flVal, rv(flClamp, flVal, f(0.2), f(2))
 		invoke Vector32DCopy, ADDR v3Val, ADDR PlrForward
 		invoke Vector32DMulF, ADDR v3Val, flVal
 		invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
@@ -429,8 +432,11 @@ Plr_ProcessState PROC EXPORT
 		; Time limit
 		fld deltaTime
 		fmul f(0.1)
+		fld st
 		fadd UIFadeVal
 		fstp UIFadeVal
+		fsubr PlrHealth
+		fstp PlrHealth
 		
 		
 		invoke Plr_Shake, f(0.01)
@@ -449,6 +455,28 @@ Plr_ProcessState PROC EXPORT
 		
 		mov CamPos.Y, rv(flLerp, CamPos.Y, CamHeight, deltaTime)
 		mov CamRot.X, rv(flLerp, CamRot.X, 0, deltaTime)
+	.ELSEIF (PlrState == PLAYER_STATE_DYING) || (PlrState == PLAYER_STATE_DEAD)
+		mov PlrCanControl, FALSE
+		
+		.IF (PlrState == PLAYER_STATE_DYING)
+			mov CamPos.Y, rv(flLerp, CamPos.Y, 0, deltaTime)
+			mov CamRot.X, rv(flLerp, CamRot.X, PIHalfN, deltaTime)
+			mov UIFadeVal, vrv(flLerp, UIFadeVal, f(1.1), deltaTime)
+			
+			fcmp UIFadeVal, f(1)
+			.IF (!Carry?)
+				mov PlrState, PLAYER_STATE_DEAD
+				
+				invoke alSourcePlay, SndDeath
+			.ENDIF
+		.ELSE
+			mov UIFadeVal, FLT_1
+		.ENDIF
+	
+		.IF (Wmblyk)
+			invoke SndFade, SndWmblykStrM, 0, deltaTime
+			invoke SndFade, SndWmblykB, 0, deltaTime
+		.ENDIF
 	.ENDIF
 	
 	.IF (PlrStateTimer)
@@ -569,7 +597,26 @@ Plr_Process PROC EXPORT
 	invoke alListenerfv, AL_POSITION, ADDR CamPosL
 	invoke alListenerfv, AL_ORIENTATION, ADDR PlrForward
 	
-	; Health that affects afterimage
+	; Health restore
+	.IF (PlrState != PLAYER_STATE_STRANGLE)
+		fcmp PlrHealth, f(1)
+		.IF (Carry?)
+			fld deltaTime
+			fmul f(0.2)
+			fadd PlrHealth
+			fstp PlrHealth
+		.ELSE
+			mov PlrHealth, FLT_1
+		.ENDIF
+	.ENDIF
+	
+	; Health affect FOV
+	fld PlrHealth
+	fmul f(5)
+	fadd CamBaseFOV
+	fstp CamFOV
+	
+	; Health affect afterimage
 	fld PlrHealth
 	.IF (FXAfterimageHighFPS)
 		fmul f(3)
@@ -586,6 +633,14 @@ Plr_Process PROC EXPORT
 		sub pcx, SIZEOF BPPtr*3
 	.ENDIF
 	mov FXAfterimageEnd, pcx
+	
+	; Health check (one hundred dollar (because US haha get it))
+	.IF (PlrState != PLAYER_STATE_DYING) && (PlrState != PLAYER_STATE_DEAD)
+		fcmp PlrHealth
+		.IF (Carry?)
+			mov PlrState, PLAYER_STATE_DYING
+		.ENDIF
+	.ENDIF
 	ret
 Plr_Process ENDP
 

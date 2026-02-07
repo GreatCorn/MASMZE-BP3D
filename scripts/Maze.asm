@@ -443,6 +443,18 @@ Maze_Finish PROC EXPORT
 	; Reset entities
 	vinvoke Wmblyk_Spawn, WMBLYK_NONE
 	
+	; Change layer string
+	invoke IntToStr, StrLayerNumPtr, MazeLayer
+	call UI_ShowLayerPopup
+	
+	; Random flavor text subtitles
+	invoke nRand, 20
+	.IF (pax < 7) && (pax != UISubLastRandom)
+		mov UISubLastRandom, pax
+		vinvoke UI_ShowSubtitles, StrCCRandom1[pax*SIZEOF BPPtr], UISubDur
+	.ENDIF
+	
+	; Set door world position
 	fild MazeSize[8]
 	fmul f(2)
 	fadd f(1)
@@ -1264,7 +1276,7 @@ Maze_Fixed PROC EXPORT
 		fcmp flVal, f(1)
 		.IF (Carry?)
 			mov MazeLocked, MAZE_LOCK_UNLOCKED
-			vinvoke UI_ShowSubtitles, StrCCKey, f(2)
+			vinvoke UI_ShowSubtitles, StrCCKey, UISubDur
 			invoke SndSetPos, SndKey, ADDR MazeKeyPos
 			invoke alSourcePlay, SndKey
 		.ENDIF

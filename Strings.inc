@@ -69,7 +69,22 @@ SV	StrMenuInAction
 SV	StrMenuInConfirm
 SV	StrIntroText1
 SV	StrIntroText2
+SV	StrLayerNumber
+SV	StrYouDied
 SV	StrCCFightBack
 SV	StrCCKey
+SV	StrCCRandom1
+SV	StrCCRandom2
+SV	StrCCRandom3
+SV	StrCCRandom4
+SV	StrCCRandom5
+SV	StrCCRandom6
+SV	StrCCRandom7
+SV	StrTipEBD
+SV	StrTipHBD
+SV	StrTipKubale
+SV	StrTipVirdya
+SV	StrTipWB
+SV	StrTipWmblyk
 
 StrSectionEnd		BYTE ?

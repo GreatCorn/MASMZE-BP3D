@@ -5,7 +5,6 @@
 *.exe
 *.exp
 *.ini
-*.lib
 *.lst
 *.mtl
 *.obj

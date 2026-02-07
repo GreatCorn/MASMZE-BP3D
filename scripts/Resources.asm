@@ -262,10 +262,10 @@ SndSectionEnd	BYTE ?
 SV	MACRO StrID:REQ
 	StrID	BPPtr ?
 ENDM
+StrLayerNumPtr	BPPtr ?
 include Strings.inc
 
 .CODE
-LoadStrings PROTO :BPPtr
 
 FreeStrings PROC EXPORT
 	print "Freeing strings", 9
@@ -805,6 +805,11 @@ LoadStrings PROC EXPORT FilePath:BPPtr
 		.ENDW
 	.ENDIF
 	
+	vinvoke StrLength, StrLayerNumber
+	sub pax, 3
+	add pax, StrLayerNumber
+	mov StrLayerNumPtr, pax
+	
     invoke bpFree, rv(GetProcessHeap), 0, buffer
 	print "...done!", 13, 10
 	ret
@@ -859,6 +864,15 @@ IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD
 	pop ebx
 	ret
 IntToStr ENDP
+
+StrLength PROC EXPORT StrPtr:BPPtr
+	IFDEF strlen
+		invoke strlen, StrPtr
+	ELSE
+		invoke crt_strlen, StrPtr
+	ENDIF
+	ret
+StrLength ENDP
 
 StrToFl PROC EXPORT StrPtr:BPPtr, FlPtr:BPPtr
 	IFDEF atof	; WinInc

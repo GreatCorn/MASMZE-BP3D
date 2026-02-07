@@ -124,8 +124,27 @@ MulSoundPitch PROC EXPORT Factor:REAL4
 	ret
 MulSoundPitch ENDP
 
+SndFade PROC EXPORT ALSound:DWORD, TargetGain:REAL4, T:REAL4
+	LOCAL gainVal:REAL4
+	
+	.IF (rv(SndPlaying, ALSound) == AL_PLAYING)
+		invoke alGetSourcef, ALSound, AL_GAIN, ADDR gainVal
+		mov gainVal, rv(flLerp, gainVal, TargetGain, T)
+		invoke alSourcef, ALSound, AL_GAIN, gainVal
+		
+		.IF (TargetGain == 0)
+			fcmp gainVal, f(0.01)
+			.IF (Carry?)
+				invoke alSourceStop, ALSound
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	ret
+SndFade ENDP
+
 SndPlaying PROC EXPORT ALSound:DWORD
 	LOCAL playVal:DWORD
+	
 	invoke alGetSourcei, ALSound, AL_SOURCE_STATE, ADDR playVal
 	mov eax, playVal
 	ret

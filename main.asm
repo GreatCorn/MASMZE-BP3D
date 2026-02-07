@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-BP_COMPATIBILITY_W9X		EQU <1>
+;BP_COMPATIBILITY_W9X		EQU <1>
 BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
@@ -452,7 +452,7 @@ GameInit ENDP
 GameStart PROC EXPORT
 	mov PlrState, PLAYER_STATE_ENTER
 	mov PlrStateCallback, 0
-	bpMEM32 CamFOV, f(75)
+	bpMEM32 CamBaseFOV, f(75)
 	
 	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0
 	invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, f(0.5)

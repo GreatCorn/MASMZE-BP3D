@@ -21,7 +21,7 @@ ENUML
 		E	UI_STATE_MENU_SETTINGS_CONTROLS_BINDINGS
 		
 ; UI parameters and values
-UI_SCALE	EQU 4
+UI_SCALE	EQU 6
 UI_BRD_M	EQU 4*UI_SCALE				; Border margin
 UI_BTN_H	EQU 12*UI_SCALE				; Button height; height of text (used 
 										; without margin)
@@ -55,6 +55,9 @@ ENUM	UIPP_NONE, \
 		UIPP_DISCARD, \
 		UIPP_RESTART, \
 		UIPP_BIND
+.CONST
+UISubDur	REAL4 2.0
+
 
 .DATA
 IFDEF MODE_DEBUG
@@ -91,8 +94,6 @@ UIFocusBeforePopup	BYTE 0
 UIFocusType			BPEnum UI_NONE
 UIPressed			BYTE 0
 
-UIInvRot			REAL4 0.0
-
 UIMove				SDWORD 0
 UIPopupMenu			DWORD 0
 UIScroll			SDWORD 0
@@ -106,8 +107,15 @@ UISliderZeros		BPBool TRUE
 UISmallButtons		BPBool FALSE
 UIXFrom				SDWORD 0
 
+UIDeadTipStr		BPPtr 0
+
+UILayerPopup		BPEnum UI_FADE_NONE
+UILayerPopupTimer	REAL4 0.0
+UILayerPopupY		REAL4 0.0
+
 UISubtitlesStr		BPPtr 0
 UISubtitlesTimer	REAL4 0.0
+UISubLastRandom		BPPtr 0
 
 UISTTPos			SDWORD 0
 UISTTDir 			BPBool FALSE
@@ -636,11 +644,7 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	mov eax, REAL4 PTR [pax]
 	mov pcx, real4$(eax)
 	push pcx
-	IFDEF strlen
-		invoke strlen, pcx
-	ELSE
-		invoke crt_strlen, pcx
-	ENDIF
+	invoke StrLength, pcx
 	pop pcx
 	.IF (UISliderZeros)
 		IFDEF BP_WININC
@@ -1991,6 +1995,13 @@ UI_MouseFocus PROC EXPORT X:SDWORD, Y:SDWORD, ID:BYTE
 	ret
 UI_MouseFocus ENDP
 
+UI_ShowLayerPopup PROC EXPORT
+	mov UILayerPopup, UI_FADE_IN
+	bpMEM32 UILayerPopupTimer, f(2)
+	bpMEM32 UILayerPopupY, f(%(-UI_BTN_H - UI_BTN_M))
+	ret
+UI_ShowLayerPopup ENDP
+
 UI_ShowSubtitles PROC EXPORT String:BPPtr, Duration:REAL4
 	bpMPM UISubtitlesStr, String
 	bpMEM32 UISubtitlesTimer, Duration
@@ -2006,7 +2017,7 @@ UI_Draw PROC EXPORT
 	invoke glDisable, GL_DEPTH_TEST
 	invoke glDisable, GL_LIGHTING
 	
-	; Render downscale overlay
+	; Render downscaled overlay
 	invoke glMatrixMode, GL_PROJECTION
 	call glLoadIdentity
 	.IF (FXRenderSize.X)
@@ -2026,6 +2037,28 @@ UI_Draw PROC EXPORT
 			invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
 			invoke glBindTexture, GL_TEXTURE_2D, TexVignette
 			invoke glCallList, ScreenQuad
+			invoke glDisable, GL_BLEND
+		.ENDIF
+		
+		; Red vignette
+		.IF (SettingsGraphicsVignette) && (PlrHealth != FLT_1)
+			invoke glEnable, GL_ALPHA_TEST
+			invoke glEnable, GL_BLEND
+			invoke glAlphaFunc, GL_GREATER, PlrHealth
+			invoke glBlendFunc, GL_ZERO, GL_ONE_MINUS_SRC_COLOR
+			fld1
+			fsub PlrHealth
+			sub psp, SIZEOF BPPtr*3
+			fstp REAL4 PTR [psp]
+			mov eax, REAL4 PTR [psp]
+			mov REAL4 PTR [psp+SIZEOF BPPtr], eax
+			mov REAL4 PTR [psp+(SIZEOF BPPtr*2)], eax
+			call glColor3f
+			invoke glBindTexture, GL_TEXTURE_2D, TexVignetteRed
+			invoke glCallList, ScreenQuad
+			invoke glAlphaFunc, GL_GREATER, f(0.5)
+			invoke glColor3fv, OFFSET clWhite
+			invoke glDisable, GL_ALPHA_TEST
 			invoke glDisable, GL_BLEND
 		.ENDIF
 		
@@ -2152,6 +2185,8 @@ UI_Draw PROC EXPORT
 	
 	invoke glColor4fv, OFFSET clWhite
 	
+	; Texts
+	; Player state-based
 	SWITCH PlrState
 		CASE PLAYER_STATE_INTRO_TEXT1
 			invoke UI_Text, StrIntroText1, ScreenHalf.X, ScreenHalf.Y, \
@@ -2162,11 +2197,24 @@ UI_Draw PROC EXPORT
 		CASE PLAYER_STATE_INTRO_TEXT3
 			invoke UI_Text, OFFSET AppName, ScreenHalf.X, ScreenHalf.Y, \
 			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+		CASE PLAYER_STATE_DEAD
+			mov ebx, ScreenHalf.Y
+			sub ebx, UI_BTN_H + UI_BTN_M
+			invoke UI_Text, StrYouDied, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+			add ebx, UI_BTN_H + UI_BTN_M
+			invoke UI_Text, StrLayerNumber, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+			add ebx, UI_BTN_H + UI_BTN_M
+			.IF (UIDeadTipStr)
+				invoke UI_Text, UIDeadTipStr, ScreenHalf.X, ebx, \
+				BP_ALIGN_CENTER, BP_ALIGN_CENTER
+			.ENDIF
 	ENDSW
 	
+	mov UIShadow, TRUE
 	; Subtitles
 	.IF (UISubtitlesStr)
-		mov UIShadow, TRUE
 		mov ecx, FMain.ScreenSize.y
 		sub ecx, UI_BTN_H*2
 		; Input hint subtitles
@@ -2178,8 +2226,21 @@ UI_Draw PROC EXPORT
 				invoke UI_Text, UISubtitlesStr, ScreenHalf.X, ecx, \
 				BP_ALIGN_CENTER, BP_ALIGN_CENTER
 		ENDSW
-		mov UIShadow, FALSE
 	.ENDIF
+	
+	; Layer popup
+	.IF (UILayerPopup) || (UIState == UI_STATE_MENU_PAUSE)
+		call glPushMatrix
+		.IF (UIState == UI_STATE_MENU_PAUSE)
+			mov eax, f(%(UI_BTN_M))
+		.ELSE
+			mov eax, UILayerPopupY
+		.ENDIF
+		invoke glTranslatef, f(%(UI_BTN_M)), eax, 0
+		invoke UI_Text, StrLayerNumber, 0, 0, 0, 0
+		call glPopMatrix
+	.ENDIF
+	mov UIShadow, FALSE
 	
 	; Draw combobox menus
 	.IF (UIComboboxMenu > 0)
@@ -2259,6 +2320,28 @@ UI_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 	.ENDIF
+	; Layer popup (at the start of layer)
+	.IF (UILayerPopup)
+		.IF (UILayerPopup == UI_FADE_IN)
+			mov UILayerPopupY, rv(flLerp, UILayerPopupY, f(%UI_BTN_M), delta10)
+		.ELSEIF (UILayerPopup == UI_FADE_OUT)
+			mov UILayerPopupY, rv(flLerp, UILayerPopupY, f(%(-UI_BTN_H-UI_BTN_M)), delta10)
+		.ENDIF
+		
+		fld UILayerPopupTimer
+		fsub deltaTime
+		fstp UILayerPopupTimer
+		fcmp UILayerPopupTimer
+		.IF (Carry?)
+			.IF (UILayerPopup == UI_FADE_OUT)
+				mov UILayerPopup, UI_FADE_NONE
+			.ELSE
+				inc UILayerPopup
+				bpMEM32 UILayerPopupTimer, f(2)
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	
 	
 	; Do menu stuff
 	.IF (UIState != UI_STATE_GAME)
