@@ -21,7 +21,7 @@ ENUML
 		E	UI_STATE_MENU_SETTINGS_CONTROLS_BINDINGS
 		
 ; UI parameters and values
-UI_SCALE	EQU 6
+UI_SCALE	EQU 4
 UI_BRD_M	EQU 4*UI_SCALE				; Border margin
 UI_BTN_H	EQU 12*UI_SCALE				; Button height; height of text (used 
 										; without margin)
@@ -2331,8 +2331,9 @@ UI_Process PROC EXPORT
 		fld UILayerPopupTimer
 		fsub deltaTime
 		fstp UILayerPopupTimer
-		fcmp UILayerPopupTimer
-		.IF (Carry?)
+		
+		mov eax, UILayerPopupTimer
+		.IF (eax & FLT_NEG)
 			.IF (UILayerPopup == UI_FADE_OUT)
 				mov UILayerPopup, UI_FADE_NONE
 			.ELSE
@@ -2457,8 +2458,8 @@ UI_Process PROC EXPORT
 		fsub deltaTime
 		fstp UISubtitlesTimer
 		
-		fcmp UISubtitlesTimer
-		.IF (Carry?)
+		mov eax, UISubtitlesTimer
+		.IF (eax & FLT_NEG)
 			mov UISubtitlesStr, 0
 			mov UISubtitlesTimer, 0
 		.ENDIF

@@ -398,7 +398,7 @@ CreateScene PROC EXPORT
 CreateScene ENDP
 
 DrawScene PROC EXPORT
-	IFDEF MODE_DEBUG
+	IFDEF MODE_DEBUG	; Wireframe
 		.IF (Keys[VK_MBUTTON])
 			invoke glPolygonMode, GL_FRONT_AND_BACK, GL_LINE
 			invoke glDisable, GL_TEXTURE_2D
@@ -409,10 +409,13 @@ DrawScene PROC EXPORT
 		call Plr_DrawIntro
 	.ENDIF
 	call Maze_Draw
+	.IF (Kubale)
+		call Wmblyk_Draw
+	.ENDIF
 	.IF (Wmblyk)
 		call Wmblyk_Draw
 	.ENDIF
-	IFDEF MODE_DEBUG
+	IFDEF MODE_DEBUG	; Wireframe cancel
 		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
 		invoke glEnable, GL_TEXTURE_2D
 	ENDIF
@@ -706,6 +709,9 @@ InitGraphics ENDP
 ProcessScene PROC EXPORT
 	.IF (Maze)
 		call Maze_Process
+	.ENDIF
+	.IF (Kubale)
+		call Kubale_Process
 	.ENDIF
 	.IF (Wmblyk)
 		call Wmblyk_Process

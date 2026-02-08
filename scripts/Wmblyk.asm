@@ -218,8 +218,8 @@ Wmblyk_Process PROC EXPORT
 		
 		invoke Plr_Shake, flVal
 		
-		fcmp WmblykStateVal
-		.IF (Carry?)
+		mov eax, WmblykStateVal
+		.IF (eax & FLT_NEG)
 			invoke nRand, 2
 			.IF (al)
 				mov Wmblyk, WMBLYK_NONE
@@ -234,8 +234,8 @@ Wmblyk_Process PROC EXPORT
 		fsub deltaTime
 		fstp WmblykStateVal
 		
-		fcmp WmblykStateVal
-		.IF (Carry?)
+		mov eax, WmblykStateVal
+		.IF (eax & FLT_NEG)
 			wmblykSpawnBehind
 			
 			mov WmblykStateVal, FLT_1
@@ -274,8 +274,9 @@ Wmblyk_Process PROC EXPORT
 			fmul f(5)
 			fstp flVal
 			mov WmblykStateVal, rv(flLerp, WmblykStateVal, f(-0.1), flVal)
-			fcmp WmblykStateVal
-			.IF (Carry?)
+			
+			mov eax, WmblykStateVal
+			.IF (eax & FLT_NEG)
 				invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
 			.ENDIF
 		.ENDIF

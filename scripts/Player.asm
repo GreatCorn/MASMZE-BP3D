@@ -484,8 +484,8 @@ Plr_ProcessState PROC EXPORT
 		fsub deltaTime
 		fstp PlrStateTimer
 		
-		fcmp PlrStateTimer
-		.IF (Carry?)
+		mov eax, PlrStateTimer
+		.IF (eax & FLT_NEG)
 			mov PlrStateTimer, 0
 			.IF (PlrStateCallback)
 				call PlrStateCallback
@@ -636,8 +636,8 @@ Plr_Process PROC EXPORT
 	
 	; Health check (one hundred dollar (because US haha get it))
 	.IF (PlrState != PLAYER_STATE_DYING) && (PlrState != PLAYER_STATE_DEAD)
-		fcmp PlrHealth
-		.IF (Carry?)
+		mov eax, PlrHealth
+		.IF (eax & FLT_NEG)
 			mov PlrState, PLAYER_STATE_DYING
 		.ENDIF
 	.ENDIF

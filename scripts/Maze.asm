@@ -957,8 +957,8 @@ Maze_ProcessState PROC EXPORT
 		fsubr f(1)
 		fstp flVal
 		
-		fcmp flVal
-		.IF (Carry?)
+		mov eax, flVal
+		.IF (eax & FLT_NEG)
 			mov flVal, 0
 		.ENDIF
 		
@@ -994,8 +994,8 @@ Maze_ProcessState PROC EXPORT
 		fsub deltaTime
 		fstp MazeStateTimer
 		
-		fcmp MazeStateTimer
-		.IF (Carry?)
+		mov eax, MazeStateTimer
+		.IF (eax & FLT_NEG)
 			mov MazeStateTimer, 0
 			.IF (MazeStateCallback)
 				call MazeStateCallback
@@ -1030,8 +1030,8 @@ Maze_ProcessState PROC EXPORT
 		fsubr f(1)
 		fstp flVal
 		
-		fcmp flVal
-		.IF (Carry?)
+		mov eax, flVal
+		.IF (eax & FLT_NEG)
 			mov flVal, 0
 		.ENDIF
 		
@@ -1108,6 +1108,17 @@ Maze_SpawnElements PROC EXPORT
 			mov MazeLocked, MAZE_LOCK_LOCKED
 			invoke Maze_GetRandomPos, ADDR MazeKeyPos
 			Vector3Print MazeKeyPos
+		.ENDIF
+		
+		invoke nRand, MazeLayer	; Kubale
+		.IF (al > 8) && (MazeTram == MAZE_TRAM_NONE)
+			invoke nRand, 10
+			.IF !(al) || !(KubaleAppeared)
+				push KUBALE_EVENT
+			.ELSE
+				push KUBALE_ACTIVE
+			.ENDIF
+			call Kubale_Spawn
 		.ENDIF
 	
 		invoke nRand, MazeLayer	; Wmblyk
