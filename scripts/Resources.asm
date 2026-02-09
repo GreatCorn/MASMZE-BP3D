@@ -14,6 +14,7 @@ ENUM	LOADING_TEXT, \
 AnimCamEnter		BPAnimTrack <>
 AnimCamExit			BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
+AnimKubaleMove		BPAnimTrack <>	
 AnimWmblykCrawl		BPAnimTrack <>
 AnimWmblykDead		BPAnimTrack <>
 AnimWmblykStrangle	BPAnimTrack <>
@@ -52,7 +53,6 @@ MdlHbdS				DWORD ?
 MdlKey				DWORD ?
 MdlKoluplykDig		DWORD ?, ?, ?, ?
 MdlKoluplykShop		DWORD ?, ?
-MdlKubale			DWORD ?, ?, ?, ?
 MdlLamp				DWORD ?
 MdlMotrya			DWORD ?, ?, ?, ?
 MdlNeqaotor			DWORD ?
@@ -113,15 +113,9 @@ MdlWbWalk			DWORD ?, ?, ?
 MdlWires			DWORD ?
 MdlWmblykBody		DWORD ?
 MdlWmblykBodyG		DWORD ?
-MdlWmblykCrawl		DWORD ?, ?
-MdlWmblykDead		DWORD ?
 MdlWmblykHead		DWORD ?
-MdlWmblykStr		DWORD ?, ?, ?
-MdlWmblykStrL		DWORD ?, ?, ?
-MdlWmblykStrW		DWORD ?, ?, ?
-MdlWmblykTram		DWORD ?
-MdlWmblykWalk		DWORD ?, ?, ?, ?
 
+MeshKubale			BPMesh?
 MeshWmblyk			BPMesh?
 
 ScreenQuad	DWORD ?
@@ -293,16 +287,20 @@ LoadResources PROC EXPORT
 		mov bpTextNL, '#'
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_ANIMATIONS)
-		print "Loading animations...", 9
+		print "Loading animations...", 9		
 		LoadBPA OFFSET AnimCamEnter,		"assets\anim\camEnter.bpa"
 		LoadBPA OFFSET AnimCamExit,			"assets\anim\camExit.bpa"
 		LoadBPA OFFSET AnimCamWalk,			"assets\anim\camWalk.bpa"
 		mov AnimCamWalk.Looping, TRUE
+		
+		LoadBPA OFFSET AnimKubaleMove,		"assets\anim\kubaleMove.bpa"
+		mov AnimKubaleMove.Looping, TRUE
+		
 		LoadBPA OFFSET AnimWmblykCrawl,		"assets\anim\wmblykCrawl.bpa"
 		mov AnimWmblykCrawl.Looping, TRUE
 		LoadBPA OFFSET AnimWmblykDead,		"assets\anim\wmblykDead.bpa"
 		LoadBPA OFFSET AnimWmblykStrangle,	"assets\anim\wmblykStrangle.bpa"
-		;mov AnimWmblykStrangle.Looping, TRUE
+		
 		LoadBPA OFFSET AnimWmblykWalk,		"assets\anim\wmblykWalk.bpa"
 		mov AnimWmblykWalk.Looping, TRUE
 		
@@ -345,10 +343,6 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlKoluplykDig[12],	"assets\models\koluplykDig4.bpl"
 		LoadBPL OFFSET MdlKoluplykShop[0],	"assets\models\koluplykShop1.bpl"
 		LoadBPL OFFSET MdlKoluplykShop[4],	"assets\models\koluplykShop2.bpl"
-		LoadBPL OFFSET MdlKubale[0],		"assets\models\kubale1.bpl"
-		LoadBPL OFFSET MdlKubale[4],		"assets\models\kubale2.bpl"
-		LoadBPL OFFSET MdlKubale[8],		"assets\models\kubale3.bpl"
-		LoadBPL OFFSET MdlKubale[12],		"assets\models\kubale4.bpl"
 		LoadBPL OFFSET MdlLamp,				"assets\models\lamp.bpl"
 		LoadBPL OFFSET MdlMotrya[0],		"assets\models\motrya1.bpl"
 		LoadBPL OFFSET MdlMotrya[4],		"assets\models\motrya2.bpl"
@@ -452,25 +446,9 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlWires,			"assets\models\wires.bpl"
 		LoadBPL OFFSET MdlWmblykBody,		"assets\models\wmblykBody.bpl"
 		LoadBPL OFFSET MdlWmblykBodyG,		"assets\models\wmblykBodyG.bpl"
-		LoadBPL OFFSET MdlWmblykCrawl[0],	"assets\models\wmblykCrawl1.bpl"
-		LoadBPL OFFSET MdlWmblykCrawl[4],	"assets\models\wmblykCrawl2.bpl"
-		LoadBPL OFFSET MdlWmblykDead,		"assets\models\wmblykDead.bpl"
 		LoadBPL OFFSET MdlWmblykHead,		"assets\models\wmblykHead.bpl"
-		LoadBPL OFFSET MdlWmblykStr[0],		"assets\models\wmblykStr0.bpl"
-		LoadBPL OFFSET MdlWmblykStr[4],		"assets\models\wmblykStr1.bpl"
-		LoadBPL OFFSET MdlWmblykStr[8],		"assets\models\wmblykStr2.bpl"
-		LoadBPL OFFSET MdlWmblykStrL[0],	"assets\models\wmblykStrL0.bpl"
-		LoadBPL OFFSET MdlWmblykStrL[4],	"assets\models\wmblykStrL1.bpl"
-		LoadBPL OFFSET MdlWmblykStrL[8],	"assets\models\wmblykStrL2.bpl"
-		LoadBPL OFFSET MdlWmblykStrW[0],	"assets\models\wmblykStrW0.bpl"
-		LoadBPL OFFSET MdlWmblykStrW[4],	"assets\models\wmblykStrW1.bpl"
-		LoadBPL OFFSET MdlWmblykStrW[8],	"assets\models\wmblykStrW2.bpl"
-		LoadBPL OFFSET MdlWmblykTram,		"assets\models\wmblykTram.bpl"
-		LoadBPL OFFSET MdlWmblykWalk[0],	"assets\models\wmblykWalk1.bpl"
-		LoadBPL OFFSET MdlWmblykWalk[4],	"assets\models\wmblykWalk2.bpl"
-		LoadBPL OFFSET MdlWmblykWalk[8],	"assets\models\wmblykWalk3.bpl"
-		LoadBPL OFFSET MdlWmblykWalk[12],	"assets\models\wmblykWalk4.bpl"
 		
+		LoadBPM OFFSET MeshKubale,			"assets\models\kubale.bpm"
 		LoadBPM OFFSET MeshWmblyk,			"assets\models\wmblyk.bpm"
 
 		mov ScreenQuad, rv(glGenLists, 1)

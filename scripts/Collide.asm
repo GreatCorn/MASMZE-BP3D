@@ -13,15 +13,16 @@ Distance:REAL4
 		fmul st, st
 		fadd
 		fstp Distance
-		fcmp Distance, Radius
-		.IF (Carry?)
-			mov pax, Pos
-			mov pcx, ColliderPos
-		.ELSE
-			ret
-		.ENDIF
 	.ENDIF
 	
+	fcmp Distance, Radius
+	.IF (Carry?)
+		mov pax, Pos
+		mov pcx, ColliderPos
+	.ELSE
+		ret
+	.ENDIF
+		
 	fld REAL4 PTR [pax+8]	; Get the angle from collider to collidee
 	fsub REAL4 PTR [pcx+8]
 	fld REAL4 PTR [pax]

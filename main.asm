@@ -410,7 +410,7 @@ DrawScene PROC EXPORT
 	.ENDIF
 	call Maze_Draw
 	.IF (Kubale)
-		call Wmblyk_Draw
+		call Kubale_Draw
 	.ENDIF
 	.IF (Wmblyk)
 		call Wmblyk_Draw
