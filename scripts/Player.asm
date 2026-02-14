@@ -432,9 +432,6 @@ Plr_ProcessState PROC EXPORT
 		; Time limit
 		fld deltaTime
 		fmul f(0.1)
-		fld st
-		fadd UIFadeVal
-		fstp UIFadeVal
 		fsubr PlrHealth
 		fstp PlrHealth
 		
@@ -443,18 +440,19 @@ Plr_ProcessState PROC EXPORT
 		
 		vinvoke UI_ShowSubtitles, StrCCFightBack, f(0.1)
 	.ELSEIF (PlrState == PLAYER_STATE_GETUP)
-		fld deltaTime
-		fmul f(0.3)
+		fld PlrHealth
+		fmul delta2
 		fstp flVal
 		
-		mov UIFadeVal, vrv(flMove, UIFadeVal, 0, flVal)
-		.IF !(UIFadeVal)
+		mov CamRot.X, rv(flLerp, CamRot.X, 0, flVal)
+		mov flVal, rv(flAbs, CamRot.X)
+		fcmp flVal, f(0.1)
+		.IF (Carry?)
 			mov PlrCanControl, TRUE
 			mov PlrState, PLAYER_STATE_GAME
 		.ENDIF
 		
 		mov CamPos.Y, rv(flLerp, CamPos.Y, CamHeight, deltaTime)
-		mov CamRot.X, rv(flLerp, CamRot.X, 0, deltaTime)
 	.ELSEIF (PlrState == PLAYER_STATE_DYING) || (PlrState == PLAYER_STATE_DEAD)
 		mov PlrCanControl, FALSE
 		
@@ -463,16 +461,20 @@ Plr_ProcessState PROC EXPORT
 			mov CamRot.X, rv(flLerp, CamRot.X, PIHalfN, deltaTime)
 			mov UIFadeVal, vrv(flLerp, UIFadeVal, f(1.1), deltaTime)
 			
-			fcmp UIFadeVal, f(1)
+			fcmp UIFadeDisp, f(1)
 			.IF (!Carry?)
 				mov PlrState, PLAYER_STATE_DEAD
-				
 				invoke alSourcePlay, SndDeath
 			.ENDIF
 		.ELSE
 			mov UIFadeVal, FLT_1
 		.ENDIF
-	
+		
+		; Fade sounds
+		.IF (Kubale)
+			invoke SndFade, SndKubale, 0, deltaTime
+			invoke SndFade, SndKubaleV, 0, deltaTime
+		.ENDIF
 		.IF (Wmblyk)
 			invoke SndFade, SndWmblykStrM, 0, deltaTime
 			invoke SndFade, SndWmblykB, 0, deltaTime
@@ -569,12 +571,18 @@ Plr_Process PROC EXPORT
 	fst PlrForward.X
 	fstp PlrRight.Z
 	
+	; Move & rotate
 	.IF (PlrCanControl)
 		call Plr_Control
 	.ENDIF
 	
 	call Plr_ProcessState
 	
+	.IF (Maze)
+		invoke Maze_Collide, ADDR CamPos, f(0.7), TRUE
+	.ENDIF
+	
+	; Animation (+ stepping sounds)
 	invoke bpProcessAnimPlayer, ADDR CamAnimPlr, deltaTime
 	.IF (CamAnimPlr.TrackPtr == OFFSET AnimCamWalk)
 		.IF (al)	; Frame changed

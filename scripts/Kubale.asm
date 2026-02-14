@@ -1,14 +1,23 @@
 ENUM	KUBALE_NONE, \
 		KUBALE_EVENT, \
 		KUBALE_ACTIVE
+		
+ENUM	KUBALE_ACT_NONE, \
+		KUBALE_ACT_MOVE, \
+		KUBALE_ACT_ATTACK
+
+.CONST
+KubaleDot		REAL4 0.1				; Smaller dot product will move Kubale
 
 .DATA
 Kubale			BPEnum KUBALE_NONE		; Kubale state
+KubaleAction	BPBool KUBALE_ACT_NONE
+KubaleActionP	BPBool KUBALE_ACT_NONE
 KubaleAnimPlr	BPAnimPlayer <>
 KubaleAppeared	BPBool FALSE			; If Kubale ever appeared
 KubaleRot		REAL4 0.0				; Kubale rotation (radians)
 KubalePos		Vector3 <0.0, 0.0, 0.0>	; The act of transferring the Kubale
-KubaleInkblot	DWORD 0					; Kubale inkblot index
+KubaleInkblot	BPPtr 0					; Kubale inkblot index
 KubaleVision	REAL4 0.0				; Kubale vision value (alpha, gain)
 
 .CODE
@@ -30,14 +39,11 @@ Kubale_Spawn PROC EXPORT State:BPEnum
 	.ELSEIF (State == KUBALE_ACTIVE)
 		invoke Maze_GetRandomPos, ADDR KubalePos
 		
-		invoke alSourcePlay, SndKubaleV
-		
 		mov KubaleAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init animator
-		;mov KubaleAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 		mov KubaleAnimPlr.Mesh, OFFSET MeshKubale
 		invoke bpAnimPlay, ADDR KubaleAnimPlr, ADDR AnimKubaleMove
-		bpMEM32 KubaleAnimPlr.Speed, f(10)
-	
+		bpMEM32 KubaleAnimPlr.Speed, f(2)
+		
 		print "active, at "
 		Vector3Print KubalePos
 	.ENDIF
@@ -91,29 +97,135 @@ Kubale_Process PROC EXPORT
 		mov FogDensity, rv(flLerp, FogDensity, f(0.5), delta2)
 		
 		mov dist, rv(Vector32DDistanceSqr, ADDR KubalePos, ADDR CamPos)
-		invoke Collide_Distance, ADDR CamPos, ADDR KubalePos, f(0.7), dist
 		
 		mov flVal, rv(Plr_FrustumDot, ADDR KubalePos)
-		fcmp flVal, f(0.3)
-		.IF (Carry?)	; Invisible
-			print real4$(flVal), 13, 10
-			invoke bpProcessAnimPlayer, ADDR KubaleAnimPlr, deltaTime
+		fcmp flVal, KubaleDot
+		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)	; Invisible
+			fcmp dist, f(2)
+			.IF (Carry?)
+				or KubaleAction, KUBALE_ACT_ATTACK
+			.ELSE
+				and KubaleAction, not KUBALE_ACT_ATTACK
+			.ENDIF
+			fcmp dist, f(1)
+			.IF (!Carry?)
+				or KubaleAction, KUBALE_ACT_MOVE
+				
+				invoke alSourcefv, SndKubale, AL_POSITION, ADDR KubalePos
+				
+				fld dist
+				fmul deltaTime
+				fmul f(1.5)
+				fadd delta2
+				fstp flVal
+				
+				mov KubaleRot, rv(Vector32DAngle,OFFSET KubalePos,OFFSET CamPos)
+				
+				fld KubaleRot
+				fsincos
+				fmul flVal
+				fadd KubalePos.Z
+				fstp KubalePos.Z
+				fmul flVal
+				fadd KubalePos.X
+				fstp KubalePos.X
+				
+				invoke bpProcessAnimPlayer, ADDR KubaleAnimPlr, deltaTime
+			.ELSE
+				and KubaleAction, not KUBALE_ACT_MOVE
+			.ENDIF
+		.ELSE
+			and KubaleAction, not KUBALE_ACT_MOVE
+			and KubaleAction, not KUBALE_ACT_ATTACK
+		.ENDIF
+			
+		; Kollisions
+		fcmp dist, f(32)
+		.IF (Carry?)
+			.IF (Maze) && (KubaleAction & KUBALE_ACT_MOVE)	; Just in case
+				invoke Maze_Collide, ADDR KubalePos, f(1.6), FALSE
+			.ENDIF
+			
+			; Player collision
+			invoke Collide_Distance, ADDR CamPos, ADDR KubalePos, \
+			f(0.5), dist
+			
+			; Wmblyk
+			.IF (Wmblyk == WMBLYK_STILL)
+				vinvoke Collide_Distance, OFFSET KubalePos, \
+				OFFSET WmblykPos, f(0.8), 0
+			.ENDIF
+		.ENDIF
+				
+		.IF (KubaleAction & KUBALE_ACT_ATTACK)
+			mov KubaleVision, rv(flLerp, KubaleVision, FLT_1, delta2)
+			
+			fld PlrHealth
+			fsub deltaTime
+			fstp PlrHealth
+			
+			bpMPM UIDeadTipStr, StrTipKubale
+		.ELSE
+			mov KubaleVision, rv(flLerp, KubaleVision, f(-0.1), delta2)
+			
+			.IF (KubaleVision & FLT_NEG)
+				mov KubaleVision, 0
+				invoke alSourcePause, SndKubaleV
+			.ENDIF
 		.ENDIF
 		
-		fcmp dist, f(1000)
+		mov pax, SIZEOF TexKubaleV
+		shr pax, 2
+		mov KubaleInkblot, rv(nRand, pax)
+		shl KubaleInkblot, 2
+		invoke alSourcef, SndKubaleV, AL_GAIN, KubaleVision
+		
+		; Do action trigger stuff
+		push pbx
+		mov bl, KubaleAction
+		.IF (KubaleActionP != bl)
+			mov bh, KubaleAction
+			and bh, KUBALE_ACT_MOVE
+			mov al, KubaleActionP
+			and al, KUBALE_ACT_MOVE
+			.IF (bh != al)
+				.IF (bh)
+					invoke alSourcePlay, SndKubale
+				.ELSE
+					invoke alSourcePause, SndKubale
+				.ENDIF
+			.ENDIF
+			
+			mov bh, KubaleAction
+			and bh, KUBALE_ACT_ATTACK
+			mov al, KubaleActionP
+			and al, KUBALE_ACT_ATTACK
+			.IF (bh != al)
+				.IF (bh) && (rv(SndPlaying, SndKubaleV) != AL_PLAYING)
+					invoke alSourcePlay, SndKubaleV
+				.ENDIF
+			.ENDIF
+			
+			mov KubaleActionP, bl
+		.ENDIF
+		pop pbx
+		
+		; Teleport if far enough away
+		fcmp dist, f(64)
 		.IF (!Carry?)
 			print "Teleporting Kubale", 13, 10
-			xor al, al	; Repeated check for visibility
-			.WHILE (!al)
+			mov al, 64	; Repeated check for visibility
+			.WHILE (al)
+				push pax
 				invoke Maze_GetRandomPos, ADDR KubalePos
 				
 				mov flVal, rv(Plr_FrustumDot, ADDR KubalePos)
-				fcmp flVal, f(0.3)
+				fcmp flVal, KubaleDot
 				.IF (Carry?)	; Invisible
-					mov al, 1
-				.ELSE			; Visible
-					xor al, al
+					.BREAK
 				.ENDIF
+				pop pax
+				dec al
 			.ENDW
 		.ENDIF
 	.ENDIF

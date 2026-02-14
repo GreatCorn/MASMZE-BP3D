@@ -13,6 +13,7 @@ Wmblyk			BPEnum WMBLYK_NONE
 WmblykAnimPlr	BPAnimPlayer <>
 WmblykCell		BPPtr (-1)
 WmblykCellPos	Vector3 <>
+WmblykFace		DWORD 0
 WmblykHeadRot	Vector2 <>
 WmblykPos		Vector3 <>
 WmblykRot		REAL4 0.0	; Wmblyk rotation
@@ -28,16 +29,22 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		print "Spawned Wmblyk: "
 	.ENDIF
 	ENDIF
+	
+	bpMEM32 WmblykFace, TexWmblykNeutral
+	
 	.IF (State == WMBLYK_NONE)
 		invoke alSourceStop, SndWmblykB
 		invoke alSourceStop, SndWmblykStrM
 	.ELSEIF (State == WMBLYK_STILL)
 		invoke Maze_GetRandomPos, ADDR WmblykPos
 		
+		bpMEM32 WmblykCellPos.X, f(20)
+		
 		print "still, at "
 		Vector3Print WmblykPos
 	.ELSEIF (State == WMBLYK_STEALTH_WAIT)
 		mov WmblykStateVal, rv(flRandRange, f(4), f(11))
+		mov WmblykCellPos.X, FLT_1
 		
 		print "stealthy", 13, 10
 	.ELSEIF (State == WMBLYK_WALK)
@@ -72,6 +79,7 @@ Wmblyk_Draw PROC EXPORT
 		invoke glDisable, GL_FOG
 		invoke glDisable, GL_LIGHTING
 		
+		invoke glBindTexture, GL_TEXTURE_2D, WmblykFace
 		call glPushMatrix
 		invoke glTranslate3fv, ADDR WmblykPos
 		invoke glRotatefr, WmblykRot, 0, f(1), 0
@@ -82,8 +90,6 @@ Wmblyk_Draw PROC EXPORT
 				invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 				invoke glColor4f, f(1), f(1), f(1), WmblykStateVal
 			.ENDIF
-			
-			invoke glBindTexture, GL_TEXTURE_2D, TexWmblykNeutral
 			
 			.IF (Wmblyk == WMBLYK_STILL_SCARE)
 				invoke glCallList, MdlWmblykBodyG
@@ -109,18 +115,7 @@ Wmblyk_Draw PROC EXPORT
 		.ELSEIF (Wmblyk >= WMBLYK_WALK)
 			.IF (Wmblyk == WMBLYK_DEAD)
 				invoke glColor4fv, ADDR clBlack
-			.ELSEIF (Wmblyk == WMBLYK_STRANGLE)
-				fld WmblykStateVal
-				fadd f(1)
-				fmul f(3)
-				fistp flVal
-				mov flVal, rv(intClamp, flVal, 0, (SIZEOF TexWmblykStr)/4-2)
-				mov pax, flVal
-				invoke glBindTexture, GL_TEXTURE_2D, TexWmblykStr[pax*4]
-			.ELSE
-				invoke glBindTexture, GL_TEXTURE_2D, TexWmblykNeutral
 			.ENDIF
-			
 			invoke bpDrawMesh, ADDR MeshWmblyk
 		.ENDIF
 		invoke glColor4fv, ADDR clWhite
@@ -171,6 +166,7 @@ Wmblyk_Process PROC EXPORT
 	
 	.IF (Wmblyk == WMBLYK_STILL) || (Wmblyk == WMBLYK_STILL_SCARE)
 		; StateVal is blink timer (< 0 - blink)
+		; WmblykCellPos is waiting boredom timer
 		invoke Vector32DAngle, ADDR WmblykPos, ADDR CamPosL
 		mov WmblykHeadRot.Y, eax
 		.IF (Wmblyk == WMBLYK_STILL)
@@ -185,7 +181,37 @@ Wmblyk_Process PROC EXPORT
 		fstp WmblykStateVal
 		fcmp WmblykStateVal, f(-0.1)
 		.IF (Carry?)
+			.IF (WmblykCellPos.X & FLT_NEG)
+				fcmp WmblykCellPos.X, f(-10.0)
+				.IF (Carry?)
+					Vector32DPush WmblykPos
+					invoke Wmblyk_Spawn, WMBLYK_WALK
+					Vector32DPop WmblykPos
+					ret
+				.ELSE
+					fcmp WmblykCellPos.X, f(-6.0)
+					.IF (Carry?)
+						bpMEM32 WmblykFace, TexWmblykWait[8]
+					.ELSE
+						invoke nRand, 2
+						bpMEM32 WmblykFace, TexWmblykWait[pax*4]
+					.ENDIF
+				.ENDIF
+			.ENDIF
 			mov WmblykStateVal, rv(flRandRange, f(0.4), f(5))
+		.ENDIF
+		
+		fld WmblykCellPos.X
+		fsub deltaTime
+		fstp WmblykCellPos.X
+		
+		.IF (InputMovement.X) || (InputMovement.Y) || (InputLook.X) \
+		|| (InputLook.Y) || (InputCrouch)
+			.IF (WmblykCellPos.X & FLT_NEG)
+				mov WmblykStateVal, 0
+				bpMEM32 WmblykFace, TexWmblykNeutral
+			.ENDIF
+			mov WmblykCellPos.X, rv(flRandRange, f(10), f(20))
 		.ENDIF
 		
 		wmblykRotateHead
@@ -234,14 +260,17 @@ Wmblyk_Process PROC EXPORT
 		fsub deltaTime
 		fstp WmblykStateVal
 		
-		mov eax, WmblykStateVal
-		.IF (eax & FLT_NEG)
-			wmblykSpawnBehind
-			
-			mov WmblykStateVal, FLT_1
-			mov Wmblyk, WMBLYK_STEALTH_APPEAR
-			
-			print "Wmblyk appeared", 13, 10
+		fcmp CamRotL.X, f(0.6)
+		.IF (Carry?)
+			mov eax, WmblykStateVal
+			.IF (eax & FLT_NEG)
+				wmblykSpawnBehind
+				
+				mov WmblykStateVal, FLT_1
+				mov Wmblyk, WMBLYK_STEALTH_APPEAR
+				
+				print "Wmblyk appeared", 13, 10
+			.ENDIF
 		.ENDIF
 	.ELSEIF (Wmblyk == WMBLYK_STEALTH_APPEAR)
 		; StateVal is Wmblyk alpha (< 1.0 triggers fade)
@@ -465,6 +494,17 @@ Wmblyk_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 		
+		.IF (Kubale == KUBALE_ACTIVE)
+			mov flVal,rv(Vector32DDistanceSqr,OFFSET WmblykPos,OFFSET KubalePos)
+			fcmp flVal, f(0.8)
+			.IF (Carry?)
+				fld WmblykStateVal
+				fadd PI
+				fstp WmblykStateVal
+				
+				mov WmblykCell, -1
+			.ENDIF
+		.ENDIF
 		
 		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET CamPos)
 		fcmp flVal, f(0.75)
@@ -480,8 +520,6 @@ Wmblyk_Process PROC EXPORT
 			invoke alSourcePlay, SndWmblykStr
 			invoke alSourcef, SndWmblykStrM, AL_GAIN, 0
 			invoke alSourcePlay, SndWmblykStrM
-			
-			mov UIFadeVal, 0
 		.ENDIF
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
@@ -501,7 +539,7 @@ Wmblyk_Process PROC EXPORT
 		mov eax, WmblykHeadRot.X
 		.IF (eax & FLT_NEG)
 			fld deltaTime
-			fmul f(0.33333333)
+			fmul f(0.2)
 			fsubr WmblykStateVal
 			fst WmblykStateVal
 			fadd f(1)
@@ -515,17 +553,17 @@ Wmblyk_Process PROC EXPORT
 			fstp WmblykHeadRot.X
 		.ENDIF
 		
-		.IF (InputAction)
-			fild MazeLayer
-			fsubr f(100)
-			fmul f(0.002)
-			fadd WmblykStateVal
-			fstp WmblykStateVal
-			mov InputAction, 0
-			bpMEM32 WmblykHeadRot.X, f(0.1)
-		.ENDIF
-		
 		.IF (PlrState == PLAYER_STATE_STRANGLE)
+			.IF (InputAction)
+				fild MazeLayer
+				fsubr f(75)
+				fmul f(0.002)
+				fadd WmblykStateVal
+				fstp WmblykStateVal
+				mov InputAction, 0
+				bpMEM32 WmblykHeadRot.X, f(0.1)
+			.ENDIF
+			
 			invoke SndFade, SndWmblykStrM, f(1), deltaTime
 		
 			fcmp WmblykStateVal, f(1)
@@ -545,6 +583,13 @@ Wmblyk_Process PROC EXPORT
 				.ENDIF
 			.ENDIF
 		.ENDIF
+		
+		fld WmblykStateVal
+		fadd f(0.9)
+		fmul f(3.2)
+		fistp flVal
+		invoke intClamp, flVal, 0, (SIZEOF TexWmblykStr)/4-2
+		bpMEM32 WmblykFace, TexWmblykStr[pax*4]
 	.ELSEIF (Wmblyk == WMBLYK_DEAD)
 		invoke SndFade, SndWmblykStrM, 0, delta2
 		

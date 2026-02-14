@@ -707,6 +707,7 @@ InitGraphics PROC EXPORT
 InitGraphics ENDP
 
 ProcessScene PROC EXPORT
+	call Plr_Process
 	.IF (Maze)
 		call Maze_Process
 	.ENDIF
@@ -716,6 +717,7 @@ ProcessScene PROC EXPORT
 	.IF (Wmblyk)
 		call Wmblyk_Process
 	.ENDIF
+	call Plr_LateProcess
 	ret
 ProcessScene ENDP
 
@@ -844,6 +846,12 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'T'
 					invoke Plr_Teleport, MazeDoorPos.X, MazeDoorPos.Z
 					mov PlrState, PLAYER_STATE_EXIT
+				CASE 'K'
+					.IF (Keys[VK_SHIFT])
+						invoke Kubale_Spawn, KUBALE_EVENT
+					.ELSE
+						invoke Kubale_Spawn, KUBALE_ACTIVE
+					.ENDIF
 				CASE 'B'
 					.IF (Keys[VK_SHIFT])
 						invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
@@ -860,12 +868,18 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					.ELSE
 						inc MazeLayer
 					.ENDIF
+					invoke IntToStr, StrLayerNumPtr, MazeLayer
+					call UI_ShowLayerPopup
+					
 				CASE VK_OEM_MINUS
 					.IF (Keys[VK_SHIFT])
 						sub MazeLayer, 5
 					.ELSE
 						dec MazeLayer
 					.ENDIF
+					invoke IntToStr, StrLayerNumPtr, MazeLayer
+					call UI_ShowLayerPopup
+
 				CASE VK_F3
 					not UIDebug
 				CASE '0'
@@ -1115,9 +1129,7 @@ OnRender PROC EXPORT
 	; Processing
 	call UI_Process
 	.IF (deltaTime)
-		call Plr_Process
 		call ProcessScene
-		call Plr_LateProcess
 	.ENDIF
 	
 	.IF (MazeState != MAZE_STATE_CROA)

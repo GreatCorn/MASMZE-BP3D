@@ -27,11 +27,12 @@ UI_BTN_H	EQU 12*UI_SCALE				; Button height; height of text (used
 										; without margin)
 UI_BTN_M	EQU 2*UI_SCALE				; Button margin (only between two 
 										; buttons, not around)
-UI_BTN_W	EQU 80*UI_SCALE			; Button width
+UI_BTN_W	EQU 80*UI_SCALE				; Button width
 UI_BTN_WS	EQU UI_BTN_W/2 - UI_BTN_M	; Small button width
 UI_CB_MAX	EQU 7						; Max amount of combobox items
 UI_HR_H		EQU UI_HR_T + UI_BTN_M*2	; UI horizontal line height
 UI_HR_T		EQU 1*UI_SCALE				; UI horizontal line thickness
+UI_NOTE		EQU 160*UI_SCALE
 UI_SLD_H	EQU 2*UI_SCALE				; Slider line height
 UI_SLD_T	EQU 5*UI_SCALE				; Slider tack size
 
@@ -86,7 +87,8 @@ UIID				BYTE 0
 
 UIFade				BPEnum UI_FADE_NONE
 UIFadeCallback		BPPtr 0
-UIFadeVal			REAL4 0.0
+UIFadeVal			REAL4 0.0	; Raw fade value (0.0 - 1.0)
+UIFadeDisp			REAL4 0.0	; Fade displayed alpha (UIFadeVal and PlrHealth)
 
 UIFocus				BYTE 0
 UIFocusPrev			BYTE 0
@@ -823,7 +825,7 @@ VerAlign:BPEnum
 UI_Text ENDP
 
 UI_TextInput PROC EXPORT String:BPPtr, InputKey:BPPtr, InputJ:BPPtr, X:SDWORD, \
-Y:SDWORD
+Y:SDWORD, HorAlign:BPEnum, VerAlign:BPEnum
 	LOCAL inPos:BPPtr
 	
 	call glPushMatrix
@@ -851,21 +853,32 @@ Y:SDWORD
 		inc pax
 	.ENDW
 	mov pcx, String
-	sub pax, pcx
-	sub inPos, pcx
-	shl inPos, 1	; *2
-	sub pax, inPos
+	sub pax, pcx	; Get length
+	sub inPos, pcx	; Get local _pos
+	.IF (HorAlign == BP_ALIGN_CENTER)	; idfk some magic calculations again
+		shl inPos, 1	; _pos * 2
+		sub pax, inPos	; Length - _pos
+		neg pax			; to subr
+	.ELSE
+		mov pax, inPos
+	.ENDIF
 	
 	push pax
 	fild BPPtr PTR [psp]
 	fmul bpFontWidth
 	fmul bpFontSpacing
-	fmul f(0.5)
-	fisubr X
+	.IF (HorAlign == BP_ALIGN_CENTER)
+		fmul f(0.5)
+	.ENDIF
+	fiadd X
 	fistp REAL4 PTR [psp]
 	pop pcx
 	mov eax, Y
-	sub eax, 4*UI_SCALE
+	.IF (VerAlign == BP_ALIGN_CENTER)
+		sub eax, 4*UI_SCALE
+	.ELSEIF (VerAlign == BP_ALIGN_BOTTOM)
+		sub eax, 8*UI_SCALE
+	.ENDIF
 	invoke glTranslatei, ecx, eax, 0
 	invoke glEnable, GL_BLEND
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
@@ -874,7 +887,7 @@ Y:SDWORD
 	invoke glDisable, GL_BLEND
 	call glPopMatrix
 	
-	invoke UI_Text, String, X, Y, BP_ALIGN_CENTER, BP_ALIGN_CENTER
+	invoke UI_Text, String, X, Y, HorAlign, VerAlign
 	ret
 UI_TextInput ENDP
 
@@ -1935,6 +1948,9 @@ UI_HandleMenuEscape PROC EXPORT
 	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
 	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
 		call GameStart
+	.ELSEIF (MazeNote & 16)
+		bpMEM32 deltaScale, f(1)
+		mov MazeNote, 0
 	.ELSEIF (UIState == UI_STATE_GAME)
 		invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_VISIBLE
 		mov deltaScale, 0
@@ -2031,6 +2047,26 @@ UI_Draw PROC EXPORT
 	.IF !(Loading)
 		invoke glScalei, FXRenderSize.X, FXRenderSize.Y, 1
 			
+		; Kubale inkblot
+		.IF (KubaleVision)
+			call glPushMatrix
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_ZERO, GL_ONE_MINUS_SRC_COLOR
+			invoke glColor3f, KubaleVision, KubaleVision, KubaleVision
+			mov pax, KubaleInkblot
+			invoke glBindTexture, GL_TEXTURE_2D, TexKubaleV[pax]
+			invoke glScalef, f(0.5), f(1), f(1)
+			invoke glCallList, ScreenQuad
+			invoke glScalef, f(-1), f(1), f(1)
+			invoke glTranslatef, f(-2), 0, 0
+			invoke glCullFace, GL_FRONT
+			invoke glCallList, ScreenQuad
+			invoke glCullFace, GL_BACK
+			invoke glDisable, GL_BLEND
+			invoke glColor3fv, OFFSET clWhite
+			call glPopMatrix
+		.ENDIF
+		
 		; Vignette
 		.IF (SettingsGraphicsVignette)
 			invoke glEnable, GL_BLEND
@@ -2063,11 +2099,11 @@ UI_Draw PROC EXPORT
 		.ENDIF
 		
 		; Fade
-		.IF (UIFadeVal)
+		.IF (UIFadeDisp)
 			invoke glEnable, GL_BLEND
 			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 			invoke glBindTexture, GL_TEXTURE_2D, 0
-			invoke glColor4f, 0, 0, 0, UIFadeVal
+			invoke glColor4f, 0, 0, 0, UIFadeDisp
 			invoke glCallList, ScreenQuad
 			invoke glDisable, GL_BLEND
 		.ENDIF
@@ -2186,6 +2222,46 @@ UI_Draw PROC EXPORT
 	invoke glColor4fv, OFFSET clWhite
 	
 	; Texts
+	
+	; Note
+	.IF (MazeNote & 16)
+		invoke UI_DrawFullscreen, f(0.5)
+		invoke glColor4fv, OFFSET clWhite
+		
+		call glPushMatrix
+		mov eax, ScreenHalf.X
+		sub eax, UI_NOTE/2
+		mov ecx, ScreenHalf.Y
+		sub ecx, UI_NOTE/2
+		push pcx
+		invoke glTranslatei, eax, ecx, 0
+		invoke glScalef, f(%UI_NOTE), f(%UI_NOTE), f(1)
+		invoke glEnable, GL_ALPHA_TEST
+		invoke glBindTexture, GL_TEXTURE_2D, TexPaper
+		invoke glCallList, ScreenQuad
+		invoke glDisable, GL_ALPHA_TEST
+		call glPopMatrix
+		
+		invoke glColor3fv, OFFSET clBlack
+		movzx pax, MazeNote
+		and pax, not 16
+		dec pax
+		shl pax, BPPtrShift
+		add pax, OFFSET StrNote1
+		pop pcx
+		add ecx, UI_BTN_H
+		mov edx, ScreenHalf.X
+		sub edx, UI_NOTE/3 - 4*UI_SCALE
+		invoke UI_Text, BPPtr PTR [pax], edx, ecx, 0, 0
+		invoke glColor3fv, OFFSET clWhite
+		
+		mov UIShadow, TRUE
+		invoke UI_TextInput, StrCCClose, IBMenu, JBMenu, UI_BTN_M, UI_BTN_M, \
+		0, 0
+		mov UIShadow, FALSE
+	.ENDIF
+	
+	
 	; Player state-based
 	SWITCH PlrState
 		CASE PLAYER_STATE_INTRO_TEXT1
@@ -2221,7 +2297,7 @@ UI_Draw PROC EXPORT
 		SWITCH UISubtitlesStr
 			CASE StrCCFightBack
 				invoke UI_TextInput, UISubtitlesStr, IBAction, JBAction, \
-				ScreenHalf.X, ecx
+				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			DEFAULT
 				invoke UI_Text, UISubtitlesStr, ScreenHalf.X, ecx, \
 				BP_ALIGN_CENTER, BP_ALIGN_CENTER
@@ -2229,7 +2305,7 @@ UI_Draw PROC EXPORT
 	.ENDIF
 	
 	; Layer popup
-	.IF (UILayerPopup) || (UIState == UI_STATE_MENU_PAUSE)
+	.IF ((UILayerPopup) || (UIState == UI_STATE_MENU_PAUSE)) && !(MazeNote & 16)
 		call glPushMatrix
 		.IF (UIState == UI_STATE_MENU_PAUSE)
 			mov eax, f(%(UI_BTN_M))
@@ -2320,6 +2396,13 @@ UI_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 	.ENDIF
+	fld1
+	fsub UIFadeVal
+	fld PlrHealth
+	fmul
+	fsubr f(1)
+	fstp UIFadeDisp
+	
 	; Layer popup (at the start of layer)
 	.IF (UILayerPopup)
 		.IF (UILayerPopup == UI_FADE_IN)

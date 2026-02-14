@@ -71,6 +71,7 @@ SV	StrIntroText1
 SV	StrIntroText2
 SV	StrLayerNumber
 SV	StrYouDied
+SV	StrCCClose
 SV	StrCCFightBack
 SV	StrCCKey
 SV	StrCCRandom1
@@ -86,5 +87,12 @@ SV	StrTipKubale
 SV	StrTipVirdya
 SV	StrTipWB
 SV	StrTipWmblyk
+SV	StrNote1
+SV	StrNote2
+SV	StrNote3
+SV	StrNote4
+SV	StrNote5
+SV	StrNote6
+SV	StrNote7
 
 StrSectionEnd		BYTE ?

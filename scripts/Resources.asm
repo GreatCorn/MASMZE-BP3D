@@ -198,6 +198,7 @@ TexWmblykHappy		DWORD ?
 TexWmblykNeutral	DWORD ?
 TexWmblykJumpscare	DWORD ?
 TexWmblykStr		DWORD ?, ?, ?, ?, ?, ?, ?
+TexWmblykWait		DWORD ?, ?, ?
 
 ; ----- SOUNDS -----
 SndSectionStart	BYTE ?
@@ -566,6 +567,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexWmblykStr[12],"assets\textures\wmblykStr.bpt"
 		LoadBPT OFFSET TexWmblykStr[16],"assets\textures\wmblykL1.bpt"
 		LoadBPT OFFSET TexWmblykStr[20],"assets\textures\wmblykL2.bpt"
+		LoadBPT OFFSET TexWmblykWait[0],"assets\textures\wmblykWait1.bpt"
+		LoadBPT OFFSET TexWmblykWait[4],"assets\textures\wmblykWait2.bpt"
+		LoadBPT OFFSET TexWmblykWait[8],"assets\textures\wmblykWait3.bpt"
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_SOUNDS)
 		; ----- SOUNDS -----
@@ -606,7 +610,6 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndIntro,		"assets\sounds\intro.bps"
 		LoadBPS OFFSET SndKey,			"assets\sounds\key.bps"
 		LoadBPS OFFSET SndKubale,			"assets\sounds\kubale.bps"
-		invoke alSourcef, SndKubale, AL_GAIN, 0
 		invoke alSourcei, SndKubale, AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndKubaleAppear,	"assets\sounds\kubaleAppear.bps"
 		LoadBPS OFFSET SndKubaleV,		"assets\sounds\kubaleV.bps"
@@ -637,7 +640,6 @@ LoadResources PROC EXPORT
 		invoke alSourcef, SndSiren, AL_GAIN, 0
 		invoke alSourcei, SndSiren, AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndSlam,			"assets\sounds\slam.bps"
-		invoke alSource3f, SndSlam, AL_POSITION, f(1), f(1), 0
 		LoadBPS OFFSET SndSplash,		"assets\sounds\splash.bps"
 		LoadBPS OFFSET SndStep[0],		"assets\sounds\step1.bps"
 		LoadBPS OFFSET SndStep[4],		"assets\sounds\step2.bps"
@@ -690,6 +692,7 @@ LoadResources PROC EXPORT
 		invoke alSourcei, SndWmblykStrM, AL_LOOPING, AL_TRUE
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_FINISHED)
+		; Environment defaults
 		bpMEM32 MazeCurFloor,	TexFloor
 		bpMEM32 MazeCurRoof,	TexRoof
 		bpMEM32 MazeCurWall,	TexWall
