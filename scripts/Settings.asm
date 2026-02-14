@@ -129,199 +129,206 @@ Settings_IsTrue PROC EXPORT
 	ret
 Settings_IsTrue ENDP
 
-Settings_Load PROC EXPORT 
+Settings_Load PROC EXPORT IniSection:BPPtr
 	; Get absolute path to settings.ini
 	invoke GetFullPathNameA, ADDR SettingsIniPath, LENGTH SettingsIniPathAbs, \
 	ADDR SettingsIniPathAbs, 0
-	print "Loading settings from "
-	print ADDR SettingsIniPathAbs, 13, 10
+	IFDEF MODE_DEBUG
+		print "Loading settings from "
+		print ADDR SettingsIniPathAbs
+		print ", section "
+		print IniSection, 13, 10
+	ENDIF
 	
-	; ----- AUDIO -----
-	; Volume
-	invoke GetPrivateProfileString, ADDR SettingsIniAudio, \
-	ADDR SettingsIniVolume, ADDR SettingsIni1f, ADDR SettingsIniString, \
-	9, ADDR SettingsIniPathAbs
-	invoke StrToFl, ADDR SettingsIniString, ADDR SettingsAudioVolume
-	invoke Settings_SetOption, OFFSET SettingsAudioVolume
-	
-	; ----- CONTROLS -----
-	; Joystick
-	invoke GetPrivateProfileString, ADDR SettingsIniControls, \
-	ADDR SettingsIniJoystick, ADDR SettingsIniTrue, ADDR SettingsIniString, \
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsControlsJoystick)
-		mov SettingsControlsJoystick, al
-		invoke Settings_SetOption, OFFSET SettingsControlsJoystick
+	.IF (IniSection == OFFSET SettingsIniAudio)
+		; ----- AUDIO -----
+		; Volume
+		invoke GetPrivateProfileString, ADDR SettingsIniAudio, \
+		ADDR SettingsIniVolume, ADDR SettingsIni1f, ADDR SettingsIniString, \
+		9, ADDR SettingsIniPathAbs
+		invoke StrToFl, ADDR SettingsIniString, ADDR SettingsAudioVolume
+		invoke Settings_SetOption, OFFSET SettingsAudioVolume
+	.ELSEIF (IniSection == OFFSET SettingsIniControls)
+		; ----- CONTROLS -----
+		; Joystick
+		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
+		ADDR SettingsIniJoystick, ADDR SettingsIniTrue, \
+		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsControlsJoystick)
+			mov SettingsControlsJoystick, al
+			invoke Settings_SetOption, OFFSET SettingsControlsJoystick
+		.ENDIF
+		
+		; Joystick speed
+		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
+		ADDR SettingsIniJoystickSpeed, ADDR SettingsIni2f, \
+		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+		invoke StrToFl, ADDR SettingsIniString, \
+		ADDR SettingsControlsJoystickSpeed
+		
+		; Mouse sensitivity
+		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
+		ADDR SettingsIniMouseSensitivity, ADDR SettingsIni0n5f, \
+		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+		invoke StrToFl, ADDR SettingsIniString, \
+		ADDR SettingsControlsMouseSensitivity
+		
+		; Raw mouse
+		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
+		ADDR SettingsIniRawMouse, ADDR SettingsIniTrue, \
+		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsControlsRawMouse)
+			mov SettingsControlsRawMouse, al
+			invoke Settings_SetOption, OFFSET SettingsControlsRawMouse
+		.ENDIF
+	.ELSEIF (IniSection == OFFSET SettingsIniGraphics)
+		; ----- GRAPHICS -----
+		; Afterimage
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniAfterimage, ADDR SettingsIniTrue, ADDR SettingsIniString, \
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsAfterimage)
+			mov SettingsGraphicsAfterimage, al
+			invoke Settings_SetOption, OFFSET SettingsGraphicsAfterimage
+		.ENDIF
+		
+		; Display device
+		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniDisplay, 0, ADDR SettingsIniPathAbs
+		.IF (eax != SettingsGraphicsDisplay)
+			mov SettingsGraphicsDisplay, eax
+			invoke Settings_SetOption, OFFSET SettingsGraphicsDisplay
+		.ENDIF
+		
+		; Gamma
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniGamma, ADDR SettingsIni0n5f, ADDR SettingsIniString,\
+		9, ADDR SettingsIniPathAbs
+		invoke StrToFl, ADDR SettingsIniString, ADDR SettingsGraphicsGamma
+		
+		; Gamma bypass
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniGammaBypass, ADDR SettingsIniFalse, ADDR SettingsIniString,\
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsGammaBypass)
+			mov SettingsGraphicsGammaBypass, al
+		.ENDIF
+		
+		; Animation interpolation
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniInterpolation, ADDR SettingsIniFalse, \
+		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		;.IF (al != SettingsGraphicsInterpolation)
+			mov SettingsGraphicsInterpolation, al
+			invoke Settings_SetOption, OFFSET SettingsGraphicsInterpolation
+		;.ENDIF
+		
+		; Maze cull radius
+		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniMazeCull, SettingsGraphicsMazeCull, ADDR SettingsIniPathAbs
+		.IF (eax != SettingsGraphicsMazeCull)
+			mov SettingsGraphicsMazeCull, eax
+			invoke Settings_SetOption, OFFSET SettingsGraphicsMazeCull
+		.ENDIF
+		
+		; MSAA
+		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniMSAA, 0, ADDR SettingsIniPathAbs
+		.IF (eax != SettingsGraphicsMSAA)
+			mov SettingsGraphicsMSAA, eax
+			invoke Settings_SetOption, OFFSET SettingsGraphicsMSAA
+		.ENDIF
+		
+		; Noise
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniNoise, ADDR SettingsIniTrue, ADDR SettingsIniString,\
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsNoise)
+			mov SettingsGraphicsNoise, al
+		.ENDIF
+		
+		; Particles
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniParticles, ADDR SettingsIniTrue, ADDR SettingsIniString,\
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsParticles)
+			mov SettingsGraphicsParticles, al
+		.ENDIF
+		
+		; Pixelization
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniPixelization, ADDR SettingsIniTrue, ADDR SettingsIniString,\
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsPixelization)
+			mov SettingsGraphicsPixelization, al
+			invoke Settings_SetOption, OFFSET SettingsGraphicsPixelization
+		.ENDIF
+		
+		; Posterization
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniPosterization,ADDR SettingsIniTrue,ADDR SettingsIniString, \
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsPosterization)
+			mov SettingsGraphicsPosterization, al
+		.ENDIF
+		
+		; Resolution
+		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniResolutionWidth, 800, ADDR SettingsIniPathAbs
+		push pax
+		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniResolutionHeight, 600, ADDR SettingsIniPathAbs
+		pop pcx
+		.IF (SettingsGraphicsResolution[0] != ecx) || \
+		(SettingsGraphicsResolution[4] != eax)
+			mov SettingsGraphicsResolution[0], ecx
+			mov SettingsGraphicsResolution[4], eax
+			invoke Settings_SetOption, OFFSET SettingsGraphicsResolution
+		.ENDIF
+		
+		; Vignette
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniVignette, ADDR SettingsIniTrue, ADDR SettingsIniString, \
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsVignette)
+			mov SettingsGraphicsVignette, al
+		.ENDIF
+		
+		; VSync
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniVSync, ADDR SettingsIniTrue, ADDR SettingsIniString, \
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsVSync)
+			mov SettingsGraphicsVSync, al
+			invoke Settings_SetOption, OFFSET SettingsGraphicsVSync
+		.ENDIF
+		
+		; Window mode
+		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniWindowMode, 0, ADDR SettingsIniPathAbs
+		.IF (al != SettingsGraphicsWindowMode)
+			mov SettingsGraphicsWindowMode, al
+			invoke Settings_SetOption, OFFSET SettingsGraphicsWindowMode
+		.ENDIF
+	.ELSEIF (IniSection == OFFSET SettingsIniMisc)
+		; ----- MISC -----
+		; Language
+		invoke GetPrivateProfileString, ADDR SettingsIniMisc, \
+		ADDR SettingsIniLanguage, ADDR SettingsIniEnUS, \
+		ADDR SettingsMiscLanguage, 255, ADDR SettingsIniPathAbs
+		invoke Settings_SetOption, OFFSET SettingsMiscLanguage
 	.ENDIF
-	
-	; Joystick speed
-	invoke GetPrivateProfileString, ADDR SettingsIniControls, \
-	ADDR SettingsIniJoystickSpeed, ADDR SettingsIni2f, ADDR SettingsIniString, \
-	9, ADDR SettingsIniPathAbs
-	invoke StrToFl, ADDR SettingsIniString, ADDR SettingsControlsJoystickSpeed
-	
-	; Mouse sensitivity
-	invoke GetPrivateProfileString, ADDR SettingsIniControls, \
-	ADDR SettingsIniMouseSensitivity, ADDR SettingsIni0n5f, \
-	ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
-	invoke StrToFl, ADDR SettingsIniString,ADDR SettingsControlsMouseSensitivity
-	
-	; Raw mouse
-	invoke GetPrivateProfileString, ADDR SettingsIniControls, \
-	ADDR SettingsIniRawMouse, ADDR SettingsIniTrue, ADDR SettingsIniString, \
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsControlsRawMouse)
-		mov SettingsControlsRawMouse, al
-		invoke Settings_SetOption, OFFSET SettingsControlsRawMouse
-	.ENDIF
-	
-	; ----- GRAPHICS -----
-	; Afterimage
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniAfterimage, ADDR SettingsIniTrue, ADDR SettingsIniString, \
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsGraphicsAfterimage)
-		mov SettingsGraphicsAfterimage, al
-		invoke Settings_SetOption, OFFSET SettingsGraphicsAfterimage
-	.ENDIF
-	
-	; Display device
-	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniDisplay, 0, ADDR SettingsIniPathAbs
-	.IF (eax != SettingsGraphicsDisplay)
-		mov SettingsGraphicsDisplay, eax
-		invoke Settings_SetOption, OFFSET SettingsGraphicsDisplay
-	.ENDIF
-	
-	; Gamma
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniGamma, ADDR SettingsIni0n5f, ADDR SettingsIniString,\
-	9, ADDR SettingsIniPathAbs
-	invoke StrToFl, ADDR SettingsIniString, ADDR SettingsGraphicsGamma
-	
-	; Gamma bypass
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniGammaBypass, ADDR SettingsIniFalse, ADDR SettingsIniString,\
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsGraphicsGammaBypass)
-		mov SettingsGraphicsGammaBypass, al
-	.ENDIF
-	
-	; Animation interpolation
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniInterpolation, ADDR SettingsIniFalse, \
-	ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	;.IF (al != SettingsGraphicsInterpolation)
-		mov SettingsGraphicsInterpolation, al
-		invoke Settings_SetOption, OFFSET SettingsGraphicsInterpolation
-	;.ENDIF
-	
-	; Maze cull radius
-	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniMazeCull, SettingsGraphicsMazeCull, ADDR SettingsIniPathAbs
-	.IF (eax != SettingsGraphicsMazeCull)
-		mov SettingsGraphicsMazeCull, eax
-		invoke Settings_SetOption, OFFSET SettingsGraphicsMazeCull
-	.ENDIF
-	
-	; MSAA
-	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniMSAA, 0, ADDR SettingsIniPathAbs
-	.IF (eax != SettingsGraphicsMSAA)
-		mov SettingsGraphicsMSAA, eax
-		invoke Settings_SetOption, OFFSET SettingsGraphicsMSAA
-	.ENDIF
-	
-	; Noise
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniNoise, ADDR SettingsIniTrue, ADDR SettingsIniString,\
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsGraphicsNoise)
-		mov SettingsGraphicsNoise, al
-	.ENDIF
-	
-	; Particles
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniParticles, ADDR SettingsIniTrue, ADDR SettingsIniString,\
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsGraphicsParticles)
-		mov SettingsGraphicsParticles, al
-	.ENDIF
-	
-	; Pixelization
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniPixelization, ADDR SettingsIniTrue, ADDR SettingsIniString,\
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsGraphicsPixelization)
-		mov SettingsGraphicsPixelization, al
-		invoke Settings_SetOption, OFFSET SettingsGraphicsPixelization
-	.ENDIF
-	
-	; Posterization
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniPosterization,ADDR SettingsIniTrue,ADDR SettingsIniString, \
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsGraphicsPosterization)
-		mov SettingsGraphicsPosterization, al
-	.ENDIF
-	
-	; Resolution
-	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniResolutionWidth, 800, ADDR SettingsIniPathAbs
-	push pax
-	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniResolutionHeight, 600, ADDR SettingsIniPathAbs
-	pop pcx
-	.IF (SettingsGraphicsResolution[0] != ecx) || \
-	(SettingsGraphicsResolution[4] != eax)
-		mov SettingsGraphicsResolution[0], ecx
-		mov SettingsGraphicsResolution[4], eax
-		invoke Settings_SetOption, OFFSET SettingsGraphicsResolution
-	.ENDIF
-	
-	; Vignette
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniVignette, ADDR SettingsIniTrue, ADDR SettingsIniString, \
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsGraphicsVignette)
-		mov SettingsGraphicsVignette, al
-	.ENDIF
-	
-	; VSync
-	invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniVSync, ADDR SettingsIniTrue, ADDR SettingsIniString, \
-	9, ADDR SettingsIniPathAbs
-	call Settings_IsTrue
-	.IF (al != SettingsGraphicsVSync)
-		mov SettingsGraphicsVSync, al
-		invoke Settings_SetOption, OFFSET SettingsGraphicsVSync
-	.ENDIF
-	
-	; Window mode
-	invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-	ADDR SettingsIniWindowMode, 0, ADDR SettingsIniPathAbs
-	.IF (al != SettingsGraphicsWindowMode)
-		mov SettingsGraphicsWindowMode, al
-		invoke Settings_SetOption, OFFSET SettingsGraphicsWindowMode
-	.ENDIF
-	
-	
-	; ----- MISC -----
-	; Language
-	invoke GetPrivateProfileString, ADDR SettingsIniMisc, \
-	ADDR SettingsIniLanguage, ADDR SettingsIniEnUS, \
-	ADDR SettingsMiscLanguage, 255, ADDR SettingsIniPathAbs
-	invoke Settings_SetOption, OFFSET SettingsMiscLanguage
 	
 	mov SettingsChanged, FALSE
 	ret
@@ -677,6 +684,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsAfterimage)
 		print "graphics/afterimage", 13, 10
+		mov FXReadPixelsTest, FX_RP_UNTESTED
 		.IF (FMain.Handle)
 			invoke FX_SetAfterimage, FX_AFTERIMAGE_AMOUNT
 		.ENDIF
@@ -688,18 +696,24 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsInterpolation)
 		print "graphics/interpolation", 13, 10
 		.IF (SettingsGraphicsInterpolation)
-			mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
+			mov al, BP_INTERPOLATE_LINEAR
 		.ELSE
-			mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
+			mov al, BP_INTERPOLATE_CONSTANT
 		.ENDIF
+		mov KubaleAnimPlr.Interpolation, al
+		mov WmblykAnimPlr.Interpolation, al
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsMSAA)
 		print "graphics/msaa", 13, 10
 		call Settings_SetMSAA
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsPixelization)
 		print "graphics/pixelization", 13, 10
+		mov FXReadPixelsTest, FX_RP_UNTESTED
 		.IF (FMain.Handle)
 			call FX_Resize
 		.ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsPosterization)
+		print "graphics/posterization", 13, 10
+		mov FXReadPixelsTest, FX_RP_UNTESTED
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsResolution)
 		print "graphics/resolution", 13, 10
 		.IF (FMain.Handle)

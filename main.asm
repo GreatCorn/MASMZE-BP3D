@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-;BP_COMPATIBILITY_W9X		EQU <1>
+BP_COMPATIBILITY_W9X		EQU <1>
 BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
@@ -1261,7 +1261,10 @@ start:
 	call nRandomize
 	
 	; Load settings from .\settings.ini
-	call Settings_Load
+	invoke Settings_Load, OFFSET SettingsIniAudio
+	invoke Settings_Load, OFFSET SettingsIniControls
+	invoke Settings_Load, OFFSET SettingsIniGraphics
+	invoke Settings_Load, OFFSET SettingsIniMisc
 	
 	; Create dummy form to load wgl functions required for MSAA
 	mov FARB.OnCreate, OFFSET FARBOnCreate

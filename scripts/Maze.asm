@@ -41,6 +41,9 @@ ENUML
 	E MAZE_STATE_CROA
 	E MAZE_STATE_BORDER
 	
+.CONST
+MazeRaycastMax	BPPtr 64
+	
 
 .DATA
 Maze				BPPtr 0		; 2D BYTE array of dimensions MazeSize
@@ -1115,6 +1118,150 @@ Maze_Progress PROC EXPORT
 	ret
 Maze_Progress ENDP
 
+Maze_Raycast PROC EXPORT Pos:BPPtr, PosTarget:BPPtr
+	LOCAL dir:Vector2, cellPos:Vector2, fracPos:Vector2, maxTravel:Vector2
+	LOCAL destCell:Vector2
+	
+	; Get ray direction vector
+	mov pax, Pos
+	mov pcx, PosTarget
+	fld REAL4 PTR [pcx]
+	fsub REAL4 PTR [pax]
+	fstp dir.X
+	fld REAL4 PTR [pcx+8]
+	fsub REAL4 PTR [pax+8]
+	fstp dir.Y
+	invoke Vector2Normalize, ADDR dir
+	
+	; Set cell pos (+fractional remainder) and destination cell pos
+	invoke fpuSetRounding, FPU_ROUND_TRUNC
+	mov pax, Pos
+	fld REAL4 PTR [pax]
+	fmul f(0.5)
+	fist cellPos.X
+	fisub cellPos.X
+	fstp fracPos.X
+	fld REAL4 PTR [pax+8]
+	fmul f(0.5)
+	fist cellPos.Y
+	fisub cellPos.Y
+	fstp fracPos.Y
+	
+	fld REAL4 PTR [pcx]
+	fmul f(0.5)
+	fistp destCell.X
+	fld REAL4 PTR [pcx+8]
+	fmul f(0.5)
+	fistp destCell.Y
+	invoke fpuSetRounding, FPU_ROUND_ROUND
+	
+	; Determine distances to cell wall using fractional parts of position
+	fld fracPos.X
+	.IF (dir.X & FLT_NEG)
+		fchs
+	.ELSE
+		fsubr f(1)
+	.ENDIF
+	fdiv dir.X
+	fstp maxTravel.X	; Distance to first vertical wall
+	
+	fld fracPos.Y
+	.IF (dir.Y & FLT_NEG)
+		fchs
+	.ELSE
+		fsubr f(1)
+	.ENDIF
+	fdiv dir.Y
+	fstp maxTravel.Y	; Distance to first horizontal wall
+	
+	; Distances per cell (delta)
+	fld dir.X
+	fabs
+	fdivr f(1)
+	fstp fracPos.X
+	fld dir.Y
+	fabs
+	fdivr f(1)
+	fstp fracPos.Y
+	
+	push pbx
+	xor pbx, pbx
+	.WHILE (pbx < MazeRaycastMax)
+		; Check if we've reached destination cell
+		mov eax, cellPos.X
+		mov ecx, cellPos.Y
+		.IF (eax == destCell.X) && (ecx == destCell.Y)
+			mov pax, FALSE
+			.BREAK
+		.ENDIF
+		
+		fcmp maxTravel.X, maxTravel.Y
+		.IF (Carry?)
+			; Check vertical wall
+			.IF (dir.X & FLT_NEG)	; Left
+				; Get cell
+				invoke Maze_GetCellI, cellPos.X, cellPos.Y
+			.ELSE					; Right
+				; Get cell
+				mov eax, cellPos.X
+				.IF (eax == MazeSize[8])
+					mov al, 0
+				.ELSE
+					inc eax
+					invoke Maze_GetCellI, eax, cellPos.Y
+				.ENDIF
+			.ENDIF
+			; Test for vertical wall
+			.IF !(al & MAZE_CELL_PASSLEFT)
+				mov pax, TRUE
+				.BREAK
+			.ENDIF
+			
+			.IF (dir.X & FLT_NEG)	; Cell step
+				dec cellPos.X
+			.ELSE
+				inc cellPos.X
+			.ENDIF
+			fld maxTravel.X
+			fadd fracPos.X	; delta x
+			fstp maxTravel.X
+		.ELSE
+			; Check horizontal wall
+			.IF (dir.Y & FLT_NEG)	; Top
+				; Get cell
+				invoke Maze_GetCellI, cellPos.X, cellPos.Y
+			.ELSE					; Bottom
+				; Get cell
+				mov eax, cellPos.Y
+				.IF (eax == MazeSize[12])
+					mov al, 0
+				.ELSE
+					inc eax
+					invoke Maze_GetCellI, cellPos.X, eax
+				.ENDIF
+			.ENDIF
+			; Test for horizontal wall
+			.IF !(al & MAZE_CELL_PASSTOP)
+				mov pax, TRUE
+				.BREAK
+			.ENDIF
+			
+			.IF (dir.Y & FLT_NEG)	; Cell step
+				dec cellPos.Y
+			.ELSE
+				inc cellPos.Y
+			.ENDIF
+			fld maxTravel.Y
+			fadd fracPos.Y	; delta y
+			fstp maxTravel.Y
+		.ENDIF
+		
+		inc pbx
+	.ENDW
+	pop pbx
+	ret
+Maze_Raycast ENDP
+
 Maze_SetPropI PROC EXPORT X:SDWORD, Y:SDWORD, Prop:BYTE, Rotated:BPBool
 	Maze_ClampXYI
 	invoke bp2DArrayGetOffset, X, Y, MazeSize[0], 1
@@ -1149,7 +1296,7 @@ Maze_SpawnElements PROC EXPORT
 			call Kubale_Spawn
 		.ENDIF
 	
-		invoke nrandom, 3	; Slam door event
+		invoke nRand, 3	; Slam door event
 		.IF !(al)
 			print "Will slam door", 13, 10
 			mov MazeSlam, TRUE

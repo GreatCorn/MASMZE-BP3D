@@ -89,8 +89,12 @@ PauseSounds PROC EXPORT Paused:BPBool
 	inc pbx
 	.WHILE (pbx < OFFSET SndSectionEnd)
 		invoke SndPlaying, DWORD PTR [pbx]
-		.IF (Paused) && (eax == AL_PLAYING)
-			invoke alSourcePause, DWORD PTR [pbx]
+		.IF (Paused)
+			.IF (eax == AL_PLAYING)
+				invoke alSourcePause, DWORD PTR [pbx]
+			.ELSEIF (eax == AL_PAUSED)
+				invoke alSourceStop, DWORD PTR [pbx]
+			.ENDIF
 		.ELSEIF !(Paused) && (eax == AL_PAUSED)
 			invoke alSourcePlay, DWORD PTR [pbx]
 		.ENDIF

@@ -1,6 +1,10 @@
 FX_AFTERIMAGE_AMOUNT	EQU 11
 FX_PIXEL_SIZE			EQU 3
 
+ENUM	FX_RP_UNTESTED, \
+		FX_RP_WORKING, \
+		FX_RP_BROKEN
+
 .DATA
 FXAfterimage 			BPPtr 0	; Begin address of the frames
 FXAfterimageAmount		BPPtr 0	; Count of afterimage frames (set with 
@@ -10,6 +14,8 @@ FXAfterimageZoom		REAL4 0.0
 FXNoiseAmplitude		REAL4 0.5
 FXNoiseTexScale			Vector2 <0.0, 0.0>
 FXAfterimageFPSTimer	DWORD 10
+
+FXReadPixelsTest	BPEnum FX_RP_UNTESTED
 
 .DATA?
 FXAfterimageEnd		BPPtr ?	; Last frame pointer, determines how much is drawn
@@ -175,6 +181,20 @@ FX_ScreenTexture PROC EXPORT GLTexturePtr:BPPtr
 	; glReadPixels supported on XP at all or is it a VB thing?
 	invoke glReadPixels, 0, 0, FXRenderSize.X, FXRenderSize.Y, GL_RGB, \
 	colorMode, FXScreenTextureBuffer
+	; Prevent white screen if glReadPixels doesn't work
+	.IF (FXReadPixelsTest == FX_RP_UNTESTED)
+		.IF (rv(glGetError))
+			mov FXReadPixelsTest, FX_RP_BROKEN
+			mov SettingsGraphicsPixelization, FALSE
+			mov SettingsGraphicsPosterization, FALSE
+			mov SettingsGraphicsAfterimage, FALSE
+			vinvoke Settings_SetOption, OFFSET SettingsGraphicsPixelization
+			vinvoke Settings_SetOption, OFFSET SettingsGraphicsAfterimage
+		.ELSE
+			mov FXReadPixelsTest, FX_RP_WORKING
+		.ENDIF
+	.ENDIF
+	
 	
 	mov pax, GLTexturePtr
 	invoke glBindTexture, GL_TEXTURE_2D, DWORD PTR [pax]

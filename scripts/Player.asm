@@ -40,6 +40,7 @@ CamRotSmooth	REAL4 16.0
 PlrCanControl	BPBool TRUE
 PlrCrouch		REAL4 0.0
 PlrForward		Vector3 <>
+PlrUp			Vector3 <0.0, 1.0, 0.0>	; Up vector for AL_ORIENTATION
 PlrRight		Vector3 <>
 PlrSpeed		REAL4 0.0	; Current absolute player speed
 PlrSpeedScaled	REAL4 0.0	; Current scaled player speed (0.0 - PlrSpeedWalk)

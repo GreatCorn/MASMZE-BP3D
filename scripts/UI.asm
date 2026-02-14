@@ -1411,7 +1411,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	LOCAL dm:DEVMODEAFIX, res:Vector2, resEnum:DWORD, strPtr:BPPtr
 	LOCAL nameStr[32]:BYTE, devNamePtr:BPPtr
 	
-	UI_MENU_GRAPHICS_HEIGHT	EQU UI_BTN_H*7 + UI_BTN_M*5 + UI_HR_H*2
+	UI_MENU_GRAPHICS_HEIGHT	EQU UI_BTN_H*8 + UI_BTN_M*5 + UI_HR_H*2
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_GRAPHICS_HEIGHT/2
@@ -1669,16 +1669,25 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Pixelization
+	.IF (FXReadPixelsTest == FX_RP_BROKEN)
+		mov UIDisabled, TRUE
+	.ENDIF
 	invoke UI_Checkbox, StrMenuPixelization, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsPixelization
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Posterization
+	.IF (FXReadPixelsTest == FX_RP_BROKEN)
+		mov UIDisabled, TRUE
+	.ENDIF
 	invoke UI_Checkbox, StrMenuPosterization, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsPosterization
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Afterimage
+	.IF (FXReadPixelsTest == FX_RP_BROKEN)
+		mov UIDisabled, TRUE
+	.ENDIF
 	invoke UI_Checkbox, StrMenuAfterimage, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsAfterimage
 	add ebx, UI_BTN_H + UI_BTN_M
@@ -1828,6 +1837,11 @@ UI_DrawPopupMenu PROC EXPORT
 			invoke UI_Button, StrMenuDiscard, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 			.IF (al)
 				push pbx
+				.IF (UIState == UI_STATE_MENU_SETTINGS_CONTROLS)
+					push OFFSET SettingsIniControls
+				.ELSEIF (UIState == UI_STATE_MENU_SETTINGS_GRAPHICS)
+					push OFFSET SettingsIniGraphics
+				.ENDIF
 				call Settings_Load
 				call UI_HandleMenuEscape
 				call UI_HandleMenuEscape
