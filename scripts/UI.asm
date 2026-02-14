@@ -846,8 +846,8 @@ Y:SDWORD, HorAlign:BPEnum, VerAlign:BPEnum
 
 	mov pax, String
 	.WHILE (BYTE PTR [pax])
-		.IF (BYTE PTR [pax] == '_') || (BYTE PTR [pax] == 255)
-			mov BYTE PTR [pax], 255
+		.IF (BYTE PTR [pax] == '_') || (BYTE PTR [pax] == 16)
+			mov BYTE PTR [pax], 16
 			mov inPos, pax
 		.ENDIF
 		inc pax

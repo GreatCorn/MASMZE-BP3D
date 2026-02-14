@@ -611,6 +611,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndKey,			"assets\sounds\key.bps"
 		LoadBPS OFFSET SndKubale,			"assets\sounds\kubale.bps"
 		invoke alSourcei, SndKubale, AL_LOOPING, AL_TRUE
+		invoke alSourcef, SndKubale, AL_ROLLOFF_FACTOR, f(2)
 		LoadBPS OFFSET SndKubaleAppear,	"assets\sounds\kubaleAppear.bps"
 		LoadBPS OFFSET SndKubaleV,		"assets\sounds\kubaleV.bps"
 		invoke alSourcef, SndKubaleV, AL_GAIN, 0

@@ -53,6 +53,7 @@ CamLightPos		Vector4 <0.0, 0.0, 0.0, 1.0>
 CamFOV			REAL4 75.0
 CamBaseFOV		REAL4 75.0
 PlrGlyphs		DWORD 7
+PlrGlyphPos		Vector2 7 DUP (<>)
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
 
