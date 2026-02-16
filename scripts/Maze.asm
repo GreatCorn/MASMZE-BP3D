@@ -70,7 +70,8 @@ MazeStateTimer		REAL4 0.0
 MazeType			BPEnum MAZE_TYPE_NORMAL
 
 MazeCheck			BPEnum MAZE_CHECK_NONE	; Checkpoint state
-MazeCheckDoorRot	REAL4 0.0				; Checkpoint exit door rotation
+MazeCheckErasePos	Vector3 <>
+MazeCheckErasePosL	Vector3 <>
 
 MazeCrevice 	BPBool FALSE	; Maze crevice active
 MazeCrevicePos	DWORD 0, 0		; Maze crevice cell position
@@ -113,6 +114,8 @@ MazeShop		BPBool FALSE
 
 MazePartAmb		ParticleSystem <>
 MazePartDust	ParticleSystem <>
+
+MotryaAnimPlr	BPAnimPlayer <>
 
 .DATA?
 MazeCheckPos	Vector3 <?, ?, ?>	; Maze checkpoint
@@ -271,7 +274,7 @@ Maze_CollideLayout PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
 				invoke Vector2F, ADDR worldPos
 				invoke Maze_GetCellI, colPos.X, colPos.Y
 				.IF !(Props)
-					and al, not MAZE_CELL_PROPS
+					and al, BYTE PTR not MAZE_CELL_PROPS
 				.ENDIF
 				invoke Maze_Collide, PosPtr, Radius, worldPos.X, worldPos.Y, al
 				mov eax, colPos.X
@@ -310,6 +313,8 @@ Maze_CollideLayout PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
 Maze_CollideLayout ENDP
 
 Maze_DrawCheck PROC EXPORT
+	LOCAL v3Val:Vector3
+	
 	call glPushMatrix
 	invoke glTranslate3fv, ADDR MazeCheckPos
 	invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
@@ -318,6 +323,44 @@ Maze_DrawCheck PROC EXPORT
 	invoke glCallList, MdlCheckRoof
 	invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
 	invoke glCallList, MdlCheckWalls
+	
+	invoke glTranslatef, 0, 0, f(6.1)
+	.IF (MazeCheck == MAZE_CHECK_SAVED)
+		mov eax, MazeDoorRot
+	.ELSE
+		xor eax, eax
+	.ENDIF
+	vinvoke Maze_DrawDoor, eax
+	call glPopMatrix
+	
+	call glPushMatrix
+	.IF (MazeCheck == MAZE_CHECK_SAVED)
+		invoke glTranslate3fv, ADDR MazeCheckErasePosL
+		fld CamRotL.Y
+		fadd PI
+		fstp v3Val.X
+		vinvoke glRotatefr, v3Val.X, 0, f(1), 0
+		mov eax, CamRotL.X
+		xor eax, FLT_NEG
+		vinvoke glRotatefr, eax, f(1), 0, 0
+		invoke glEnable, GL_BLEND
+		invoke glDisable, GL_DEPTH_TEST
+		invoke glBlendFunc, GL_ONE, GL_ONE
+		invoke flRandRange, f(0.7), f(1)
+		invoke Vector3Set, ADDR v3Val, eax, eax, eax
+		invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR v3Val
+		invoke glBindTexture, GL_TEXTURE_2D, TexLight
+		invoke glCallList, MdlParticle
+		invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR clWhite
+		invoke glDisable, GL_BLEND
+		invoke glEnable, GL_DEPTH_TEST
+	.ELSE
+		invoke glTranslate3fv, ADDR MazeCheckPos
+		invoke glTranslatef, f(1), 0, f(4)
+		invoke glRotatef, f(180), 0, f(1), 0
+		invoke glBindTexture, GL_TEXTURE_2D, TexMotrya
+		invoke bpDrawMesh, ADDR MeshMotrya
+	.ENDIF
 	call glPopMatrix
 	ret
 Maze_DrawCheck ENDP
@@ -493,8 +536,7 @@ Maze_Finish PROC EXPORT
 	mov MazeSlamRot, 0
 	
 	; Reset entities
-	vinvoke Kubale_Spawn, KUBALE_NONE
-	vinvoke Wmblyk_Spawn, WMBLYK_NONE
+	call Maze_ResetEntities
 	
 	; Change layer string
 	invoke IntToStr, StrLayerNumPtr, MazeLayer
@@ -1288,6 +1330,12 @@ Maze_Raycast PROC EXPORT Pos:BPPtr, PosTarget:BPPtr
 	ret
 Maze_Raycast ENDP
 
+Maze_ResetEntities PROC EXPORT
+	vinvoke Kubale_Spawn, KUBALE_NONE
+	vinvoke Wmblyk_Spawn, WMBLYK_NONE
+	ret
+Maze_ResetEntities ENDP
+
 Maze_SetPropI PROC EXPORT X:SDWORD, Y:SDWORD, Prop:BYTE, Rotated:BPBool
 	Maze_ClampXYI
 	invoke bp2DArrayGetOffset, X, Y, MazeSize[0], 1
@@ -1401,6 +1449,8 @@ Maze_Create PROC EXPORT
 	invoke Vector2Set, ADDR MazePartDust.Velocity, f(0.7), f(1)
 	invoke Particles_Create, ADDR MazePartDust
 	
+	mov MotryaAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init Motrya animator
+	mov MotryaAnimPlr.Mesh, OFFSET MeshMotrya
 	ret
 Maze_Create ENDP
 
@@ -1538,36 +1588,13 @@ Maze_Fixed PROC EXPORT
 					mov MazeCheckPos.Y, 0
 					invoke Vector32DF, ADDR MazeCheckPos
 					mov MazeCheck, MAZE_CHECK_OPEN
+					invoke bpAnimPlay, ADDR MotryaAnimPlr, ADDR AnimMotryaIdle
 					invoke SndSetPos, SndCheckpoint, ADDR MazeDoorPos
 					invoke alSourcePlay, SndCheckpoint
 				.ENDIF
 			.ELSE
 				mov PlrState, PLAYER_STATE_EXIT
 			.ENDIF
-		.ENDIF
-	.ENDIF
-	
-		
-	.IF (MazeCheck == MAZE_CHECK_OPEN)
-		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-100), delta2)
-		fld CamPos.Z
-		fsub MazeCheckPos.Z
-		fstp flVal
-		
-		fcmp flVal, f(1)
-		.IF (!Carry?)
-			mov MazeCheck, MAZE_CHECK_CLOSE
-			invoke SndSetPos, SndDoorClose, ADDR MazeDoorPos
-			invoke alSourcePlay, SndDoorClose
-			
-			vinvoke UI_ShowSubtitles, StrCCSave, UISubDur
-		.ENDIF
-	.ELSEIF (MazeCheck == MAZE_CHECK_CLOSE)
-		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(0), delta2)
-		
-		fcmp flVal, f(2)
-		.IF (!Carry?)
-			
 		.ENDIF
 	.ENDIF
 	
@@ -1647,7 +1674,7 @@ Maze_Process PROC EXPORT
 	
 	call Maze_ProcessState
 	
-	.IF(MazeCheck)
+	.IF (MazeCheck)
 		invoke Vector32DCopy, ADDR v3Val, ADDR MazeCheckPos
 		fld v3Val.X
 		fadd f(0.45)
@@ -1671,6 +1698,95 @@ Maze_Process PROC EXPORT
 		fadd f(2)
 		fstp v3Val.X
 		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), f(2.7)
+		fld v3Val.X
+		fsub f(1.05)
+		fstp v3Val.X
+		fld v3Val.Z
+		fadd f(1.1)
+		fstp v3Val.Z
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(2.7), f(0.9)
+		
+		.IF (MazeCheck != MAZE_CHECK_SAVED)
+			; Process Motrya animator
+			invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr, deltaTime
+		.ENDIF
+		
+		fld CamPos.Z
+		fsub MazeCheckPos.Z
+		fstp flVal
+		.IF (MazeCheck == MAZE_CHECK_OPEN)
+			mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-100), delta2)
+			
+			fcmp flVal, f(1)
+			.IF (!Carry?)
+				mov MazeCheck, MAZE_CHECK_CLOSE
+				invoke SndSetPos, SndDoorClose, ADDR MazeDoorPos
+				invoke alSourcePlay, SndDoorClose
+				
+				vinvoke UI_ShowSubtitles, StrCCSave, UISubDur
+			.ENDIF
+		.ELSEIF (MazeCheck == MAZE_CHECK_CLOSE)
+			mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(0), delta2)
+			
+			.IF (MotryaAnimPlr.TrackPtr == OFFSET AnimMotryaIdle)
+				fcmp flVal, f(2)
+				.IF (!Carry?)
+					invoke bpAnimPlay, ADDR MotryaAnimPlr, ADDR AnimMotryaSave
+					bpMEM32 MazeStateTimer, f(0.5)
+					mov MazeStateCallback, 0
+					invoke alSourcePlay, SndSave
+				.ENDIF
+			.ELSE
+				.IF (!MazeStateTimer)
+					mov MazeCheck, MAZE_CHECK_SAVED
+					mov MazeStateTimer, FLT_1
+					mov MazeDoorRot, 0
+					invoke Vector32DSet, ADDR MazeDoorPos, f(1), f(6)
+					invoke Vector32DAdd, ADDR MazeDoorPos, ADDR MazeCheckPos
+					invoke Vector3Set, ADDR MazeCheckErasePos,f(1),f(1.5),f(0.5)
+					invoke Vector32DAdd,ADDR MazeCheckErasePos,ADDR MazeCheckPos
+					invoke Vector3Set, ADDR MazeCheckErasePosL, f(1), f(1), f(4)
+					invoke Vector32DAdd, ADDR MazeCheckErasePosL, \
+					ADDR MazeCheckPos
+					
+					call Maze_ResetEntities
+					
+					vinvoke UI_ShowSubtitles, StrCCSaved, UISubDur
+				.ENDIF
+				fld MazeStateTimer
+				fsubr f(0.5)
+				fmul f(0.1)
+				fstp flVal
+				vinvoke Plr_Shake, flVal
+			.ENDIF
+		.ELSEIF (MazeCheck == MAZE_CHECK_SAVED)
+			invoke Vector3Lerp, ADDR MazeCheckErasePosL,ADDR MazeCheckErasePos,\
+			deltaTime
+			
+			mov flVal,vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET MazeDoorPos)
+			fcmp flVal, f(0.7)
+			.IF (Carry?)
+				vinvoke UI_ShowSubtitles, StrCCCheckpoint, f(0.1)
+				.IF (InputConfirm)
+					mov PlrState, PLAYER_STATE_EXIT
+				.ENDIF
+			.ENDIF
+			
+			mov flVal,\
+			vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeCheckErasePos)
+			fcmp flVal, f(0.7)
+			.IF (Carry?)
+				vinvoke UI_ShowSubtitles, StrCCSaveErase, f(0.1)
+				.IF (InputConfirm)
+					mov eax, f(-100)
+					mov MazeCheckErasePos.Z, eax
+					mov MazeCheckErasePosL.Z, eax
+					mov MazeStateTimer, FLT_1
+					
+					invoke alSourcePlay, SndMistake
+				.ENDIF
+			.ENDIF
+		.ENDIF
 	.ENDIF
 	ret
 Maze_Process ENDP

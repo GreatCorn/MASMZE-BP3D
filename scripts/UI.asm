@@ -2080,7 +2080,7 @@ UI_Draw PROC EXPORT
 			invoke glColor3fv, OFFSET clWhite
 			call glPopMatrix
 		.ENDIF
-		
+				
 		; Vignette
 		.IF (SettingsGraphicsVignette)
 			invoke glEnable, GL_BLEND
@@ -2126,7 +2126,28 @@ UI_Draw PROC EXPORT
 		.IF !(SettingsGraphicsGammaBypass)
 			invoke FX_DrawGamma, SettingsGraphicsGamma
 		.ENDIF
-	
+		
+		; White save fade
+		.IF (MazeCheck) && (MazeStateTimer)
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_ONE, GL_ONE
+			invoke glBindTexture, GL_TEXTURE_2D, 0
+			.IF (MazeCheck == MAZE_CHECK_CLOSE)
+				fld MazeStateTimer
+				fsubr f(0.5)
+				fmul f(2)
+				sub psp, SIZEOF BPPtr*3
+				fst REAL4 PTR [psp]
+				fst REAL4 PTR [psp+SIZEOF BPPtr]
+				fstp REAL4 PTR [psp+SIZEOF BPPtr*2]
+				call glColor3f
+			.ELSEIF (MazeCheck == MAZE_CHECK_SAVED)
+				invoke glColor3f, MazeStateTimer, MazeStateTimer, MazeStateTimer
+			.ENDIF
+			invoke glCallList, ScreenQuad
+			invoke glColor3fv, OFFSET clWhite
+			invoke glDisable, GL_BLEND
+		.ENDIF
 		; Noise
 		.IF (SettingsGraphicsNoise)
 			invoke glBindTexture, GL_TEXTURE_2D, TexNoise
@@ -2309,6 +2330,9 @@ UI_Draw PROC EXPORT
 		sub ecx, UI_BTN_H*2
 		; Input hint subtitles
 		SWITCH UISubtitlesStr
+			CASE StrCCCheckpoint, StrCCSaveErase
+				invoke UI_TextInput, UISubtitlesStr, IBConfirm, JBConfirm, \
+				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			CASE StrCCFightBack
 				invoke UI_TextInput, UISubtitlesStr, IBAction, JBAction, \
 				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER

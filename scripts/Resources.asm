@@ -15,6 +15,8 @@ AnimCamEnter		BPAnimTrack <>
 AnimCamExit			BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
 AnimKubaleMove		BPAnimTrack <>	
+AnimMotryaIdle		BPAnimTrack <>	
+AnimMotryaSave		BPAnimTrack <>	
 AnimWmblykCrawl		BPAnimTrack <>
 AnimWmblykDead		BPAnimTrack <>
 AnimWmblykStrangle	BPAnimTrack <>
@@ -116,6 +118,7 @@ MdlWmblykBodyG		DWORD ?
 MdlWmblykHead		DWORD ?
 
 MeshKubale			BPMesh?
+MeshMotrya			BPMesh?
 MeshWmblyk			BPMesh?
 
 ScreenQuad	DWORD ?
@@ -299,6 +302,10 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimKubaleMove,		"assets\anim\kubaleMove.bpa"
 		mov AnimKubaleMove.Looping, TRUE
 		
+		LoadBPA OFFSET AnimMotryaIdle,		"assets\anim\motryaIdle.bpa"
+		mov AnimMotryaIdle.Looping, TRUE
+		LoadBPA OFFSET AnimMotryaSave,		"assets\anim\motryaSave.bpa"
+		
 		LoadBPA OFFSET AnimWmblykCrawl,		"assets\anim\wmblykCrawl.bpa"
 		mov AnimWmblykCrawl.Looping, TRUE
 		LoadBPA OFFSET AnimWmblykDead,		"assets\anim\wmblykDead.bpa"
@@ -452,6 +459,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlWmblykHead,		"assets\models\wmblykHead.bpl"
 		
 		LoadBPM OFFSET MeshKubale,			"assets\models\kubale.bpm"
+		LoadBPM OFFSET MeshMotrya,			"assets\models\motrya.bpm"
 		LoadBPM OFFSET MeshWmblyk,			"assets\models\wmblyk.bpm"
 
 		mov ScreenQuad, rv(glGenLists, 1)

@@ -701,6 +701,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 			mov al, BP_INTERPOLATE_CONSTANT
 		.ENDIF
 		mov KubaleAnimPlr.Interpolation, al
+		mov MotryaAnimPlr.Interpolation, al
 		mov WmblykAnimPlr.Interpolation, al
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsMSAA)
 		print "graphics/msaa", 13, 10
@@ -759,6 +760,8 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 			invoke LoadStrings, OFFSET SettingsMiscLanguage
 			invoke glDeleteTextures, 255, OFFSET bpDefaultFont
 			invoke bpLoadFont, StrLangFontPath, OFFSET bpDefaultFont
+			
+			invoke IntToStr, StrLayerNumPtr, MazeLayer
 		.ENDIF
 	.ENDIF
 	ret
