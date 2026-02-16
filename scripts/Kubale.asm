@@ -17,6 +17,7 @@ KubaleAnimPlr	BPAnimPlayer <>
 KubaleAppeared	BPBool FALSE			; If Kubale ever appeared
 KubaleRot		REAL4 0.0				; Kubale rotation (radians)
 KubalePos		Vector3 <0.0, 0.0, 0.0>	; The act of transferring the Kubale
+KubaleRaycast	BPBool FALSE
 KubaleInkblot	BPPtr 0					; Kubale inkblot index
 KubaleVision	REAL4 0.0				; Kubale vision value (alpha, gain)
 
@@ -38,6 +39,10 @@ Kubale_Spawn PROC EXPORT State:BPEnum
 		print "event", 13, 10
 	.ELSEIF (State == KUBALE_ACTIVE)
 		invoke Maze_GetRandomPos, ADDR KubalePos
+		
+		.IF (MazeLayer > 42)
+			mov KubaleRaycast, TRUE
+		.ENDIF
 		
 		mov KubaleAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init animator
 		mov KubaleAnimPlr.Mesh, OFFSET MeshKubale
@@ -65,7 +70,7 @@ Kubale_Draw	PROC EXPORT
 Kubale_Draw ENDP
 
 Kubale_Process PROC EXPORT
-	LOCAL dist:REAL4, flVal:REAL4
+	LOCAL dist:REAL4, flVal:REAL4, blocked:BPBool
 	
 	.IF (Kubale == KUBALE_EVENT)
 		; KubaleRot is state val (timer)
@@ -96,9 +101,16 @@ Kubale_Process PROC EXPORT
 	.ELSEIF (Kubale == KUBALE_ACTIVE)
 		mov FogDensity, rv(flLerp, FogDensity, f(0.5), delta2)
 		
-		mov dist, rv(Vector32DDistanceSqr, ADDR KubalePos, ADDR CamPos)
+		mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
 		
-		mov flVal, rv(Plr_FrustumDot, ADDR KubalePos)
+		mov flVal, rv(Plr_FrustumDot, OFFSET KubalePos)
+		mov blocked, FALSE
+		.IF (rv(Maze_Raycast, OFFSET KubalePos, OFFSET CamPos))
+			.IF (KubaleRaycast)
+				mov flVal, 0
+			.ENDIF
+			mov blocked, TRUE
+		.ENDIF
 		fcmp flVal, KubaleDot
 		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)	; Invisible
 			fcmp dist, f(2)
@@ -143,7 +155,7 @@ Kubale_Process PROC EXPORT
 		fcmp dist, f(32)
 		.IF (Carry?)
 			.IF (Maze) && (KubaleAction & KUBALE_ACT_MOVE)	; Just in case
-				invoke Maze_Collide, ADDR KubalePos, f(1.6), FALSE
+				invoke Maze_CollideLayout, ADDR KubalePos, f(1.6), FALSE
 			.ENDIF
 			
 			; Player collision
@@ -157,12 +169,17 @@ Kubale_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 				
-		.IF (KubaleAction & KUBALE_ACT_ATTACK)
+		.IF (KubaleAction & KUBALE_ACT_ATTACK) && (!blocked)
 			mov KubaleVision, rv(flLerp, KubaleVision, FLT_1, delta2)
 			
 			fld PlrHealth
 			fsub deltaTime
-			fstp PlrHealth
+			fst PlrHealth
+			fsubr f(1)
+			fmul f(0.1)
+			fstp flVal
+			
+			invoke Plr_Shake, flVal
 			
 			bpMPM UIDeadTipStr, StrTipKubale
 		.ELSE

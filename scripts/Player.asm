@@ -53,7 +53,9 @@ CamLightPos		Vector4 <0.0, 0.0, 0.0, 1.0>
 CamFOV			REAL4 75.0
 CamBaseFOV		REAL4 75.0
 PlrGlyphs		DWORD 7
-PlrGlyphPos		Vector2 7 DUP (<>)
+PlrGlyphsInMaze	DWORD 0
+PlrGlyphPos		Vector3 7 DUP (<>)
+PlrGlyphRot		REAL4 7 DUP (0.0)
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
 
@@ -154,8 +156,88 @@ Plr_Control PROC EXPORT
 	fld CamHeight
 	fsub PlrCrouch
 	fstp CamPos.Y
+	
+	; Tilt
+	fld InputMovementClamped.X
+	fmul f(0.02)
+	fstp CamRot.Z
+	
+	; Glyphs
+	.IF (PlrState == PLAYER_STATE_GAME) && (InputGlyph)
+		.IF (PlrGlyphs)
+			invoke alSourcePlay, SndScribble
+			dec PlrGlyphs
+			
+			mov pax, PlrGlyphsInMaze
+			mov pcx, 12
+			mul pcx
+			push pax
+			invoke Vector32DCopy, ADDR PlrGlyphPos[pax], ADDR CamPos
+			pop pax
+			fild PlrGlyphsInMaze
+			fmul f(0.01)
+			fadd f(0.01)
+			fstp PlrGlyphPos[pax].Y
+			
+			mov pcx, PlrGlyphsInMaze
+			shl pcx, 2
+			bpMEM32 PlrGlyphRot[pcx], CamRot.Y
+			
+			inc PlrGlyphsInMaze
+			
+			.IF (PlrGlyphs)
+				vinvoke UI_ShowSubtitles, StrCCGlyphs, UISubDur
+			.ELSE
+				invoke alSourcePlay, SndMistake
+			.ENDIF
+		.ENDIF
+		.IF !(PlrGlyphs)
+			vinvoke UI_ShowSubtitles, StrCCGlyphsNone, UISubDur
+		.ENDIF
+		
+		mov InputGlyph, 0
+	.ENDIF
 	ret
 Plr_Control ENDP
+
+Plr_DrawGlyphs PROC EXPORT
+	LOCAL pos:Vector3, rot:REAL4
+	
+	xor pbx, pbx
+	.WHILE (pbx < PlrGlyphsInMaze)
+		mov pax, pbx
+		shl pax, 2
+		mov ecx, PlrGlyphRot[pax]
+		mov rot, ecx
+		mov pcx, 3
+		mul pcx
+		invoke Vector3Copy, ADDR pos, ADDR PlrGlyphPos[pax]
+		invoke glEnable, GL_BLEND
+		invoke glDisable, GL_FOG
+		invoke glDisable, GL_LIGHTING
+		invoke glBlendFunc, GL_ONE, GL_ONE
+		call glPushMatrix
+		invoke glTranslate3fv, ADDR pos
+		invoke glRotatefr, rot, 0, f(1), 0
+		invoke glRotatef, f(-90), f(1), 0, 0
+		invoke glScalef, f(0.4), f(0.8), f(1)
+		
+		mov pax, ((SIZEOF TexGlyph) shr 2)	; 7
+		sub pax, PlrGlyphs
+		sub pax, PlrGlyphsInMaze
+		add pax, pbx
+		invoke glBindTexture, GL_TEXTURE_2D, TexGlyph[pax*4]
+		
+		invoke glCallList, MdlParticle
+		call glPopMatrix
+		invoke glDisable, GL_BLEND
+		invoke glEnable, GL_FOG
+		invoke glEnable, GL_LIGHTING
+		
+		inc pbx
+	.ENDW
+	ret
+Plr_DrawGlyphs ENDP
 
 Plr_DrawIntro PROC EXPORT
 	SWITCH PlrState
@@ -581,7 +663,7 @@ Plr_Process PROC EXPORT
 	call Plr_ProcessState
 	
 	.IF (Maze)
-		invoke Maze_Collide, ADDR CamPos, f(0.7), TRUE
+		invoke Maze_CollideLayout, ADDR CamPos, f(0.7), TRUE
 	.ENDIF
 	
 	; Animation (+ stepping sounds)

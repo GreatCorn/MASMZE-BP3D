@@ -10,6 +10,12 @@ MAZE_PROP_TABURETKA	EQU 2 shl MAZE_PROP_SHIFT
 MAZE_PROP_LAMP		EQU 3 shl MAZE_PROP_SHIFT
 
 ENUM \
+	MAZE_CHECK_NONE, \
+	MAZE_CHECK_OPEN, \
+	MAZE_CHECK_CLOSE, \
+	MAZE_CHECK_SAVED
+
+ENUM \
 	MAZE_LOCK_NONE, \
 	MAZE_LOCK_LOCKED, \
 	MAZE_LOCK_UNLOCKED
@@ -63,8 +69,8 @@ MazeStateCallback	BPPtr 0
 MazeStateTimer		REAL4 0.0
 MazeType			BPEnum MAZE_TYPE_NORMAL
 
-MazeCheck			BPEnum FALSE	; Checkpoint state
-MazeCheckDoorRot	REAL4 0.0		; Checkpoint exit door rotation
+MazeCheck			BPEnum MAZE_CHECK_NONE	; Checkpoint state
+MazeCheckDoorRot	REAL4 0.0				; Checkpoint exit door rotation
 
 MazeCrevice 	BPBool FALSE	; Maze crevice active
 MazeCrevicePos	DWORD 0, 0		; Maze crevice cell position
@@ -109,6 +115,7 @@ MazePartAmb		ParticleSystem <>
 MazePartDust	ParticleSystem <>
 
 .DATA?
+MazeCheckPos	Vector3 <?, ?, ?>	; Maze checkpoint
 MazeCurFloor	DWORD ?	; Environmental variety
 MazeCurRoof		DWORD ?
 MazeCurWall		DWORD ?
@@ -129,69 +136,123 @@ Maze_ClampXYI MACRO _X:=<X>, _Y:=<Y>
 	mov _Y, rv(intClamp, _Y, 0, MazeSize[12])
 ENDM
 
-Maze_Collide PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
-	LOCAL cell:BYTE, colSize:Vector2, colPos:Vector3, bounds:Vector4, fpucw:WORD
-	cellCollide MACRO _hor:REQ, _endW	; Probably shouldn't be a macro but idc
-		Vector32DPush colPos
+Maze_Collide PROC EXPORT PosPtr:BPPtr, Radius:REAL4, X:REAL4, Y:REAL4, Cell:BYTE
+	LOCAL colPos:Vector3, colSize:Vector2
+	wallCollide MACRO _hor:REQ
 		IF _hor EQ TRUE
-			sal colPos.X, 1	; *2
-			inc colPos.X
-			IFNB <_endW>
-				inc colPos.Z
-			ENDIF
-			sal colPos.Z, 1	; *2
+			fld X
 		ELSE
-			IFNB <_endW>
-				inc colPos.X
-			ENDIF
-			sal colPos.X, 1	; *2
-			sal colPos.Z, 1	; *2
-			inc colPos.Z
+			fld Y
 		ENDIF
-		
-		invoke Vector32DF, ADDR colPos
-		sub psp, SIZEOF BPPtr*2
+		fadd f(1)
+		IF _hor EQ TRUE
+			fstp colPos.X
+			bpMEM32 colPos.Z, Y
+		ELSE
+			fstp colPos.Z
+			bpMEM32 colPos.X, X
+		ENDIF
 		fld f(2.1)
 		fadd Radius
 		IF _hor EQ TRUE
-			fstp REAL4 PTR [psp]
+			fstp colSize.X
 		ELSE
-			fstp REAL4 PTR [psp+SIZEOF BPPtr]
+			fstp colSize.Y
 		ENDIF
 		fld f(0.2)
 		fadd Radius
 		IF _hor EQ TRUE
-			fstp REAL4 PTR [psp+SIZEOF BPPtr]
+			fstp colSize.Y
 		ELSE
-			fstp REAL4 PTR [psp]
+			fstp colSize.X
 		ENDIF
-		lea pax, colPos
-		push pax
-		push PosPtr
-		call Collide_Rectangle
-		Vector32DPop colPos
+		invoke Collide_Rectangle, PosPtr, ADDR colPos, colSize.X, colSize.Y
 	ENDM
-		
-	fnstcw fpucw
-	or fpucw, FPU_ROUND_TRUNC
-	fldcw fpucw
 	
+	; Walls
+	.IF !(Cell & MAZE_CELL_PASSTOP)
+		wallCollide TRUE
+	.ENDIF
+	.IF !(Cell & MAZE_CELL_PASSLEFT)
+		wallCollide FALSE
+	.ENDIF
+	
+	; Props
+	invoke Vector32DSet, ADDR colPos, X, Y
+	mov al, Cell
+	and al, MAZE_CELL_PROPS
+	.IF (al == MAZE_PROP_DOORWAY)
+		fld f(0.2)
+		fadd Radius
+		fstp colSize.X
+		fld f(0.3)	; Not 0.6 because too narrow
+		fadd Radius
+		fstp colSize.Y
+		.IF (Cell & MAZE_CELL_ROTATED)
+			lea pcx, colPos.Z
+		.ELSE
+			lea pcx, colPos.X
+			mov eax, colSize.X
+			mov edx, colSize.Y
+			mov colSize.X, edx
+			mov colSize.Y, eax
+		.ENDIF
+		
+		fld REAL4 PTR [pcx]
+		fadd f(0.3)
+		fstp REAL4 PTR [pcx]
+		push pcx
+		invoke Collide_Rectangle, PosPtr, ADDR colPos, colSize.X, colSize.Y
+		pop pcx
+		fld REAL4 PTR [pcx]
+		fadd f(1.4)
+		fstp REAL4 PTR [pcx]
+		invoke Collide_Rectangle, PosPtr, ADDR colPos, colSize.X, colSize.Y
+	.ELSEIF (al == MAZE_PROP_TABURETKA)
+		.IF (Cell & MAZE_CELL_ROTATED)
+			fld colPos.X
+			fsub f(0.46)
+			fstp colPos.X
+			fld colPos.Z
+			fadd f(0.42)
+			fstp colPos.Z
+		.ELSE
+			fld colPos.X
+			fadd f(0.42)
+			fstp colPos.X
+			fld colPos.Z
+			fadd f(0.46)
+			fstp colPos.Z
+		.ENDIF
+		fld Radius
+		fsub f(0.3)
+		fstp colSize.X
+		
+		invoke Collide_Distance, PosPtr, ADDR colPos, colSize.X, 0
+	.ENDIF
+	ret
+Maze_Collide ENDP
+
+Maze_CollideLayout PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
+	LOCAL flVal:REAL4, colPos:Vector2, worldPos:Vector2, bounds:Vector4
+		
+	; Get collidee cell position
+	invoke fpuSetRounding, FPU_ROUND_TRUNC
 	mov pax, PosPtr
 	fld REAL4 PTR [pax]
 	fistp colPos.X
 	fld REAL4 PTR [pax+8]
-	fistp colPos.Z
+	fistp colPos.Y
 	sar colPos.X, 1	; /2
-	sar colPos.Z, 1	; /2
+	sar colPos.Y, 1	; /2
+	invoke fpuSetRounding, FPU_ROUND_ROUND
 	
-	xor fpucw, FPU_ROUND_TRUNC
-	fldcw fpucw
-	
+	; Establish boundaries (collide just around the collidee)
 	dec colPos.X
 	mov ecx, colPos.X
 	mov bounds.X, ecx
-	dec colPos.Z
-	mov edx, colPos.Z
+	dec colPos.Y
+	mov edx, colPos.Y
 	mov bounds.Y, edx
 	add ecx, 2
 	mov bounds.Z, ecx
@@ -201,105 +262,65 @@ Maze_Collide PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
 	mov ecx, colPos.X
 	.WHILE (SDWORD PTR ecx <= bounds.Z)
 		mov edx, bounds.Y
-		mov colPos.Z, edx
+		mov colPos.Y, edx
 		.WHILE (SDWORD PTR edx <= bounds.W)
-			.IF (rv(Maze_InRange, colPos.X, colPos.Z))
-				invoke Maze_GetCellI, colPos.X, colPos.Z
-				mov cell, al
-				
-				mov cl, al
-				and cl, MAZE_CELL_PROPS
-				.IF (cl)
-					Vector32DPush colPos
-					sal colPos.X, 1	; *2
-					sal colPos.Z, 1	; *2
-					invoke Vector32DF, ADDR colPos
-					
-					mov al, cell
-					.IF (cl == MAZE_PROP_DOORWAY)		; Doorway
-						.IF (al & MAZE_CELL_ROTATED)
-							fld f(0.2)
-							fadd Radius
-							fstp colSize.X
-							fld f(0.3)	; Not 0.6 because too narrow
-							fadd Radius
-							fstp colSize.Y
-							
-							fld colPos.Z
-							fadd f(0.3)
-							fstp colPos.Z
-							invoke Collide_Rectangle, PosPtr, ADDR colPos, \
-								colSize.X, colSize.Y
-							fld colPos.Z
-							fadd f(1.4)
-							fstp colPos.Z
-							invoke Collide_Rectangle, PosPtr, ADDR colPos, \
-								colSize.X, colSize.Y
-						.ELSE
-							fld colPos.X
-							fadd f(0.3)
-							fstp colPos.X
-							invoke Collide_Rectangle, PosPtr, ADDR colPos, \
-								f(1), f(0.9)
-							fld colPos.X
-							fadd f(1.4)
-							fstp colPos.X
-							invoke Collide_Rectangle, PosPtr, ADDR colPos, \
-								f(1), f(0.9)
-						.ENDIF
-					.ELSEIF (cl == MAZE_PROP_TABURETKA) && (Props)	; Taburetka
-						.IF (al & MAZE_CELL_ROTATED)
-							fld colPos.X
-							fsub f(0.46)
-							fstp colPos.X
-							fld colPos.Z
-							fadd f(0.42)
-							fstp colPos.Z
-						.ELSE
-							fld colPos.X
-							fadd f(0.42)
-							fstp colPos.X
-							fld colPos.Z
-							fadd f(0.46)
-							fstp colPos.Z
-						.ENDIF
-						fld Radius
-						fsub f(0.3)
-						fstp colSize.X
-						
-						invoke Collide_Distance, PosPtr, ADDR colPos, \
-						colSize.X, 0
-					.ENDIF
-					Vector32DPop colPos
-					mov al, cell
+			.IF (rv(Maze_InRange, colPos.X, colPos.Y))
+				invoke Vector2Copy, ADDR worldPos, ADDR colPos
+				sal worldPos.X, 1	; *2
+				sal worldPos.Y, 1	; *2
+				invoke Vector2F, ADDR worldPos
+				invoke Maze_GetCellI, colPos.X, colPos.Y
+				.IF !(Props)
+					and al, not MAZE_CELL_PROPS
 				.ENDIF
-				
-				.IF !(al & MAZE_CELL_PASSTOP)
-					cellCollide TRUE
-					mov al, cell
-				.ENDIF
-				.IF !(al & MAZE_CELL_PASSLEFT)
-					cellCollide FALSE
-				.ENDIF
-				
-				mov eax, colPos.Z
-				.IF (eax == MazeSize[12])
-					cellCollide TRUE, TRUE
-				.ENDIF
+				invoke Maze_Collide, PosPtr, Radius, worldPos.X, worldPos.Y, al
 				mov eax, colPos.X
-				.IF (eax == MazeSize[8])
-					cellCollide FALSE, TRUE
+				.IF (eax == MazeSize[8])	; End walls vertical
+					fld worldPos.X
+					fadd f(2)
+					fstp flVal
+					invoke Maze_Collide, PosPtr, Radius, flVal, worldPos.Y, \
+					MAZE_CELL_PASSTOP
+				.ENDIF
+				mov eax, colPos.Y
+				.IF (eax == MazeSize[12])	; End walls hor and exit
+					fld worldPos.Y
+					fadd f(2)
+					fstp flVal
+					mov eax, colPos.X
+					.IF (eax == MazeSize[8]) && (MazeCheck == MAZE_CHECK_OPEN) \
+					&& (PosPtr == OFFSET CamPos)
+						; Collide checkpoint doorway
+						mov al, MAZE_CELL_PASSTOP or MAZE_CELL_PASSLEFT \
+						or MAZE_PROP_DOORWAY
+					.ELSE
+						mov al, MAZE_CELL_PASSLEFT
+					.ENDIF
+					invoke Maze_Collide, PosPtr, Radius, worldPos.X, flVal, al
 				.ENDIF
 			.ENDIF
-			inc colPos.Z
-			mov edx, colPos.Z
+			inc colPos.Y
+			mov edx, colPos.Y
 		.ENDW
 		inc colPos.X
 		mov ecx, colPos.X
 	.ENDW
 	
 	ret
-Maze_Collide ENDP
+Maze_CollideLayout ENDP
+
+Maze_DrawCheck PROC EXPORT
+	call glPushMatrix
+	invoke glTranslate3fv, ADDR MazeCheckPos
+	invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
+	invoke glCallList, MdlCheckFloor
+	invoke glBindTexture, GL_TEXTURE_2D, MazeCurRoof
+	invoke glCallList, MdlCheckRoof
+	invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
+	invoke glCallList, MdlCheckWalls
+	call glPopMatrix
+	ret
+Maze_DrawCheck ENDP
 
 Maze_DrawDoor PROC EXPORT Rotation:REAL4
 	invoke glBindTexture, GL_TEXTURE_2D, TexDoor
@@ -463,6 +484,9 @@ Maze_Finish PROC EXPORT
 	bpMEM32 FogDensity, f(0.5)
 	
 	; Clear all elements
+	mov PlrGlyphsInMaze, 0
+	
+	mov MazeCheck, MAZE_CHECK_NONE
 	mov MazeLocked, MAZE_LOCK_NONE
 	mov MazeNote, 0
 	mov MazeSlam, FALSE
@@ -589,7 +613,7 @@ Maze_Finish PROC EXPORT
 				CASE 1
 					bpMEM32 MazeCurWall, TexWhitewall
 				CASE 2
-					bpMEM32 MazeCurWall, TexConcrete
+					bpMEM32 MazeCurWall, TexWallpaper
 				CASE 3
 					bpMEM32 MazeCurWall, TexPlaster
 				CASE 4
@@ -666,12 +690,14 @@ Maze_Finish PROC EXPORT
 				CASE 2
 					bpMEM32 MazeCurWall, TexConcrete
 			ENDSW
-			invoke nRand, 2	; Floor
+			invoke nRand, 3	; Floor
 			SWITCH eax
 				CASE 0
 					bpMEM32 MazeCurFloor, TexDiamond
 				CASE 1
 					bpMEM32 MazeCurFloor, TexTileBig
+				CASE 2
+					bpMEM32 MazeCurFloor, TexWalkway
 			ENDSW
 			invoke nRand, 4	; Wall model
 			SWITCH eax
@@ -1403,6 +1429,9 @@ Maze_Draw PROC EXPORT
 			invoke glEnable, GL_LIGHTING
 			invoke glEnable, GL_FOG
 		.ENDIF
+		.IF (MazeCheck)			; Checkpoint
+			call Maze_DrawCheck
+		.ENDIF
 		.IF (PlrState == PLAYER_STATE_EXITING)	; Exit door stairs
 			call glPushMatrix
 			mov eax, MazeSize[8]
@@ -1494,6 +1523,54 @@ Maze_Fixed PROC EXPORT
 		invoke Particles_Process, ADDR MazePartDust, deltaFixed
 	.ENDIF
 	
+	; Exit door
+	.IF (MazeLocked == MAZE_LOCK_NONE) || (MazeLocked == MAZE_LOCK_UNLOCKED)
+		mov flVal,vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET MazeDoorPos)
+		fcmp flVal, f(0.7)
+		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)
+			.IF (MazeLayer == 21) || (MazeLayer == 42) || (MazeLayer == 63)
+				.IF (MazeCheck == MAZE_CHECK_NONE)
+					bpMEM32 MazeCheckPos.X, MazeSize[8]
+					shl MazeCheckPos.X, 1	; *2
+					bpMEM32 MazeCheckPos.Z, MazeSize[12]
+					inc MazeCheckPos.Z		; +1 cell
+					shl MazeCheckPos.Z, 1	; *2
+					mov MazeCheckPos.Y, 0
+					invoke Vector32DF, ADDR MazeCheckPos
+					mov MazeCheck, MAZE_CHECK_OPEN
+					invoke SndSetPos, SndCheckpoint, ADDR MazeDoorPos
+					invoke alSourcePlay, SndCheckpoint
+				.ENDIF
+			.ELSE
+				mov PlrState, PLAYER_STATE_EXIT
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	
+		
+	.IF (MazeCheck == MAZE_CHECK_OPEN)
+		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-100), delta2)
+		fld CamPos.Z
+		fsub MazeCheckPos.Z
+		fstp flVal
+		
+		fcmp flVal, f(1)
+		.IF (!Carry?)
+			mov MazeCheck, MAZE_CHECK_CLOSE
+			invoke SndSetPos, SndDoorClose, ADDR MazeDoorPos
+			invoke alSourcePlay, SndDoorClose
+			
+			vinvoke UI_ShowSubtitles, StrCCSave, UISubDur
+		.ENDIF
+	.ELSEIF (MazeCheck == MAZE_CHECK_CLOSE)
+		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(0), delta2)
+		
+		fcmp flVal, f(2)
+		.IF (!Carry?)
+			
+		.ENDIF
+	.ENDIF
+	
 	.IF (MazeLocked == MAZE_LOCK_LOCKED)	; Key
 		mov flVal, rv(flDistance, MazeKeyRot[0], MazeKeyRot[4])
 		fcmp flVal, f(0.05)
@@ -1516,16 +1593,18 @@ Maze_Fixed PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
-	.IF (MazeNote) && (PlrState == PLAYER_STATE_GAME)
+	; Notes
+	.IF (MazeNote) && !(MazeNote & 16) && (PlrState == PLAYER_STATE_GAME)
 		mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeNotePos)
 		fcmp flVal, f(1)
 		.IF (Carry?)
 			or MazeNote, 16
 			mov deltaScale, 0
+			invoke alSourcePlay, SndMistake
 		.ENDIF
 	.ENDIF
 	
-	.IF (MazeSlam) && (PlrState == PLAYER_STATE_GAME)
+	.IF (MazeSlam) && (PlrState == PLAYER_STATE_GAME)	; Slam
 		fild MazeEntranceCell
 		fmul f(2)
 		fadd f(1)
@@ -1540,7 +1619,7 @@ Maze_Fixed PROC EXPORT
 		.IF (MazeSlamRot)
 			fcmp flVal, f(4)
 			.IF (Carry?)
-				invoke alSourcefv, SndSlam, AL_POSITION, ADDR v3Val
+				invoke SndSetPos, SndSlam, ADDR v3Val
 				invoke alSourcePlay, SndSlam
 				mov MazeSlam, FALSE
 				; ALERT WB
@@ -1557,7 +1636,7 @@ Maze_Fixed PROC EXPORT
 Maze_Fixed ENDP
 
 Maze_Process PROC EXPORT
-	LOCAL flVal:REAL4
+	LOCAL flVal:REAL4, v3Val:Vector3
 	
 	invoke fpuSetRounding, FPU_ROUND_TRUNC
 	fld CamPos.X
@@ -1568,15 +1647,30 @@ Maze_Process PROC EXPORT
 	
 	call Maze_ProcessState
 	
-	.IF (Maze)		
-		; Detect exit door
-		.IF (MazeLocked == MAZE_LOCK_NONE) || (MazeLocked == MAZE_LOCK_UNLOCKED)
-			mov flVal,vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET MazeDoorPos)
-			fcmp flVal, f(0.7)
-			.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)
-				mov PlrState, PLAYER_STATE_EXIT
-			.ENDIF
-		.ENDIF
+	.IF(MazeCheck)
+		invoke Vector32DCopy, ADDR v3Val, ADDR MazeCheckPos
+		fld v3Val.X
+		fadd f(0.45)
+		fstp v3Val.X
+		fld v3Val.Z
+		fadd f(2)
+		fstp v3Val.Z
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), f(4.7)
+		fld v3Val.X
+		fadd f(1)
+		fstp v3Val.X
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), f(4.7)
+		fld v3Val.X
+		fsub f(1.5)
+		fstp v3Val.X
+		fld v3Val.Z
+		fadd f(3)
+		fstp v3Val.Z
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), f(2.7)
+		fld v3Val.X
+		fadd f(2)
+		fstp v3Val.X
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), f(2.7)
 	.ENDIF
 	ret
 Maze_Process ENDP

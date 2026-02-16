@@ -186,7 +186,9 @@ TexVirdyaN			DWORD ?
 TexVirdyaNeut		DWORD ?
 TexVirdyaUp			DWORD ?
 
+TexWalkway			DWORD ?
 TexWall				DWORD ?
+TexWallpaper		DWORD ?
 TexWallPainted		DWORD ?
 TexWB				DWORD ?
 TexWBBK				DWORD ?
@@ -552,7 +554,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexVirdyaN,		"assets\textures\virdyaN.bpt"
 		LoadBPT OFFSET TexVirdyaNeut,	"assets\textures\virdyaNeut.bpt"
 		LoadBPT OFFSET TexVirdyaUp,		"assets\textures\virdyaUp.bpt"
+		LoadBPT OFFSET TexWalkway,		"assets\textures\walkway.bpt"
 		LoadBPT OFFSET TexWall,			"assets\textures\wall.bpt"
+		LoadBPT OFFSET TexWallpaper,	"assets\textures\wallpaper.bpt"
 		LoadBPT OFFSET TexWallPainted,	"assets\textures\wallPainted.bpt"
 		LoadBPT OFFSET TexWB,			"assets\textures\WB.bpt"
 		LoadBPT OFFSET TexWBBK,			"assets\textures\WBBK.bpt"

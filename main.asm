@@ -409,6 +409,9 @@ DrawScene PROC EXPORT
 		call Plr_DrawIntro
 	.ENDIF
 	call Maze_Draw
+	.IF (PlrGlyphsInMaze)
+		call Plr_DrawGlyphs
+	.ENDIF
 	.IF (Kubale)
 		call Kubale_Draw
 	.ENDIF
