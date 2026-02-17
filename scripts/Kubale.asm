@@ -50,7 +50,7 @@ Kubale_Spawn PROC EXPORT State:BPEnum
 		bpMEM32 KubaleAnimPlr.Speed, f(2)
 		
 		print "active, at "
-		Vector3Print KubalePos
+		Vector32DPrint KubalePos
 	.ENDIF
 	mbm Kubale, State
 	ret

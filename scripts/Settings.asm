@@ -702,6 +702,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		.ENDIF
 		mov KubaleAnimPlr.Interpolation, al
 		mov MotryaAnimPlr.Interpolation, al
+		mov VebraAnimPlr.Interpolation, al
 		mov WmblykAnimPlr.Interpolation, al
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsMSAA)
 		print "graphics/msaa", 13, 10

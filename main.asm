@@ -383,6 +383,7 @@ include scripts\Maze.asm
 include scripts\Player.asm
 
 include scripts\Kubale.asm
+include scripts\Vebra.asm
 include scripts\Wmblyk.asm
 
 include scripts\Settings.asm
@@ -414,6 +415,9 @@ DrawScene PROC EXPORT
 	.ENDIF
 	.IF (Kubale)
 		call Kubale_Draw
+	.ENDIF
+	.IF (Vebra)
+		call Vebra_Draw
 	.ENDIF
 	.IF (Wmblyk)
 		call Wmblyk_Draw
@@ -716,6 +720,9 @@ ProcessScene PROC EXPORT
 	.ENDIF
 	.IF (Kubale)
 		call Kubale_Process
+	.ENDIF
+	.IF (Vebra)
+		call Vebra_Process
 	.ENDIF
 	.IF (Wmblyk)
 		call Wmblyk_Process

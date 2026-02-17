@@ -41,7 +41,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		bpMEM32 WmblykCellPos.X, f(20)
 		
 		print "still, at "
-		Vector3Print WmblykPos
+		Vector32DPrint WmblykPos
 	.ELSEIF (State == WMBLYK_STEALTH_WAIT)
 		mov WmblykStateVal, rv(flRandRange, f(4), f(11))
 		mov WmblykCellPos.X, FLT_1
@@ -63,8 +63,8 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		
 		invoke alSourcePlay, SndWmblykB
 		
-		print "walking", 13, 10
-		Vector3Print WmblykPos
+		print "walking, at ", 13, 10
+		Vector32DPrint WmblykPos
 	.ENDIF
 	mbm Wmblyk, State
 	ret
@@ -184,6 +184,12 @@ Wmblyk_Process PROC EXPORT
 			.IF (WmblykCellPos.X & FLT_NEG)
 				fcmp WmblykCellPos.X, f(-10.0)
 				.IF (Carry?)
+					mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
+					invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
+					invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, 0
+					.IF (SettingsGraphicsInterpolation)
+						mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
+					.ENDIF
 					Vector32DPush WmblykPos
 					invoke Wmblyk_Spawn, WMBLYK_WALK
 					Vector32DPop WmblykPos

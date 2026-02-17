@@ -89,6 +89,8 @@ SV	StrCCRandom7
 SV	StrCCSave
 SV	StrCCSaveErase
 SV	StrCCSaved
+SV	StrCCTeleport
+SV	StrCCTeleportBad
 SV	StrTipEBD
 SV	StrTipHBD
 SV	StrTipKubale

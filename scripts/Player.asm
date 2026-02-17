@@ -59,6 +59,8 @@ PlrGlyphRot		REAL4 7 DUP (0.0)
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
 
+PlrItems		BPEnum 0
+
 PlrState			DWORD PLAYER_STATE_ENTER
 PlrStateCallback	BPPtr 0
 PlrStateTimer		REAL4 0.0
