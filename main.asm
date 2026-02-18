@@ -405,14 +405,7 @@ DrawScene PROC EXPORT
 			invoke glDisable, GL_TEXTURE_2D
 		.ENDIF
 	ENDIF
-	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
-	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
-		call Plr_DrawIntro
-	.ENDIF
 	call Maze_Draw
-	.IF (PlrGlyphsInMaze)
-		call Plr_DrawGlyphs
-	.ENDIF
 	.IF (Kubale)
 		call Kubale_Draw
 	.ENDIF
@@ -422,6 +415,7 @@ DrawScene PROC EXPORT
 	.IF (Wmblyk)
 		call Wmblyk_Draw
 	.ENDIF
+	call Plr_Draw
 	IFDEF MODE_DEBUG	; Wireframe cancel
 		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
 		invoke glEnable, GL_TEXTURE_2D
@@ -841,6 +835,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					add UIScroll, 12
 					
 				IFDEF MODE_DEBUG
+				CASE 'C'
+					xor PlrItems, MAZE_ITEM_COMPASS
 				CASE 'F'
 					bpMEM32 deltaScale, f(4)
 					invoke MulSoundPitch, f(4)
@@ -862,6 +858,9 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					.ELSE
 						invoke Kubale_Spawn, KUBALE_ACTIVE
 					.ENDIF
+				CASE 'M'
+					call Maze_GenerateLayoutTex
+					xor PlrItems, MAZE_ITEM_MAP
 				CASE 'B'
 					.IF (Keys[VK_SHIFT])
 						invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
@@ -878,7 +877,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					.ELSE
 						inc MazeLayer
 					.ENDIF
-					invoke IntToStr, StrLayerNumPtr, MazeLayer
+					invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
 					call UI_ShowLayerPopup
 					
 				CASE VK_OEM_MINUS
@@ -887,7 +886,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					.ELSE
 						dec MazeLayer
 					.ENDIF
-					invoke IntToStr, StrLayerNumPtr, MazeLayer
+					invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
 					call UI_ShowLayerPopup
 
 				CASE VK_F3

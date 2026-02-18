@@ -17,6 +17,10 @@ ENUM \
 	
 MAZE_ITEM_COMPASS	EQU 1
 MAZE_ITEM_GLYPHS	EQU 2
+MAZE_ITEM_MAP		EQU 4
+
+MAZE_MAP_WALL_SHL	EQU 3
+MAZE_MAP_WALL_SIZE	EQU 1 shl MAZE_MAP_WALL_SHL
 
 ENUM \
 	MAZE_LOCK_NONE, \
@@ -56,7 +60,10 @@ LayerData STRUCT
 LayerData ENDS
 	
 .CONST
+MazeItemDist	REAL4 0.7
+MazeItemDistImp	REAL4 1.0
 MazeRaycastMax	BPPtr 64
+MazeRandPosMax	BPPtr 64
 	
 
 .DATA
@@ -92,6 +99,8 @@ MazeGlyphsRot	REAL4 0.0		; Glyphs item rotation
 
 MazeKeyPos		Vector3 <>		; Key position
 MazeKeyRot		REAL4 0.0, 0.0	; Key rotation + target
+
+MazeLayoutTex	DWORD 0
 
 MazeNote		BPEnum 0
 MazeNotePos		Vector3 <>
@@ -552,7 +561,7 @@ Maze_Finish PROC EXPORT
 	call Maze_ResetEntities
 	
 	; Change layer string
-	invoke IntToStr, StrLayerNumPtr, MazeLayer
+	invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
 	call UI_ShowLayerPopup
 	
 	; Random flavor text subtitles
@@ -573,9 +582,12 @@ Maze_Finish PROC EXPORT
 	fstp MazeDoorPos.Z
 	bpMEM32 MazeDoorPos.Y, CamHeight
 	
-	; Props
+	; Props and clear MAZE_CELL_VISITED
 	xor pbx, pbx
 	.WHILE (pbx < MazeByteSize)
+		mov pcx, Maze
+		and BYTE PTR [pcx+pbx], 00000011b
+		
 		invoke nRand, 2
 		.IF !(al)
 			invoke intRandRange, 2, 16
@@ -584,7 +596,6 @@ Maze_Finish PROC EXPORT
 			invoke nRand, 2
 			pop pdx
 			mov pcx, Maze
-			and BYTE PTR [pcx+pbx], 00000111b
 			or BYTE PTR [pcx+pbx], dl	; Prop val
 			.IF (al)	; Rotate
 				or BYTE PTR [pcx+pbx], MAZE_CELL_ROTATED
@@ -951,6 +962,104 @@ Maze_Generate PROC EXPORT Seed:DWORD
 	ret
 Maze_Generate ENDP
 
+Maze_GenerateLayoutTex PROC EXPORT
+	LOCAL buf:BPPtr, texSize:Vector2, pos:Vector2, cell:BYTE
+	mov eax, MazeSize[0]
+	shl eax, MAZE_MAP_WALL_SHL
+	inc eax		; +1 for rightmost edge wall
+	mov texSize.X, eax
+	mov ecx, MazeSize[4]
+	shl ecx, MAZE_MAP_WALL_SHL
+	inc ecx
+	mov texSize.Y, ecx
+	mul ecx
+	mov buf, rv(bpMalloc, bpDefHeap, HEAP_ZERO_MEMORY, eax)
+	
+	print str$(texSize.X), 'x'
+	print str$(texSize.Y), 13, 10
+	
+	push pbx
+	xor pbx, pbx
+	.WHILE (pbx < MazeSize[0])
+		xor pcx, pcx
+		.WHILE (pcx < MazeSize[4])
+			push pcx
+			invoke Maze_GetCellI, pbx, pcx
+			mov cell, al
+			pop pcx
+			
+			mov pax, MazeSize[0]
+			sub pax, pbx
+			mov pos.X, pax
+			mov pos.Y, pcx
+			shl pos.X, MAZE_MAP_WALL_SHL
+			shl pos.Y, MAZE_MAP_WALL_SHL
+			push pcx
+			invoke bp2DArrayGetOffset, pos.X, pos.Y, texSize.X, 1
+			pop pcx
+			add pax, buf
+			
+			.IF !(cell & MAZE_CELL_PASSTOP)
+				push pax
+				REPEAT MAZE_MAP_WALL_SIZE
+					mov BYTE PTR [pax], 255
+					dec pax
+				ENDM
+				pop pax
+			.ENDIF
+			.IF !(cell & MAZE_CELL_PASSLEFT)
+				push pax
+				mov pdx, texSize.X
+				REPEAT MAZE_MAP_WALL_SIZE
+					mov BYTE PTR [pax], 255
+					add pax, pdx
+				ENDM
+				pop pax
+			.ENDIF
+			
+			; Right walls
+			.IF (pbx == MazeSize[8])
+				push pax
+				sub pax, MAZE_MAP_WALL_SIZE
+				mov pdx, texSize.X
+				REPEAT MAZE_MAP_WALL_SIZE
+					mov BYTE PTR [pax], 255
+					add pax, pdx
+				ENDM
+				pop pax
+			.ENDIF
+			
+			; Bottom walls
+			.IF (pcx == MazeSize[12])
+				push pax
+				mov pdx, texSize.X
+				shl pdx, MAZE_MAP_WALL_SHL
+				add pax, pdx
+				REPEAT MAZE_MAP_WALL_SIZE
+					mov BYTE PTR [pax], 255
+					dec pax
+				ENDM
+				pop pax
+			.ENDIF
+			inc pcx
+		.ENDW
+		inc pbx
+	.ENDW
+	.IF (MazeLayoutTex)
+		invoke glDeleteTextures, 1, ADDR MazeLayoutTex
+	.ENDIF
+	invoke glGenTextures, 1, ADDR MazeLayoutTex
+	invoke glBindTexture, GL_TEXTURE_2D, MazeLayoutTex
+	invoke gluBuild2DMipmaps, GL_TEXTURE_2D, 1, texSize.X, texSize.Y, \
+	GL_LUMINANCE, GL_UNSIGNED_BYTE, buf
+	invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST
+	invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST
+	
+	invoke bpFree, bpDefHeap, 0, buf
+	pop pbx
+	ret
+Maze_GenerateLayoutTex ENDP
+
 ;   Get maze cell data from real-world REAL4 coordinates.
 Maze_GetCellF PROC EXPORT X:REAL4, Y:REAL4
 	LOCAL fpucw:WORD
@@ -1014,14 +1123,24 @@ Maze_GetCellOffsetF PROC EXPORT X:REAL4, Y:REAL4
 	ret
 Maze_GetCellOffsetF ENDP
 
-Maze_GetRandomPos PROC EXPORT PosPtr:BPPtr
+Maze_GetRandomPos PROC EXPORT PosPtr:BPPtr, Occupy:BPBool
 	LOCAL pos:Vector2
 	
+	push pbx
+	xor pbx, pbx
 	mazeRandPosLoop:
 	mov eax, MazeSize[8]
 	mov pos.X, rv(intRandRange, 1, eax)
 	mov eax, MazeSize[12]
 	mov pos.Y, rv(intRandRange, 1, eax)
+	invoke Maze_GetCellI, pos.X, pos.Y
+	.IF (al & MAZE_CELL_VISITED) && (pbx < MazeRandPosMax)
+		inc pbx
+		jmp mazeRandPosLoop
+	.ENDIF
+	.IF (Occupy)
+		invoke Maze_OrCellI, pos.X, pos.Y, MAZE_CELL_VISITED
+	.ENDIF
 	
 	shl pos.X, 1
 	inc pos.X
@@ -1032,6 +1151,7 @@ Maze_GetRandomPos PROC EXPORT PosPtr:BPPtr
 	fstp REAL4 PTR [pax]
 	fild pos.Y
 	fstp REAL4 PTR [pax+8]
+	pop pbx
 	ret
 Maze_GetRandomPos ENDP
 
@@ -1194,7 +1314,7 @@ Maze_Progress PROC EXPORT
 	call Maze_Free
 	inc MazeLayer
 	
-	invoke nRand, 7
+	invoke nRand, 6
 	.IF (al == 0)
 		inc MazeSize[0]
 	.ELSEIF (al == 1)
@@ -1387,7 +1507,7 @@ Maze_SpawnElements PROC EXPORT
 			.IF !(rv(nRand, 2))	; TODO SET TO ADEQUATE
 				print "Spawned compass at "
 				or MazeItems, MAZE_ITEM_COMPASS
-				invoke Maze_GetRandomPos, ADDR MazeCompassPos
+				invoke Maze_GetRandomPos, ADDR MazeCompassPos, TRUE
 				Vector32DPrint MazeCompassPos
 			.ENDIF
 		.ENDIF
@@ -1396,7 +1516,7 @@ Maze_SpawnElements PROC EXPORT
 		.IF (rv(nRand, MazeLayer) > 7)
 			print "Locked maze, key at "
 			mov MazeLocked, MAZE_LOCK_LOCKED
-			invoke Maze_GetRandomPos, ADDR MazeKeyPos
+			invoke Maze_GetRandomPos, ADDR MazeKeyPos, TRUE
 			Vector32DPrint MazeKeyPos
 		.ENDIF
 		
@@ -1419,21 +1539,8 @@ Maze_SpawnElements PROC EXPORT
 		; Teleporters
 		.IF (MazeLayer > 17) && !(MazeTram) && !(Vebra) && !(rv(nRand, 4))
 			print "Spawned teleporters at "
-			push pbx
-			mov pbx, TRUE
-			.WHILE (pbx)
-				invoke Maze_GetRandomPos, ADDR MazeTeleportPos1
-				invoke Maze_GetRandomPos, ADDR MazeTeleportPos2
-				xor pbx, pbx
-				fcmp MazeTeleportPos1.X, MazeTeleportPos2.X
-				.IF (Zero?)
-					fcmp MazeTeleportPos1.Y, MazeTeleportPos2.Y
-					.IF (Zero?)
-						mov pbx, TRUE
-					.ENDIF
-				.ENDIF
-			.ENDW
-			pop pbx
+			invoke Maze_GetRandomPos, ADDR MazeTeleportPos1, TRUE
+			invoke Maze_GetRandomPos, ADDR MazeTeleportPos2, TRUE
 			Vector32DPrint MazeTeleportPos1
 			print "and "
 			Vector32DPrint MazeTeleportPos2
@@ -1484,7 +1591,7 @@ Maze_SpawnElements PROC EXPORT
 			mov MazeNote, 7
 	ENDSW
 	.IF (MazeNote > 1)
-		invoke Maze_GetRandomPos, ADDR MazeNotePos
+		invoke Maze_GetRandomPos, ADDR MazeNotePos, TRUE
 	.ENDIF
 	bpMEM32 MazeNotePos.Y, f(0.01)
 	ret
@@ -1696,6 +1803,19 @@ Maze_Fixed PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
+	; Items
+	.IF (MazeItems & MAZE_ITEM_COMPASS)
+		mov flVal, vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET MazeCompassPos)
+		fcmp flVal, MazeItemDist
+		.IF (Carry?)
+			or PlrItems, MAZE_ITEM_COMPASS
+			and MazeItems, not MAZE_ITEM_COMPASS
+			vinvoke UI_ShowSubtitles, StrCCCompass, UISubDur
+			
+			invoke alSourcePlay, SndMistake
+		.ENDIF
+	.ENDIF
+	
 	.IF (MazeLocked == MAZE_LOCK_LOCKED)	; Key
 		mov flVal, rv(flDistance, MazeKeyRot[0], MazeKeyRot[4])
 		fcmp flVal, f(0.05)
@@ -1708,11 +1828,12 @@ Maze_Fixed PROC EXPORT
 		mov MazeKeyRot[0], rv(flLerpAngle, MazeKeyRot[0], MazeKeyRot[4], flVal)
 		
 		mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeKeyPos)
-		fcmp flVal, f(1)
+		fcmp flVal, MazeItemDistImp
 		.IF (Carry?)
 			mov MazeLocked, MAZE_LOCK_UNLOCKED
 			vinvoke UI_ShowSubtitles, StrCCKey, UISubDur
 			invoke SndSetPos, SndKey, ADDR MazeKeyPos
+			
 			invoke alSourcePlay, SndKey	; I love you process-wide OpenAL
 			; ALERT WB
 		.ENDIF
@@ -1721,7 +1842,7 @@ Maze_Fixed PROC EXPORT
 	; Notes
 	.IF (MazeNote) && !(MazeNote & 16) && (PlrState == PLAYER_STATE_GAME)
 		mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeNotePos)
-		fcmp flVal, f(1)
+		fcmp flVal, MazeItemDist
 		.IF (Carry?)
 			or MazeNote, 16
 			mov deltaScale, 0
@@ -1932,7 +2053,7 @@ Maze_Process PROC EXPORT
 								call Maze_Progress
 							.ENDIF
 							
-							vinvoke Maze_GetRandomPos, OFFSET CamPos
+							vinvoke Maze_GetRandomPos, OFFSET CamPos, TRUE
 							
 							invoke alSourcePlay, SndDistress
 							vinvoke UI_ShowSubtitles, StrCCTeleportBad, UISubDur

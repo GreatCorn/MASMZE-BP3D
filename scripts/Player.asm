@@ -60,6 +60,8 @@ PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
 
 PlrItems		BPEnum 0
+PlrCompassRot	REAL4 0.0
+PlrCompassVel	REAL4 0.0
 
 PlrState			DWORD PLAYER_STATE_ENTER
 PlrStateCallback	BPPtr 0
@@ -188,6 +190,7 @@ Plr_Control PROC EXPORT
 			inc PlrGlyphsInMaze
 			
 			.IF (PlrGlyphs)
+				invoke IntToStr, StrCCGlyphs, PlrGlyphs, FALSE
 				vinvoke UI_ShowSubtitles, StrCCGlyphs, UISubDur
 			.ELSE
 				invoke alSourcePlay, SndMistake
@@ -201,6 +204,89 @@ Plr_Control PROC EXPORT
 	.ENDIF
 	ret
 Plr_Control ENDP
+
+Plr_DrawCompassMap PROC EXPORT
+	LOCAL flVal:REAL4, v2Val:Vector2
+	
+	.IF (Maze)
+		fcmp CamRot.X, f(0.4)
+		.IF (!Carry?)
+			call glPushMatrix
+			fld CamPosL.Y
+			fsub f(0.4)
+			fstp flVal
+			invoke glTranslatef, CamPosL.X, flVal, CamPosL.Z
+			invoke glRotatefr, CamRot.Y, 0, f(1), 0
+			invoke glDisable, GL_DEPTH_TEST
+			.IF (PlrItems & MAZE_ITEM_MAP)
+				call glPushMatrix
+				invoke glScalef, f(0.5), f(1), f(0.5)
+				invoke glRotatef, f(-90), f(1), 0, 0
+				invoke glEnable, GL_ALPHA_TEST
+				invoke glBindTexture, GL_TEXTURE_2D, TexMap
+				invoke glCallList, MdlParticle
+				
+				invoke glScalef, f(0.9), f(0.9), f(0.9)
+				invoke glEnable, GL_BLEND
+				invoke glBlendFunc, GL_ZERO, GL_ONE_MINUS_SRC_COLOR
+				invoke glBindTexture, GL_TEXTURE_2D, MazeLayoutTex
+				invoke glCallList, MdlParticle
+				invoke glDisable, GL_ALPHA_TEST
+				
+				invoke glBindTexture, GL_TEXTURE_2D, 0
+				fild MazeSize[0]
+				fmul f(2)
+				fdivr CamPos.X
+				fsub f(0.5)
+				fchs
+				fstp v2Val.X
+				fild MazeSize[4]
+				fmul f(2)
+				fdivr CamPos.Z
+				fsub f(0.5)
+				fstp v2Val.Y
+				invoke glTranslatef, v2Val.X, v2Val.Y, 0
+				invoke glScalef, f(0.03), f(0.03), f(0.03)
+				invoke glCallList, MdlParticle
+				
+				invoke glDisable, GL_BLEND
+				call glPopMatrix
+				
+				.IF (PlrItems & MAZE_ITEM_COMPASS)
+					invoke glEnable, GL_BLEND
+					invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+					invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clHalf
+				.ENDIF
+				xor pax, pax
+			.ELSE
+				mov pax, TRUE
+			.ENDIF
+			
+			.IF (PlrItems & MAZE_ITEM_COMPASS)
+				.IF (pax)
+					call glPushMatrix
+					invoke glScalef, f(0.3), f(1), f(0.3)
+					invoke glRotatef, f(-90), f(1), 0, 0
+					invoke glEnable, GL_ALPHA_TEST
+					invoke glBindTexture, GL_TEXTURE_2D, TexCompass
+					invoke glCallList, MdlParticle
+					invoke glDisable, GL_ALPHA_TEST
+					call glPopMatrix
+				.ENDIF
+				invoke glRotatefr, PlrCompassRot, 0, f(1), 0
+				invoke glBindTexture, GL_TEXTURE_2D, TexCompassWorld
+				invoke glCallList, MdlCompassArrow
+				.IF (PlrItems & MAZE_ITEM_MAP)
+					invoke glDisable, GL_BLEND
+					invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
+				.ENDIF
+			.ENDIF
+			call glPopMatrix
+			invoke glEnable, GL_DEPTH_TEST
+		.ENDIF
+	.ENDIF
+	ret
+Plr_DrawCompassMap ENDP
 
 Plr_DrawGlyphs PROC EXPORT
 	LOCAL pos:Vector3, rot:REAL4
@@ -642,6 +728,39 @@ Plr_Teleport PROC EXPORT X:REAL4, Y:REAL4
 Plr_Teleport ENDP
 
 
+Plr_Create PROC EXPORT
+	mov CamAnimPlr.Position, OFFSET CamPosA	; Init player animator
+	mov CamAnimPlr.Rotation, OFFSET CamRotA
+	mov CamAnimPlr.TrackPtr, OFFSET AnimCamWalk
+	
+	
+	mov PlrPartRain.Billboard, PARTICLE_BILLBOARD_Y
+	mov PlrPartRain.Count, 256
+	invoke Vector2Set, ADDR PlrPartRain.Distance, 0, f(4)
+	mov PlrPartRain.Looping, TRUE
+	mov PlrPartRain.VelocityAffects, PARTICLE_VELOCITY_POSITION
+	invoke Vector2Set, ADDR PlrPartRain.Lifetime, f(0.4), f(0.8)
+	mov PlrPartRain.Gravity, TRUE
+	invoke Vector2Set, ADDR PlrPartRain.Scale, f(0.01), f(0.03)
+	vinvoke Vector3Copy, OFFSET PlrPartRain.Position, OFFSET CamPos
+	invoke Particles_Create, ADDR PlrPartRain
+	ret
+Plr_Create ENDP
+
+Plr_Draw PROC EXPORT
+	.IF (PlrItems & MAZE_ITEM_COMPASS) || (PlrItems & MAZE_ITEM_MAP)
+		call Plr_DrawCompassMap
+	.ENDIF
+	.IF (PlrGlyphsInMaze)
+		call Plr_DrawGlyphs
+	.ENDIF
+	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
+	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
+		call Plr_DrawIntro
+	.ENDIF
+	ret
+Plr_Draw ENDP
+
 Plr_Process PROC EXPORT
 	LOCAL flVal:REAL4
 	
@@ -666,6 +785,26 @@ Plr_Process PROC EXPORT
 	
 	.IF (Maze)
 		invoke Maze_CollideLayout, ADDR CamPos, f(0.7), TRUE
+		.IF (PlrItems & MAZE_ITEM_COMPASS)
+			.IF (MazeLocked == MAZE_LOCK_LOCKED)
+				mov pax, OFFSET MazeKeyPos
+			.ELSE
+				mov pax, OFFSET MazeDoorPos
+			.ENDIF
+			mov flVal, rv(Vector32DAngle, OFFSET CamPos, pax)
+			fld flVal
+			fsub CamRot.Y
+			fstp flVal
+			mov flVal, rv(flAngle, flVal)
+			
+			invoke DampedSpringAngle, ADDR PlrCompassVel, PlrCompassRot, \
+			flVal, f(0.9), f(0.7), delta10
+			fld PlrCompassVel
+			fmul delta10
+			fadd PlrCompassRot
+			fstp PlrCompassRot
+			mov PlrCompassRot, rv(flAngle, PlrCompassRot)
+		.ENDIF
 	.ENDIF
 	
 	; Animation (+ stepping sounds)
@@ -737,22 +876,3 @@ Plr_Process PROC EXPORT
 	.ENDIF
 	ret
 Plr_Process ENDP
-
-Plr_Create PROC EXPORT
-	mov CamAnimPlr.Position, OFFSET CamPosA	; Init player animator
-	mov CamAnimPlr.Rotation, OFFSET CamRotA
-	mov CamAnimPlr.TrackPtr, OFFSET AnimCamWalk
-	
-	
-	mov PlrPartRain.Billboard, PARTICLE_BILLBOARD_Y
-	mov PlrPartRain.Count, 256
-	invoke Vector2Set, ADDR PlrPartRain.Distance, 0, f(4)
-	mov PlrPartRain.Looping, TRUE
-	mov PlrPartRain.VelocityAffects, PARTICLE_VELOCITY_POSITION
-	invoke Vector2Set, ADDR PlrPartRain.Lifetime, f(0.4), f(0.8)
-	mov PlrPartRain.Gravity, TRUE
-	invoke Vector2Set, ADDR PlrPartRain.Scale, f(0.01), f(0.03)
-	vinvoke Vector3Copy, OFFSET PlrPartRain.Position, OFFSET CamPos
-	invoke Particles_Create, ADDR PlrPartRain
-	ret
-Plr_Create ENDP

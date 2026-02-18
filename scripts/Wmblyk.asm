@@ -36,7 +36,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		invoke alSourceStop, SndWmblykB
 		invoke alSourceStop, SndWmblykStrM
 	.ELSEIF (State == WMBLYK_STILL)
-		invoke Maze_GetRandomPos, ADDR WmblykPos
+		invoke Maze_GetRandomPos, ADDR WmblykPos, FALSE
 		
 		bpMEM32 WmblykCellPos.X, f(20)
 		
@@ -49,7 +49,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		print "stealthy", 13, 10
 	.ELSEIF (State == WMBLYK_WALK)
 		mov WmblykCell, -1
-		invoke Maze_GetRandomPos, ADDR WmblykPos
+		invoke Maze_GetRandomPos, ADDR WmblykPos, FALSE
 		mov WmblykStateVal, rv(intRandRange, -2, 2)
 		fild WmblykStateVal
 		fmul PIHalf

@@ -1440,9 +1440,9 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 			invoke Vector2Set, ADDR res, dm.dmPelsWidth, dm.dmPelsHeight
 			
 			invoke RtlZeroMemory, ADDR nameStr, 32
-			invoke IntToStr, ADDR nameStr, dm.dmPelsWidth
+			invoke IntToStr, ADDR nameStr, dm.dmPelsWidth, FALSE
 			mov nameStr[pax], 'x'
-			invoke IntToStr, ADDR nameStr[pax+1], dm.dmPelsHeight
+			invoke IntToStr, ADDR nameStr[pax+1], dm.dmPelsHeight, TRUE
 			
 			.IF (rv(UI_ComboboxHas, ADDR nameStr))
 				inc resEnum
@@ -1494,7 +1494,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 		xor pbx, pbx
 		.WHILE (pbx < bpDisplayDeviceCount)
 			invoke RtlZeroMemory, ADDR nameStr, 32
-			invoke IntToStr, ADDR nameStr, pbx
+			invoke IntToStr, ADDR nameStr, pbx, FALSE
 			mov nameStr[1], ':'
 			mov nameStr[2], ' '
 			mov nameStr[3], '('
@@ -1505,11 +1505,12 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 			mul pcx
 			push pbx
 			mov pbx, pax
-			invoke IntToStr, ADDR nameStr[4], bpDisplayDevices[pbx].ScreenSize.x
+			invoke IntToStr, ADDR nameStr[4], \
+			bpDisplayDevices[pbx].ScreenSize.x, FALSE
 			mov nameStr[pax+4], 'x'
 			push pax
 			invoke IntToStr, ADDR nameStr[pax+5], \
-			bpDisplayDevices[pbx].ScreenSize.y
+			bpDisplayDevices[pbx].ScreenSize.y, FALSE
 			pop pcx
 			add pax, pcx
 			mov nameStr[pax+5], ')'
@@ -1643,7 +1644,7 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 				.IF (!samples)
 					invoke RtlMoveMemory, ADDR nameStr, StrMenuOff, 32
 				.ELSE
-					invoke IntToStr, ADDR nameStr, samples
+					invoke IntToStr, ADDR nameStr, samples, FALSE
 					lea pcx, nameStr
 					add pax, pcx
 					mov BYTE PTR [pax], 120	; 'x'

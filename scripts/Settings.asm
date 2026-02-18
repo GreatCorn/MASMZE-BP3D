@@ -762,7 +762,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 			invoke glDeleteTextures, 255, OFFSET bpDefaultFont
 			invoke bpLoadFont, StrLangFontPath, OFFSET bpDefaultFont
 			
-			invoke IntToStr, StrLayerNumPtr, MazeLayer
+			invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
 		.ENDIF
 	.ENDIF
 	ret

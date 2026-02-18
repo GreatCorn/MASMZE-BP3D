@@ -38,7 +38,7 @@ Kubale_Spawn PROC EXPORT State:BPEnum
 		
 		print "event", 13, 10
 	.ELSEIF (State == KUBALE_ACTIVE)
-		invoke Maze_GetRandomPos, ADDR KubalePos
+		invoke Maze_GetRandomPos, ADDR KubalePos, FALSE
 		
 		.IF (MazeLayer > 42)
 			mov KubaleRaycast, TRUE
@@ -234,7 +234,7 @@ Kubale_Process PROC EXPORT
 			mov al, 64	; Repeated check for visibility
 			.WHILE (al)
 				push pax
-				invoke Maze_GetRandomPos, ADDR KubalePos
+				invoke Maze_GetRandomPos, ADDR KubalePos, FALSE
 				
 				mov flVal, rv(Plr_FrustumDot, ADDR KubalePos)
 				fcmp flVal, KubaleDot

@@ -816,8 +816,27 @@ LoadStrings PROC EXPORT FilePath:BPPtr
 	ret
 LoadStrings ENDP
 
+DampedSpringAngle PROC EXPORT Velocity:BPPtr, Val:REAL4, ValTarget:REAL4, \
+Stiffness:REAL4, Damping:REAL4, T:REAL4
+	fld ValTarget
+	fsub Val
+	fstp Val
+	invoke flAngle, Val
+	mov Val, eax
+	fld Val
+	fmul Stiffness
+	mov pax, Velocity
+	fld REAL4 PTR [pax]
+	fmul Damping
+	fsub
+	fmul T
+	fadd REAL4 PTR [pax]
+	fstp REAL4 PTR [pax]
+	ret
+DampedSpringAngle ENDP
+
 ;   Non-terminating manual int to string conversion macro (for settings UI)
-IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD
+IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD, Terminate:BPBool
 	LOCAL Val1:DWORD, Ngtv:BYTE
 	
 	mov Ngtv, 0
@@ -853,7 +872,9 @@ IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD
 			.BREAK
 		.ENDIF
 	.ENDW
-	mov BYTE PTR[eax+ebx], 0
+	.IF (Terminate)
+		mov BYTE PTR[eax+ebx], 0
+	.ENDIF
 	.IF (Ngtv)
 		mov eax, StrA
 		add eax, 1

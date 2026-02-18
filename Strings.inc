@@ -73,6 +73,7 @@ SV	StrLayerNumber
 SV	StrYouDied
 SV	StrCCCheckpoint
 SV	StrCCClose
+SV	StrCCCompass
 SV	StrCCFightBack
 SV	StrCCGlyphs
 SV	StrCCGlyphsNone
