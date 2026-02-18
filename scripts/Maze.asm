@@ -1417,7 +1417,7 @@ Maze_SpawnElements PROC EXPORT
 		.ENDIF
 	
 		; Teleporters
-		.IF (MazeLayer > 17) && !(MazeTram) && !(Vebra)
+		.IF (MazeLayer > 17) && !(MazeTram) && !(Vebra) && !(rv(nRand, 4))
 			print "Spawned teleporters at "
 			push pbx
 			mov pbx, TRUE
@@ -1441,7 +1441,7 @@ Maze_SpawnElements PROC EXPORT
 		.ENDIF
 		
 		; Vebra
-		.IF !(rv(nRand, 8)) && (MazeLocked == MAZE_LOCK_NONE)
+		.IF !(rv(nRand, 9)) && (MazeLocked == MAZE_LOCK_NONE)
 			call Vebra_Spawn
 		.ENDIF
 		
