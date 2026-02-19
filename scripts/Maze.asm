@@ -344,6 +344,7 @@ Maze_DrawCheck PROC EXPORT
 	invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
 	invoke glCallList, MdlCheckWalls
 	
+	; Draw exit door
 	invoke glTranslatef, 0, 0, f(6.1)
 	.IF (MazeCheck == MAZE_CHECK_SAVED)
 		mov eax, MazeDoorRot
@@ -353,28 +354,53 @@ Maze_DrawCheck PROC EXPORT
 	vinvoke Maze_DrawDoor, eax
 	call glPopMatrix
 	
+	; Draw TONE
+	call glPushMatrix
+	invoke glEnable, GL_BLEND
+	invoke glDisable, GL_FOG
+	invoke glDisable, GL_LIGHTING
+	invoke glBlendFunc, GL_ONE, GL_ONE
+	invoke glBindTexture, GL_TEXTURE_2D, TexTone
+	invoke glTranslatef, f(1), f(2.2), f(5.99)
+	invoke glRotatef, f(180), 0, f(1), 0
+	invoke glCallList, MdlParticle
+	call glPopMatrix
+	
 	call glPushMatrix
 	.IF (MazeCheck == MAZE_CHECK_SAVED)
 		invoke glTranslate3fv, ADDR MazeCheckErasePosL
 		fld CamRotL.Y
 		fadd PI
-		fstp v3Val.X
+		fst v3Val.X
+		fmul f(2)
+		fstp v3Val.Y
 		vinvoke glRotatefr, v3Val.X, 0, f(1), 0
 		mov eax, CamRotL.X
 		xor eax, FLT_NEG
 		vinvoke glRotatefr, eax, f(1), 0, 0
-		invoke glEnable, GL_BLEND
+		vinvoke glRotatefr, v3Val.Y, 0, 0, f(1)
 		invoke glDisable, GL_DEPTH_TEST
-		invoke glBlendFunc, GL_ONE, GL_ONE
-		invoke flRandRange, f(0.7), f(1)
+		invoke flRandRange, f(0.8), f(1)
 		invoke Vector3Set, ADDR v3Val, eax, eax, eax
-		invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR v3Val
+		
+		;   Sometimes OpenGL likes glMaterial, sometimes it likes glColor. I
+		; thought glColor maps onto glMaterial properties and changes them when
+		; called but I just don't even fucking know anymore
+		;invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR v3Val
+		invoke glColor3fv, ADDR v3Val
+		
 		invoke glBindTexture, GL_TEXTURE_2D, TexLight
 		invoke glCallList, MdlParticle
-		invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR clWhite
-		invoke glDisable, GL_BLEND
+		
+		;invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR clWhite
+		invoke glColor3fv, ADDR clWhite
+		
 		invoke glEnable, GL_DEPTH_TEST
-	.ELSE
+	.ENDIF
+	invoke glDisable, GL_BLEND
+	invoke glEnable, GL_FOG
+	invoke glEnable, GL_LIGHTING
+	.IF (MazeCheck != MAZE_CHECK_SAVED)
 		invoke glTranslate3fv, ADDR MazeCheckPos
 		invoke glTranslatef, f(1), 0, f(4)
 		invoke glRotatef, f(180), 0, f(1), 0
@@ -564,13 +590,6 @@ Maze_Finish PROC EXPORT
 	invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
 	call UI_ShowLayerPopup
 	
-	; Random flavor text subtitles
-	invoke nRand, 20
-	.IF (pax < 7) && (pax != UISubLastRandom)
-		mov UISubLastRandom, pax
-		vinvoke UI_ShowSubtitles, StrCCRandom1[pax*SIZEOF BPPtr], UISubDur
-	.ENDIF
-	
 	; Set door world position
 	fild MazeSize[8]
 	fmul f(2)
@@ -604,8 +623,7 @@ Maze_Finish PROC EXPORT
 		inc pbx
 	.ENDW
 	
-	invoke nRand, 8	; Room
-	.IF !(al)
+	.IF !(rv(nRand, 8))	; Room
 		mov ebx, MazeSize[0]
 		shr ebx, 1	; /2
 		mov bounds.X, rv(intRandRange, 1, ebx)
@@ -1311,7 +1329,9 @@ Maze_Progress PROC EXPORT
 	bpMEM32 MazePrevLayer.MazeSeed, MazeSeed
 	invoke Vector2Copy, ADDR MazePrevLayer.MazeSize, ADDR MazeSize
 	
-	call Maze_Free
+	.IF (Maze)
+		call Maze_Free
+	.ENDIF
 	inc MazeLayer
 	
 	invoke nRand, 6
@@ -1322,6 +1342,7 @@ Maze_Progress PROC EXPORT
 	.ENDIF
 	
 	invoke Maze_Generate, nRandSeed
+	vinvoke Settings_SaveGame, TRUE
 	ret
 Maze_Progress ENDP
 
@@ -1504,7 +1525,7 @@ Maze_SpawnElements PROC EXPORT
 		; Items
 		; Compass
 		.IF !(PlrItems & MAZE_ITEM_COMPASS) && (MazeLayer > 11)
-			.IF !(rv(nRand, 2))	; TODO SET TO ADEQUATE
+			.IF !(rv(nRand, 5))
 				print "Spawned compass at "
 				or MazeItems, MAZE_ITEM_COMPASS
 				invoke Maze_GetRandomPos, ADDR MazeCompassPos, TRUE
@@ -1669,9 +1690,7 @@ Maze_Draw PROC EXPORT
 			invoke glEnable, GL_LIGHTING
 			invoke glEnable, GL_FOG
 		.ENDIF
-		.IF (MazeCheck)			; Checkpoint
-			call Maze_DrawCheck
-		.ENDIF
+		
 		.IF (PlrState == PLAYER_STATE_EXITING)	; Exit door stairs
 			call glPushMatrix
 			mov eax, MazeSize[8]
@@ -1756,7 +1775,21 @@ Maze_Draw PROC EXPORT
 			pop pbx
 		.ENDIF
 	.ENDIF
-	
+	.IF (MazeCheck)			; Checkpoint
+		; Maze, unlimited maze, but no maze
+		.IF !(Maze)
+			invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
+			invoke glCallList, MdlDoorwayM
+			invoke glBindTexture, GL_TEXTURE_2D, TexDoor
+			invoke glCallList, MdlDoorFrame
+			call glPushMatrix
+			invoke glTranslatef, f(0.65), 0, 0
+			invoke glCallList, MdlDoor
+			call glPopMatrix
+		.ENDIF
+		call Maze_DrawCheck
+	.ENDIF
+		
 	.IF (SettingsGraphicsParticles)
 		invoke glEnable, GL_BLEND
 		invoke glDepthMask, GL_FALSE
@@ -1905,17 +1938,124 @@ Maze_Fixed ENDP
 
 Maze_Process PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
-	
-	invoke fpuSetRounding, FPU_ROUND_TRUNC
-	fld CamPos.X
-	fistp MazePlrPos.X
-	fld CamPos.Z
-	fistp MazePlrPos.Y
-	invoke fpuSetRounding, FPU_ROUND_ROUND
-	
+		
+	; Unsafe but necessary
 	call Maze_ProcessState
 	
+	.IF (Maze)
+		invoke fpuSetRounding, FPU_ROUND_TRUNC
+		fld CamPos.X
+		fistp MazePlrPos.X
+		fld CamPos.Z
+		fistp MazePlrPos.Y
+		invoke fpuSetRounding, FPU_ROUND_ROUND
+		
+		.IF (MazeItems & MAZE_ITEM_GLYPHS)
+			fld MazeGlyphsRot
+			fadd delta2
+			fst MazeGlyphsRot
+			fsin
+			fmul f(0.3)
+			fstp MazeGlyphsPos.Y
+			mov MazeGlyphsRot, rv(flAngle, MazeGlyphsRot)
+			
+			.IF (UIWhiteFadeVal)
+				mov UIWhiteFadeVal, vrv(flMove, UIWhiteFadeVal, 0, deltaTime)
+				.IF !(UIWhiteFadeVal)
+					and MazeItems, not MAZE_ITEM_GLYPHS
+					mov UIWhiteFadeVal, 0
+				.ENDIF
+			.ELSE
+				mov flVal, \
+				vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeGlyphsPos)
+				fcmp flVal, MazeItemDist
+				.IF (Carry?)
+					mov PlrGlyphs, 7
+					vinvoke UI_ShowSubtitles, StrCCGlyphsRestore, UISubDur
+					mov UIWhiteFadeVal, FLT_1
+					
+					invoke alSourcePlay, SndMistake
+				.ENDIF
+			.ENDIF
+		.ENDIF
+		.IF (MazeTeleport)
+			fld MazeTeleportRot
+			fadd delta20
+			fstp MazeTeleportRot
+			fcmp MazeTeleportRot, f(360)
+			.IF (Carry?)
+				fld MazeTeleportRot
+				fsub f(360)
+				fstp MazeTeleportRot
+			.ENDIF
+			
+			.IF (PlrState == PLAYER_STATE_GAME)||(PlrState == PLAYER_STATE_ETC)
+				push pbx
+				lea pbx, MazeTeleportPos1
+				.WHILE (pbx <= OFFSET MazeTeleportPos2)
+					mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, pbx)
+					fcmp flVal, f(0.3)
+					.IF (Carry?)
+						mov PlrCanControl, FALSE
+						mov PlrState, PLAYER_STATE_ETC
+						vinvoke Vector32DLerp, ADDR CamPos, pbx, deltaTime
+						mov UIFade, UI_FADE_OUT
+						mov UIFadeCallback, 0
+						.IF (UIFadeVal == FLT_1)
+							mov UIFade, UI_FADE_IN
+							mov PlrCanControl, TRUE
+							mov PlrState, PLAYER_STATE_GAME
+							
+							; Beautiful
+							.IF (MazeLayer != 22) && (MazeLayer != 43) \
+							&& (MazeLayer != 20) && (MazeLayer != 41) \
+							&& (MazeLayer != 62) && !(rv(nRand, 8)) \
+							&& (MazePrevLayer.MazeSeed != 0)
+								; Teleport to next or previous layer	
+								.IF !(rv(nRand, 3))
+									; Previous
+									dec MazeLayer						
+									call Maze_Free
+									invoke Vector2Copy, ADDR MazeSize, \
+									ADDR MazePrevLayer.MazeSize
+									invoke Maze_Generate, MazePrevLayer.MazeSeed
+								.ELSE
+									; Next
+									call Maze_Progress
+								.ENDIF
+								
+								vinvoke Maze_GetRandomPos, OFFSET CamPos, TRUE
+								
+								invoke alSourcePlay, SndDistress
+								vinvoke UI_ShowSubtitles, StrCCTeleportBad, \
+								UISubDur
+							.ELSE
+								; Normal teleport behavior
+								.IF (pbx == OFFSET MazeTeleportPos1)
+									vinvoke Plr_Teleport, MazeTeleportPos2.X,\
+									MazeTeleportPos2.Z
+								.ELSE
+									vinvoke Plr_Teleport, MazeTeleportPos1.X,\
+									MazeTeleportPos1.Z
+								.ENDIF
+								
+								invoke alSourcePlay, SndMistake
+								vinvoke UI_ShowSubtitles, StrCCTeleport, \
+								UISubDur
+							.ENDIF
+							
+							mov MazeTeleport, FALSE
+						.ENDIF
+					.ENDIF
+					add pbx, SIZEOF Vector3
+				.ENDW
+				pop pbx
+			.ENDIF		
+		.ENDIF
+	.ENDIF
+	
 	.IF (MazeCheck)
+		; Collide
 		invoke Vector32DCopy, ADDR v3Val, ADDR MazeCheckPos
 		fld v3Val.X
 		fadd f(0.45)
@@ -1946,9 +2086,18 @@ Maze_Process PROC EXPORT
 		fadd f(1.1)
 		fstp v3Val.Z
 		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(2.7), f(0.9)
+		.IF !(Maze)
+			invoke Vector32DCopy, ADDR v3Val, ADDR MazeCheckPos
+			fld v3Val.X
+			fadd f(1)
+			fstp v3Val.X
+			vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(2.7), f(0.9)
+		.ENDIF
 		
+		invoke SndFade, SndAmb, f(0), delta2
+				
+		; Process Motrya animator
 		.IF (MazeCheck != MAZE_CHECK_SAVED)
-			; Process Motrya animator
 			invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr, deltaTime
 		.ENDIF
 		
@@ -1989,10 +2138,13 @@ Maze_Process PROC EXPORT
 					invoke Vector3Set, ADDR MazeCheckErasePosL, f(1), f(1), f(4)
 					invoke Vector32DAdd, ADDR MazeCheckErasePosL, \
 					ADDR MazeCheckPos
-					
 					call Maze_ResetEntities
-					
 					vinvoke UI_ShowSubtitles, StrCCSaved, UISubDur
+					
+					vinvoke Settings_EraseSave, TRUE
+					vinvoke Settings_SaveGame, FALSE
+					
+					invoke alSourcePlay, SndMus[8]
 				.ENDIF
 				fld MazeStateTimer
 				fsubr f(0.5)
@@ -2006,22 +2158,33 @@ Maze_Process PROC EXPORT
 		.ELSEIF (MazeCheck == MAZE_CHECK_SAVED)
 			bpMEM32 UIWhiteFadeVal, MazeStateTimer
 			
-			; Exit door
-			mov flVal,vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET MazeDoorPos)
-			fcmp flVal, f(0.7)
-			.IF (Carry?)
-				vinvoke UI_ShowSubtitles, StrCCCheckpoint, f(0.1)
-				.IF (InputConfirm)
-					mov PlrState, PLAYER_STATE_EXIT
+			.IF (PlrState == PLAYER_STATE_EXITING)
+				invoke SndFade, SndMus[8], f(0), delta2
+			.ELSEIF (PlrState == PLAYER_STATE_GAME)
+				fld deltaTime
+				fmul f(0.3)
+				fstp flVal
+				invoke SndFade, SndMus[8], f(0.5), flVal
+				
+				; Exit door
+				mov flVal, \
+				vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeDoorPos)
+				fcmp flVal, MazeItemDist
+				.IF (Carry?)
+					vinvoke UI_ShowSubtitles, StrCCCheckpoint, f(0.1)
+					.IF (InputConfirm)
+						mov PlrState, PLAYER_STATE_EXIT
+					.ENDIF
 				.ENDIF
 			.ENDIF
+				
 			
 			invoke Vector3Lerp, ADDR MazeCheckErasePosL,ADDR MazeCheckErasePos,\
 			deltaTime
 			; Erase save light
 			mov flVal,\
 			vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeCheckErasePos)
-			fcmp flVal, f(0.7)
+			fcmp flVal, MazeItemDist
 			.IF (Carry?)
 				vinvoke UI_ShowSubtitles, StrCCSaveErase, f(0.1)
 				.IF (InputConfirm)
@@ -2030,110 +2193,13 @@ Maze_Process PROC EXPORT
 					mov MazeCheckErasePosL.Z, eax
 					mov MazeStateTimer, FLT_1
 					
+					vinvoke Settings_EraseSave, FALSE
+					
 					invoke alSourcePlay, SndMistake
 				.ENDIF
 			.ENDIF
 		.ENDIF
 	.ENDIF
-	.IF (MazeItems & MAZE_ITEM_GLYPHS)
-		fld MazeGlyphsRot
-		fadd delta2
-		fst MazeGlyphsRot
-		fsin
-		fmul f(0.3)
-		fstp MazeGlyphsPos.Y
-		mov MazeGlyphsRot, rv(flAngle, MazeGlyphsRot)
 		
-		.IF (UIWhiteFadeVal)
-			mov UIWhiteFadeVal, vrv(flMove, UIWhiteFadeVal, 0, deltaTime)
-			.IF !(UIWhiteFadeVal)
-				and MazeItems, not MAZE_ITEM_GLYPHS
-				mov UIWhiteFadeVal, 0
-			.ENDIF
-		.ELSE
-			mov flVal, \
-			vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeGlyphsPos)
-			fcmp flVal, MazeItemDist
-			.IF (Carry?)
-				mov PlrGlyphs, 7
-				vinvoke UI_ShowSubtitles, StrCCGlyphsRestore, UISubDur
-				mov UIWhiteFadeVal, FLT_1
-				
-				invoke alSourcePlay, SndMistake
-			.ENDIF
-		.ENDIF
-	.ENDIF
-	.IF (MazeTeleport)
-		fld MazeTeleportRot
-		fadd delta20
-		fstp MazeTeleportRot
-		fcmp MazeTeleportRot, f(360)
-		.IF (Carry?)
-			fld MazeTeleportRot
-			fsub f(360)
-			fstp MazeTeleportRot
-		.ENDIF
-		
-		.IF (PlrState == PLAYER_STATE_GAME) || (PlrState == PLAYER_STATE_ETC)
-			push pbx
-			lea pbx, MazeTeleportPos1
-			.WHILE (pbx <= OFFSET MazeTeleportPos2)
-				mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, pbx)
-				fcmp flVal, f(0.5)
-				.IF (Carry?)
-					mov PlrCanControl, FALSE
-					mov PlrState, PLAYER_STATE_ETC
-					vinvoke Vector32DLerp, ADDR CamPos, pbx, deltaTime
-					mov UIFade, UI_FADE_OUT
-					mov UIFadeCallback, 0
-					.IF (UIFadeVal == FLT_1)
-						mov UIFade, UI_FADE_IN
-						mov PlrCanControl, TRUE
-						mov PlrState, PLAYER_STATE_GAME
-						
-						; Beautiful
-						.IF (MazeLayer != 22) && (MazeLayer != 43) \
-						&& (MazeLayer != 20) && (MazeLayer != 41) \
-						&& (MazeLayer != 62) && !(rv(nRand, 7)) \
-						&& (MazePrevLayer.MazeSeed != 0)
-							; Teleport to next or previous layer	
-							.IF !(rv(nRand, 3))
-								; Previous
-								dec MazeLayer						
-								call Maze_Free
-								invoke Vector2Copy, ADDR MazeSize, \
-								ADDR MazePrevLayer.MazeSize
-								invoke Maze_Generate, MazePrevLayer.MazeSeed
-							.ELSE
-								; Next
-								call Maze_Progress
-							.ENDIF
-							
-							vinvoke Maze_GetRandomPos, OFFSET CamPos, TRUE
-							
-							invoke alSourcePlay, SndDistress
-							vinvoke UI_ShowSubtitles, StrCCTeleportBad, UISubDur
-						.ELSE
-							; Normal teleport behavior
-							.IF (pbx == OFFSET MazeTeleportPos1)
-								vinvoke Plr_Teleport, MazeTeleportPos2.X,\
-								MazeTeleportPos2.Z
-							.ELSE
-								vinvoke Plr_Teleport, MazeTeleportPos1.X,\
-								MazeTeleportPos1.Z
-							.ENDIF
-							
-							invoke alSourcePlay, SndMistake
-							vinvoke UI_ShowSubtitles, StrCCTeleport, UISubDur
-						.ENDIF
-						
-						mov MazeTeleport, FALSE
-					.ENDIF
-				.ENDIF
-				add pbx, SIZEOF Vector3
-			.ENDW
-			pop pbx
-		.ENDIF		
-	.ENDIF
 	ret
 Maze_Process ENDP

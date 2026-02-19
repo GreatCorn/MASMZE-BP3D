@@ -451,7 +451,7 @@ Plr_LateProcess ENDP
 Plr_ProcessState PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
 	
-	.IF (PlrState == PLAYER_STATE_ENTER)		
+	.IF (PlrState == PLAYER_STATE_ENTER)
 		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamEnter
 		invoke bpProcessAnimPlayer, ADDR CamAnimPlr, 0
@@ -479,6 +479,20 @@ Plr_ProcessState PROC EXPORT
 		bpMEM32 UIFadeVal, f(1)
 		
 		mov PlrState, PLAYER_STATE_ETC
+		
+		; Random flavor text subtitles
+		invoke nRand, 20
+		.IF (pax < 7) && (pax != UISubLastRandom)
+			mov UISubLastRandom, pax
+			vinvoke UI_ShowSubtitles, StrCCRandom1[pax*SIZEOF BPPtr], UISubDur
+		.ENDIF
+		
+		.IF (MazeState == MAZE_STATE_GAME)
+			.IF (rv(SndPlaying, SndAmb) == AL_STOPPED)
+				invoke alSourcef, SndAmb, AL_GAIN, f(1)
+				invoke alSourcePlay, SndAmb
+			.ENDIF
+		.ENDIF
 		ret
 	.ELSEIF (PlrState == PLAYER_STATE_EXIT)
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamExit
@@ -643,6 +657,7 @@ Plr_ProcessState PROC EXPORT
 			.IF (!Carry?)
 				mov PlrState, PLAYER_STATE_DEAD
 				invoke alSourcePlay, SndDeath
+				vinvoke Settings_EraseSave, TRUE
 			.ENDIF
 		.ELSE
 			mov UIFadeVal, FLT_1

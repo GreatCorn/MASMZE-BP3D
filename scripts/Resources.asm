@@ -554,6 +554,8 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexTileBig,		"assets\textures\tileBig.bpt"
 		LoadBPT OFFSET TexTilefloor,	"assets\textures\tilefloor.bpt"
 		LoadBPT OFFSET TexTone,			"assets\textures\tone.bpt"
+		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP
+		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP
 		LoadBPT OFFSET TexTree,			"assets\textures\tree.bpt"
 		LoadBPT OFFSET TexTutorial,		"assets\textures\tutorial.bpt"
 		LoadBPT OFFSET TexTutorialJ,	"assets\textures\tutorialJ.bpt"

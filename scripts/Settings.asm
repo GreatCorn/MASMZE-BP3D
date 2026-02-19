@@ -120,6 +120,37 @@ SettingsRegistry HKEY ?	; Default registry key
 .CODE
 Settings_SetOption PROTO :BPPtr
 
+Settings_EraseSave PROC EXPORT Temporary:BPBool
+	IFDEF SAVEGAME_REG
+	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \
+	REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, ADDR SettingsRegistry, NULL
+	.IF (eax != ERROR_SUCCESS)
+		print "Failed to create registry key.", 13, 10
+		ret
+	.ENDIF
+	
+	.IF (Temporary)
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCurLayer
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCurWidth
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCurHeight
+	.ELSE
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegLayer
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCompass
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegGlyphs
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegFloor
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegWall
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegRoof
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegMazeW
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegMazeH
+	.ENDIF
+	
+	invoke RegCloseKey, SettingsRegistry
+	ELSE
+	
+	ENDIF
+	ret
+Settings_EraseSave ENDP
+
 Settings_IsTrue PROC EXPORT 
 	.IF (SettingsIniString[0] == 116) || (SettingsIniString[0] == 84) ; t or T
 		mov pax, TRUE
@@ -414,6 +445,7 @@ Settings_LoadBindings PROC EXPORT
 Settings_LoadBindings ENDP
 
 Settings_LoadGame PROC EXPORT
+	IFDEF SAVEGAME_REG
 	LOCAL pcbData:DWORD
 	
 	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \
@@ -430,19 +462,54 @@ Settings_LoadGame PROC EXPORT
 	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCurLayer, 0, \
 	NULL, ADDR MazeLayer, ADDR pcbData
 	.IF (eax == ERROR_SUCCESS)	; Load temporary progress
-	
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCurWidth, 0,\
+		NULL, ADDR MazeSize[0], ADDR pcbData
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCurHeight,0,\
+		NULL, ADDR MazeSize[4], ADDR pcbData
+		
+		vinvoke UI_ShowSubtitles, StrCCLoad, UISubDur
+		
+		invoke alSourcePlay, SndDistress
+		
+		.IF (MazeLayer > 1) && !(rv(nRand, 16))
+			dec MazeLayer
+		.ENDIF
 	.ELSE
 		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegLayer, 0, \
 		NULL, ADDR MazeLayer, ADDR pcbData
 		.IF (eax != ERROR_SUCCESS)
 			print "Failed to read layer value (DWORD).", 13, 10
 			print str$(MazeLayer), 13, 10
+			invoke RegCloseKey, SettingsRegistry
 			xor pax, pax
 			ret
 		.ENDIF
+		
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegFloor, 0, \
+		NULL, ADDR MazeCurFloor, ADDR pcbData
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegWall, 0, \
+		NULL, ADDR MazeCurWall, ADDR pcbData
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegRoof, 0, \
+		NULL, ADDR MazeCurRoof, ADDR pcbData
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegMazeW, 0, \
+		NULL, ADDR MazeSize[0], ADDR pcbData
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegMazeH, 0, \
+		NULL, ADDR MazeSize[4], ADDR pcbData
+		
+		mov MazeCheck, MAZE_CHECK_SAVED
 	.ENDIF
+	
+	mov pcbData, 1
+	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCompass, 0, \
+	NULL, ADDR PlrItems, ADDR pcbData
+	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegGlyphs, 0, \
+	NULL, ADDR PlrGlyphs, ADDR pcbData
+	
 	invoke RegCloseKey, SettingsRegistry
 	mov pax, TRUE
+	ELSE
+	
+	ENDIF
 	ret
 Settings_LoadGame ENDP
 
@@ -587,6 +654,51 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 	.ENDIF
 	ret
 Settings_Save ENDP
+
+Settings_SaveGame PROC EXPORT Temporary:BPBool
+	IFDEF SAVEGAME_REG
+	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \
+	REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, ADDR SettingsRegistry, NULL
+	.IF (eax != ERROR_SUCCESS)
+		print "Failed to create registry key.", 13, 10
+		ret
+	.ENDIF
+	
+	.IF (Temporary)
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurLayer, 0, \
+		REG_DWORD, ADDR MazeLayer, 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurWidth, 0, \
+		REG_DWORD, ADDR MazeSize[0], 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurHeight, 0, \
+		REG_DWORD, ADDR MazeSize[4], 4
+	.ELSE
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegLayer, 0, \
+		REG_DWORD, ADDR MazeLayer, 4
+		
+		.IF (PlrItems & MAZE_ITEM_COMPASS)
+			invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCompass, \
+			0, REG_BINARY, ADDR PlrItems, 1
+		.ENDIF
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegGlyphs, 0, \
+		REG_BINARY, ADDR PlrGlyphs, 1
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegFloor, 0, \
+		REG_DWORD, ADDR MazeCurFloor, 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegWall, 0, \
+		REG_DWORD, ADDR MazeCurWall, 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegRoof, 0, \
+		REG_DWORD, ADDR MazeCurRoof, 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeW, 0, \
+		REG_DWORD, ADDR MazeSize[0], 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeH, 0, \
+		REG_DWORD, ADDR MazeSize[4], 4
+	.ENDIF
+	
+	invoke RegCloseKey, SettingsRegistry
+	ELSE
+		
+	ENDIF
+	ret
+Settings_SaveGame ENDP
 
 Settings_SaveBindings PROC EXPORT
 	; Keyboard/mouse

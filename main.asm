@@ -5,7 +5,7 @@ option casemap:none
 ;BP_COMPATIBILITY_W9X		EQU <1>
 BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
-BP_IMPORTERS_VERBOSE	EQU <1>
+;BP_IMPORTERS_VERBOSE	EQU <1>
 IFDEF MODE_DEBUG
 	ECHO Compiling MASMZE-BP3D in debug mode.
 	BP_TRACEABLE_HEAP EQU <1>
@@ -386,6 +386,7 @@ include scripts\Kubale.asm
 include scripts\Vebra.asm
 include scripts\Wmblyk.asm
 
+SAVEGAME_REG	EQU <1>
 include scripts\Settings.asm
 include scripts\UI.asm
 
@@ -443,7 +444,6 @@ GameInit PROC EXPORT
 		mov MazeState, MAZE_STATE_SAFE
 	.ELSE
 		call GameStart
-		invoke alSourcePlay, SndAmb
 	.ENDIF
 	call CreateScene
 	
@@ -454,7 +454,6 @@ GameInit PROC EXPORT
 GameInit ENDP
 
 GameStart PROC EXPORT
-	mov PlrState, PLAYER_STATE_ENTER
 	mov PlrStateCallback, 0
 	bpMEM32 CamBaseFOV, f(75)
 	
@@ -464,7 +463,37 @@ GameStart PROC EXPORT
 	bpMEM32 FogDensity, f(0.5)
 	invoke alSourceStop, SndIntro
 	
-	invoke Maze_Generate, nRandSeed
+	.IF (MazeCheck)
+		invoke alSourcePlay, SndMus[8]
+		invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
+		call UI_ShowLayerPopup
+		
+		mov UIFadeVal, FLT_1
+		mov UIFade, UI_FADE_IN
+		mov UIFadeCallback, 0
+		
+		mov MazeState, MAZE_STATE_GAME
+	.ELSE
+		invoke Maze_Generate, nRandSeed
+	.ENDIF
+	
+	.IF (MazeLayer == 1)
+		mov PlrState, PLAYER_STATE_ENTER
+	.ELSE
+		mov PlrState, PLAYER_STATE_GAME
+		.IF (MazeCheck)
+			invoke Vector3Set, ADDR MazeCheckPos, 0, 0, 0
+			invoke Vector3Set, ADDR MazeDoorPos, f(1), CamHeight, f(6)
+			invoke Vector3Set, ADDR MazeCheckErasePos, f(1), f(1.5), f(0.5)
+			invoke Vector3Copy, ADDR MazeCheckErasePosL, ADDR MazeCheckErasePos
+			bpMEM32 CamPosL.Y, CamHeight
+			invoke Plr_Teleport, f(1), f(4)
+		.ELSE
+			invoke alSourcePlay, SndAmb
+			invoke Maze_GetRandomPos, ADDR CamPos, FALSE
+			invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
+		.ENDIF
+	.ENDIF
 	ret
 GameStart ENDP
 
@@ -709,9 +738,7 @@ InitGraphics ENDP
 
 ProcessScene PROC EXPORT
 	call Plr_Process
-	.IF (Maze)
-		call Maze_Process
-	.ENDIF
+	call Maze_Process
 	.IF (Kubale)
 		call Kubale_Process
 	.ENDIF
@@ -735,6 +762,8 @@ OnCreate PROC EXPORT
 	call FX_Create
 	call UI_Create
 	print "Finished scripts initialization.", 13, 10
+	
+	; Game loads assets in OnRender and then executes GameInit
 	ret
 OnCreate ENDP
 
