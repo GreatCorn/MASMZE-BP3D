@@ -122,6 +122,8 @@ UISubLastRandom		BPPtr 0
 UISTTPos			SDWORD 0
 UISTTDir 			BPBool FALSE
 
+UIWhiteFadeVal		REAL4 0.0
+
 UIInteractPrompt	BPPtr 0
 
 UIDisplays			BPPtr 0	; Array of DWORD
@@ -2129,22 +2131,11 @@ UI_Draw PROC EXPORT
 		.ENDIF
 		
 		; White save fade
-		.IF (MazeCheck) && (MazeStateTimer)
+		.IF (UIWhiteFadeVal)
 			invoke glEnable, GL_BLEND
 			invoke glBlendFunc, GL_ONE, GL_ONE
 			invoke glBindTexture, GL_TEXTURE_2D, 0
-			.IF (MazeCheck == MAZE_CHECK_CLOSE)
-				fld MazeStateTimer
-				fsubr f(0.5)
-				fmul f(2)
-				sub psp, SIZEOF BPPtr*3
-				fst REAL4 PTR [psp]
-				fst REAL4 PTR [psp+SIZEOF BPPtr]
-				fstp REAL4 PTR [psp+SIZEOF BPPtr*2]
-				call glColor3f
-			.ELSEIF (MazeCheck == MAZE_CHECK_SAVED)
-				invoke glColor3f, MazeStateTimer, MazeStateTimer, MazeStateTimer
-			.ENDIF
+			invoke glColor3f, UIWhiteFadeVal, UIWhiteFadeVal, UIWhiteFadeVal
 			invoke glCallList, ScreenQuad
 			invoke glColor3fv, OFFSET clWhite
 			invoke glDisable, GL_BLEND

@@ -233,21 +233,27 @@ Plr_DrawCompassMap PROC EXPORT
 				invoke glCallList, MdlParticle
 				invoke glDisable, GL_ALPHA_TEST
 				
+				; Draw player icon
 				invoke glBindTexture, GL_TEXTURE_2D, 0
 				fild MazeSize[0]
 				fmul f(2)
-				fdivr CamPos.X
+				fdivr CamPosL.X
 				fsub f(0.5)
 				fchs
 				fstp v2Val.X
 				fild MazeSize[4]
 				fmul f(2)
-				fdivr CamPos.Z
+				fdivr CamPosL.Z
 				fsub f(0.5)
 				fstp v2Val.Y
 				invoke glTranslatef, v2Val.X, v2Val.Y, 0
-				invoke glScalef, f(0.03), f(0.03), f(0.03)
-				invoke glCallList, MdlParticle
+				invoke glScalef, f(0.05), f(0.05), f(0.05)
+				invoke glRotatefr, CamRotL.Y, 0, 0, f(1)
+				invoke glBegin, GL_TRIANGLES
+				invoke glVertex2f, f(-0.3), f(-0.5)
+				invoke glVertex2f, f(0.3), f(-0.5)
+				invoke glVertex2f, f(0), f(0.5)
+				call glEnd
 				
 				invoke glDisable, GL_BLEND
 				call glPopMatrix
@@ -392,10 +398,10 @@ Plr_FrustumDot PROC EXPORT Position:BPPtr
 	
 	mov pax, Position
 	fld REAL4 PTR [pax]
-	fsub CamPos.X
+	fsub CamPosL.X
 	fstp Dot.X
 	fld REAL4 PTR [pax+8]
-	fsub CamPos.Z
+	fsub CamPosL.Z
 	fstp Dot.Y
 	
 	invoke Vector2Normalize, ADDR Dot
@@ -768,7 +774,7 @@ Plr_Process PROC EXPORT
 	invoke Vector3RoundInt, ADDR CamPosI
 	
 	; Get forward & right
-	fld CamRot.Y
+	fld CamRotL.Y
 	fsincos
 	fst PlrForward.Z
 	fchs

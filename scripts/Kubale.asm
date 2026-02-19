@@ -101,11 +101,11 @@ Kubale_Process PROC EXPORT
 	.ELSEIF (Kubale == KUBALE_ACTIVE)
 		mov FogDensity, rv(flLerp, FogDensity, f(0.5), delta2)
 		
-		mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
+		mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPosL)
 		
 		mov flVal, rv(Plr_FrustumDot, OFFSET KubalePos)
 		mov blocked, FALSE
-		.IF (rv(Maze_Raycast, OFFSET KubalePos, OFFSET CamPos))
+		.IF (rv(Maze_Raycast, OFFSET KubalePos, OFFSET CamPosL))
 			.IF (KubaleRaycast)
 				mov flVal, 0
 			.ENDIF

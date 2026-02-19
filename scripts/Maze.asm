@@ -1511,6 +1511,20 @@ Maze_SpawnElements PROC EXPORT
 				Vector32DPrint MazeCompassPos
 			.ENDIF
 		.ENDIF
+		; Glyphs
+		.IF (PlrGlyphs < 5)
+			.IF (PlrGlyphs > 1)
+				vinvoke nRand, PlrGlyphs
+			.ELSE
+				mov al, 0
+			.ENDIF
+			.IF !(al)
+				print "Spawned glyphs at "
+				or MazeItems, MAZE_ITEM_GLYPHS
+				invoke Maze_GetRandomPos, ADDR MazeGlyphsPos, TRUE
+				Vector32DPrint MazeGlyphsPos
+			.ENDIF
+		.ENDIF
 		
 		; Key
 		.IF (rv(nRand, MazeLayer) > 7)
@@ -1687,6 +1701,14 @@ Maze_Draw PROC EXPORT
 			invoke glTranslate3fv, ADDR MazeCompassPos
 			invoke glBindTexture, GL_TEXTURE_2D, TexCompassWorld
 			invoke glCallList, MdlCompassWorld
+			call glPopMatrix
+		.ENDIF
+		.IF (MazeItems & MAZE_ITEM_GLYPHS) && !(UIWhiteFadeVal)
+			call glPushMatrix
+			invoke glTranslate3fv, ADDR MazeGlyphsPos
+			invoke glRotatefr, MazeGlyphsRot, 0, f(1), 0
+			invoke glBindTexture, GL_TEXTURE_2D, TexGlyphs
+			invoke glCallList, MdlGlyphs
 			call glPopMatrix
 		.ENDIF
 		
@@ -1974,14 +1996,17 @@ Maze_Process PROC EXPORT
 				.ENDIF
 				fld MazeStateTimer
 				fsubr f(0.5)
+				fld st
 				fmul f(0.1)
 				fstp flVal
+				fmul f(2)
+				fstp UIWhiteFadeVal
 				vinvoke Plr_Shake, flVal
 			.ENDIF
 		.ELSEIF (MazeCheck == MAZE_CHECK_SAVED)
-			invoke Vector3Lerp, ADDR MazeCheckErasePosL,ADDR MazeCheckErasePos,\
-			deltaTime
+			bpMEM32 UIWhiteFadeVal, MazeStateTimer
 			
+			; Exit door
 			mov flVal,vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET MazeDoorPos)
 			fcmp flVal, f(0.7)
 			.IF (Carry?)
@@ -1991,6 +2016,9 @@ Maze_Process PROC EXPORT
 				.ENDIF
 			.ENDIF
 			
+			invoke Vector3Lerp, ADDR MazeCheckErasePosL,ADDR MazeCheckErasePos,\
+			deltaTime
+			; Erase save light
 			mov flVal,\
 			vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeCheckErasePos)
 			fcmp flVal, f(0.7)
@@ -2004,6 +2032,34 @@ Maze_Process PROC EXPORT
 					
 					invoke alSourcePlay, SndMistake
 				.ENDIF
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	.IF (MazeItems & MAZE_ITEM_GLYPHS)
+		fld MazeGlyphsRot
+		fadd delta2
+		fst MazeGlyphsRot
+		fsin
+		fmul f(0.3)
+		fstp MazeGlyphsPos.Y
+		mov MazeGlyphsRot, rv(flAngle, MazeGlyphsRot)
+		
+		.IF (UIWhiteFadeVal)
+			mov UIWhiteFadeVal, vrv(flMove, UIWhiteFadeVal, 0, deltaTime)
+			.IF !(UIWhiteFadeVal)
+				and MazeItems, not MAZE_ITEM_GLYPHS
+				mov UIWhiteFadeVal, 0
+			.ENDIF
+		.ELSE
+			mov flVal, \
+			vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeGlyphsPos)
+			fcmp flVal, MazeItemDist
+			.IF (Carry?)
+				mov PlrGlyphs, 7
+				vinvoke UI_ShowSubtitles, StrCCGlyphsRestore, UISubDur
+				mov UIWhiteFadeVal, FLT_1
+				
+				invoke alSourcePlay, SndMistake
 			.ENDIF
 		.ENDIF
 	.ENDIF

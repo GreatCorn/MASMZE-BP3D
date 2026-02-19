@@ -515,6 +515,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexGlyph[16],	"assets\textures\glyph5.bpt"
 		LoadBPT OFFSET TexGlyph[20],	"assets\textures\glyph6.bpt"
 		LoadBPT OFFSET TexGlyph[24],	"assets\textures\glyph7.bpt"
+		LoadBPT OFFSET TexGlyphs,		"assets\textures\glyphs.bpt"
 		LoadBPT OFFSET TexHbd,			"assets\textures\hbd.bpt"
 		LoadBPT OFFSET TexKey,			"assets\textures\key.bpt"
 		LoadBPT OFFSET TexKoluplyk,		"assets\textures\koluplyk.bpt"
@@ -628,7 +629,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndImpact,		"assets\sounds\impact.bps"
 		LoadBPS OFFSET SndIntro,		"assets\sounds\intro.bps"
 		LoadBPS OFFSET SndKey,			"assets\sounds\key.bps"
-		LoadBPS OFFSET SndKubale,			"assets\sounds\kubale.bps"
+		LoadBPS OFFSET SndKubale,		"assets\sounds\kubale.bps"
 		invoke alSourcei, SndKubale, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndKubale, AL_ROLLOFF_FACTOR, f(2)
 		LoadBPS OFFSET SndKubaleAppear,	"assets\sounds\kubaleAppear.bps"
@@ -640,7 +641,11 @@ LoadResources PROC EXPORT
 		invoke alSourcef, SndMus[0], AL_GAIN, f(0.5)
 		LoadBPS OFFSET SndMus[4],		"assets\sounds\mus2.bps"
 		invoke alSourcef, SndMus[4], AL_GAIN, f(0.5)
-		LoadBPS OFFSET SndMus[8],		"assets\sounds\mus3.bps"
+		.IF (rv(nRand, 2))
+			LoadBPS OFFSET SndMus[8],		"assets\sounds\mus3.bps"
+		.ELSE
+			LoadBPS OFFSET SndMus[8],		"assets\sounds\mus3Bach.bps"
+		.ENDIF
 		invoke alSourcef, SndMus[8], AL_GAIN, 0
 		invoke alSourcei, SndMus[8], AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndMus[12],		"assets\sounds\mus4.bps"
