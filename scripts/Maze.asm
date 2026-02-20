@@ -130,6 +130,7 @@ MazeTramWait	REAL4 0.0		; Tram wait at stop timer
 MazeTrench		BPBool FALSE
 
 MazeShop		BPBool FALSE
+MazeShopTimer	REAL4 0.0
 
 MazePartAmb		ParticleSystem <>
 MazePartDust	ParticleSystem <>
@@ -511,8 +512,21 @@ Maze_DrawLayout PROC EXPORT
 					invoke glCallList, MazeCurWallMDL
 					pop pax
 				.ENDIF
-				.IF (Pos.X == 0) && (Pos.Y == 0) && (MazeShop)
-					; Draw shop
+				.IF (Pos.X == 0) && (Pos.Y == 0) && (MazeShop)	; Draw shop
+					call glPushMatrix
+					invoke glTranslatef, f(-2), 0, 0
+					invoke glCallList, MdlShop
+					invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
+					invoke glCallList, MdlPlane
+					invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
+					call glPopMatrix
+					.IF (MazeShopTimer)
+						call glPushMatrix
+						invoke glTranslatef, MazeShopTimer, 0, 0
+						invoke glRotatef, f(-90), 0, f(1), 0
+						invoke glCallList, MazeCurWallMDL
+						call glPopMatrix
+					.ENDIF
 				.ELSEIF !(al & MAZE_CELL_PASSLEFT)
 					call glPushMatrix
 					invoke glRotatef, f(-90), 0, f(1), 0
@@ -574,6 +588,7 @@ Maze_Finish PROC EXPORT
 	
 	; Clear all elements
 	mov PlrGlyphsInMaze, 0
+	and PlrItems, not MAZE_ITEM_MAP
 	
 	mov MazeCheck, MAZE_CHECK_NONE
 	mov MazeItems, 0
@@ -1297,17 +1312,21 @@ Maze_ProcessState PROC EXPORT
 		invoke alSourcef, SndCrumble, AL_GAIN, f(0.2)
 		invoke alSourcePlay, SndCrumble
 		
-		vinvoke Vector32DCopy, OFFSET MazePartDust.Position, OFFSET CamPos
-		bpMEM32 MazePartDust.Position.Y, f(2)
-		pop pax
-		IFDEF MODE_DEBUG
-			push pax
-			print str$(pax), 32
-			print "particles released", 13, 10
+		.IF (SettingsGraphicsParticles)
+			vinvoke Vector32DCopy, OFFSET MazePartDust.Position, OFFSET CamPos
+			bpMEM32 MazePartDust.Position.Y, f(2)
 			pop pax
-		ENDIF
-		invoke Particles_Spawn, ADDR MazePartDust, pax
-		
+			IFDEF MODE_DEBUG
+				push pax
+				print str$(pax), 32
+				print "particles released", 13, 10
+				pop pax
+			ENDIF
+	
+			invoke Particles_Spawn, ADDR MazePartDust, pax
+		.ELSE
+			pop pax
+		.ENDIF
 		
 		fld flVal
 		fmul f(0.1)
@@ -1564,7 +1583,18 @@ Maze_SpawnElements PROC EXPORT
 			.ENDIF
 			call Kubale_Spawn
 		.ENDIF
-	
+		
+		; Shop
+		.IF (MazeByteSize > 80)
+			.IF ((PlrGlyphs >= 5) || (MazeItems & MAZE_ITEM_GLYPHS)) \
+			&& (MazeEntranceCell == 0) && !(rv(nRand, 3))
+				print "Spawned shop", 13, 10
+				mov MazeShop, TRUE
+				mov MazeShopTimer, 0
+				call Maze_GenerateLayoutTex
+			.ENDIF
+		.ENDIF
+		
 		; Slam door event
 		.IF !(rv(nRand, 4))
 			print "Will slam door", 13, 10
@@ -1741,7 +1771,7 @@ Maze_Draw PROC EXPORT
 			invoke glDisable, GL_ALPHA_TEST
 			call glPopMatrix
 		.ENDIF
-		.IF (MazeNote) && !(MazeNote & 16)	; Note
+		.IF (MazeNote) && !(MazeNote & 16)		; Note
 			call glPushMatrix
 			invoke glTranslate3fv, ADDR MazeNotePos
 			mov flVal, rv(Vector32DLengthSqr, OFFSET MazeNotePos)
@@ -2051,6 +2081,49 @@ Maze_Process PROC EXPORT
 				.ENDW
 				pop pbx
 			.ENDIF		
+		.ENDIF
+		.IF (MazeShop)
+			mov flVal, \							; (0, 0, 1)
+			vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET Vector3Forward)
+			.IF !(MazeShopTimer)
+				fcmp flVal, MazeItemDist
+				.IF (Carry?)
+					.IF !(UISubtitlesTimer)
+						vinvoke UI_ShowSubtitles, StrCCShop, f(0.1)
+					.ENDIF
+					
+					.IF (InputConfirm)
+						.IF (PlrGlyphs >= 5)
+							bpMEM32 MazeShopTimer, f(-1)
+							vinvoke UI_ShowSubtitles, StrCCShopBuy, UISubDur
+							sub PlrGlyphs, 5
+							or PlrItems, MAZE_ITEM_MAP
+							
+							invoke alSourcePlay, SndMistake
+							invoke alSourcePlay, SndHbd
+						.ELSE
+							vinvoke UI_ShowSubtitles, StrCCShopNo, UISubDur
+						.ENDIF
+					.ENDIF
+				.ENDIF
+			.ELSE
+				fld MazeShopTimer
+				fadd deltaTime
+				fstp MazeShopTimer
+				
+				vinvoke Plr_Shake, f(0.03)
+				invoke Vector3Set, ADDR MazePartDust.Position, \
+				MazeShopTimer, f(2), f(1)
+				.IF (SettingsGraphicsParticles)
+					invoke Particles_Spawn, ADDR MazePartDust, 1
+				.ENDIF
+				invoke SndSetPos, SndHbd, ADDR MazePartDust.Position
+				
+				.IF !(MazeShopTimer & FLT_NEG)
+					mov MazeShop, FALSE
+					invoke alSourceStop, SndHbd
+				.ENDIF
+			.ENDIF
 		.ENDIF
 	.ENDIF
 	

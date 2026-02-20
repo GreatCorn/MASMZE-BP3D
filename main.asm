@@ -39,7 +39,7 @@ ENDIF
 include ..\BoilPlate3D\src\BP3DArrays.inc
 include ..\BoilPlate3D\src\BP3DMaths.inc
 include ..\BoilPlate3D\src\BP3DVectors.inc
-include ..\BoilPlate3D\src\BP3DImporters.inc
+include ..\BoilPlate3D\src\BP3DAssets.inc
 include ..\BoilPlate3D\src\BP3DGLPlus.inc
 include ..\BoilPlate3D\src\BP3DText.inc
 
@@ -768,7 +768,9 @@ OnCreate PROC EXPORT
 OnCreate ENDP
 
 OnFixed PROC EXPORT
-	call FixedScene
+	.IF (deltaScale)
+		call FixedScene
+	.ENDIF
 	ret
 OnFixed ENDP
 
@@ -1166,7 +1168,7 @@ OnRender PROC EXPORT
 	
 	; Processing
 	call UI_Process
-	.IF (deltaTime)
+	.IF (deltaScale)
 		call ProcessScene
 	.ENDIF
 	

@@ -2322,7 +2322,7 @@ UI_Draw PROC EXPORT
 		sub ecx, UI_BTN_H*2
 		; Input hint subtitles
 		SWITCH UISubtitlesStr
-			CASE StrCCCheckpoint, StrCCSaveErase
+			CASE StrCCCheckpoint, StrCCSaveErase, StrCCShop
 				invoke UI_TextInput, UISubtitlesStr, IBConfirm, JBConfirm, \
 				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			CASE StrCCFightBack

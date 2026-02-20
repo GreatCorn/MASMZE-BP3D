@@ -90,6 +90,9 @@ SV	StrCCRandom7
 SV	StrCCSave
 SV	StrCCSaveErase
 SV	StrCCSaved
+SV	StrCCShop
+SV	StrCCShopBuy
+SV	StrCCShopNo
 SV	StrCCTeleport
 SV	StrCCTeleportBad
 SV	StrTipEBD

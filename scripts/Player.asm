@@ -180,7 +180,7 @@ Plr_Control PROC EXPORT
 			pop pax
 			fild PlrGlyphsInMaze
 			fmul f(0.01)
-			fadd f(0.01)
+			fadd f(0.02)
 			fstp PlrGlyphPos[pax].Y
 			
 			mov pcx, PlrGlyphsInMaze
