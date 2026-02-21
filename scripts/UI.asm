@@ -23,8 +23,7 @@ ENUML
 ; UI parameters and values
 UI_SCALE	EQU 4
 UI_BRD_M	EQU 4*UI_SCALE				; Border margin
-UI_BTN_H	EQU 12*UI_SCALE				; Button height; height of text (used 
-										; without margin)
+UI_BTN_H	EQU 12*UI_SCALE				; Button height; height of text
 UI_BTN_M	EQU 2*UI_SCALE				; Button margin (only between two 
 										; buttons, not around)
 UI_BTN_W	EQU 80*UI_SCALE				; Button width
@@ -35,6 +34,8 @@ UI_HR_T		EQU 1*UI_SCALE				; UI horizontal line thickness
 UI_NOTE		EQU 160*UI_SCALE
 UI_SLD_H	EQU 2*UI_SCALE				; Slider line height
 UI_SLD_T	EQU 5*UI_SCALE				; Slider tack size
+UI_TXT_H	EQU 8*UI_SCALE				; Text height
+UI_TXT_M	EQU 4*UI_SCALE				; Text margin
 
 ENUM	UI_NONE, \
 		UI_BUTTON, \
@@ -1779,7 +1780,7 @@ UI_DrawPopupMenu PROC EXPORT
 		CASE UIPP_EXIT
 			mov UIComboboxCount, 2
 			
-			UIPP_EXIT_H		EQU UI_BTN_H*2 + UI_BRD_M*2 + UI_HR_H
+			UIPP_EXIT_H		EQU UI_TXT_H*3+UI_TXT_M + UI_HR_H
 			
 			mov ebx, ScreenHalf.Y
 			sub ebx, UIPP_EXIT_H/2
@@ -1787,7 +1788,7 @@ UI_DrawPopupMenu PROC EXPORT
 			
 			invoke UI_Text, StrMenuReallyQuit, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, 0
-			add ebx, UI_BTN_H
+			add ebx, UI_TXT_H*3+UI_TXT_M
 			
 			invoke UI_HR, ScreenHalf.X, ebx
 			add ebx, UI_HR_H
@@ -1815,8 +1816,8 @@ UI_DrawPopupMenu PROC EXPORT
 		CASE UIPP_DISCARD
 			mov UIComboboxCount, 3
 			
-			UIPP_CANCEL_W	EQU UI_BTN_WS*3 + UI_BTN_M*2 + UI_BRD_M*2
-			UIPP_CANCEL_H	EQU UI_BTN_H*2 + UI_HR_H + UI_BRD_M*2
+			UIPP_CANCEL_W	EQU UI_BTN_WS*3 + UI_BTN_M*2
+			UIPP_CANCEL_H	EQU UI_BTN_H*2 + UI_HR_H
 		
 			mov ebx, ScreenHalf.Y
 			sub ebx, UIPP_CANCEL_H/2
@@ -1869,7 +1870,7 @@ UI_DrawPopupMenu PROC EXPORT
 		CASE UIPP_RESTART
 			mov UIComboboxCount, 1
 			
-			UIPP_RESTART_H		EQU UI_BTN_H*3 + UI_BRD_M*2 + UI_HR_H
+			UIPP_RESTART_H		EQU UI_TXT_H*2+UI_TXT_M + UI_BTN_H + UI_HR_H
 			
 			mov ebx, ScreenHalf.Y
 			sub ebx, UIPP_RESTART_H/2
@@ -1877,7 +1878,7 @@ UI_DrawPopupMenu PROC EXPORT
 			
 			invoke UI_Text, StrMenuRestartSett, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, 0
-			add ebx, UI_BTN_H*2
+			add ebx, UI_TXT_H*2+UI_TXT_M
 			
 			invoke UI_HR, ScreenHalf.X, ebx
 			add ebx, UI_HR_H
@@ -2041,6 +2042,12 @@ UI_ShowSubtitles PROC EXPORT String:BPPtr, Duration:REAL4
 	ret
 UI_ShowSubtitles ENDP
 
+
+
+UI_Create PROC EXPORT 
+	FontSize 4, 8
+	ret
+UI_Create ENDP
 
 UI_Draw PROC EXPORT
 	.IF (SettingsGraphicsMSAA)
@@ -2579,8 +2586,3 @@ UI_Process PROC EXPORT
 	.ENDIF
 	ret
 UI_Process ENDP
-
-UI_Create PROC EXPORT 
-	FontSize 4, 8
-	ret
-UI_Create ENDP

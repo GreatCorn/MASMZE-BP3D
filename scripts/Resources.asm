@@ -14,6 +14,8 @@ ENUM	LOADING_TEXT, \
 AnimCamEnter		BPAnimTrack <>
 AnimCamExit			BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
+AnimKoluplykDig		BPAnimTrack <>	
+AnimKoluplykShop	BPAnimTrack <>	
 AnimKubaleMove		BPAnimTrack <>	
 AnimMotryaIdle		BPAnimTrack <>	
 AnimMotryaSave		BPAnimTrack <>
@@ -55,8 +57,6 @@ MdlGlyphs			DWORD ?
 MdlHbd				DWORD ?
 MdlHbdS				DWORD ?
 MdlKey				DWORD ?
-MdlKoluplykDig		DWORD ?, ?, ?, ?
-MdlKoluplykShop		DWORD ?, ?
 MdlLamp				DWORD ?
 MdlMotrya			DWORD ?, ?, ?, ?
 MdlNeqaotor			DWORD ?
@@ -119,6 +119,7 @@ MdlWmblykBody		DWORD ?
 MdlWmblykBodyG		DWORD ?
 MdlWmblykHead		DWORD ?
 
+MeshKoluplyk		BPMesh?
 MeshKubale			BPMesh?
 MeshMotrya			BPMesh?
 MeshVebra			BPMesh?
@@ -302,6 +303,10 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimCamWalk,			"assets\anim\camWalk.bpa"
 		mov AnimCamWalk.Looping, TRUE
 		
+		LoadBPA OFFSET AnimKoluplykDig,		"assets\anim\koluplykDig.bpa"
+		LoadBPA OFFSET AnimKoluplykShop,	"assets\anim\koluplykShop.bpa"
+		mov AnimKoluplykShop.Looping, TRUE
+		
 		LoadBPA OFFSET AnimKubaleMove,		"assets\anim\kubaleMove.bpa"
 		mov AnimKubaleMove.Looping, TRUE
 		
@@ -353,12 +358,6 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlHbd, 				"assets\models\hbd.bpl"
 		LoadBPL OFFSET MdlHbdS, 			"assets\models\hbdS.bpl"
 		LoadBPL OFFSET MdlKey, 				"assets\models\key.bpl"
-		LoadBPL OFFSET MdlKoluplykDig[0],	"assets\models\koluplykDig1.bpl"
-		LoadBPL OFFSET MdlKoluplykDig[4], 	"assets\models\koluplykDig2.bpl"
-		LoadBPL OFFSET MdlKoluplykDig[8],	"assets\models\koluplykDig3.bpl"
-		LoadBPL OFFSET MdlKoluplykDig[12],	"assets\models\koluplykDig4.bpl"
-		LoadBPL OFFSET MdlKoluplykShop[0],	"assets\models\koluplykShop1.bpl"
-		LoadBPL OFFSET MdlKoluplykShop[4],	"assets\models\koluplykShop2.bpl"
 		LoadBPL OFFSET MdlLamp,				"assets\models\lamp.bpl"
 		LoadBPL OFFSET MdlMotrya[0],		"assets\models\motrya1.bpl"
 		LoadBPL OFFSET MdlMotrya[4],		"assets\models\motrya2.bpl"
@@ -464,6 +463,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlWmblykBodyG,		"assets\models\wmblykBodyG.bpl"
 		LoadBPL OFFSET MdlWmblykHead,		"assets\models\wmblykHead.bpl"
 		
+		LoadBPM OFFSET MeshKoluplyk,		"assets\models\koluplyk.bpm"
 		LoadBPM OFFSET MeshKubale,			"assets\models\kubale.bpm"
 		LoadBPM OFFSET MeshMotrya,			"assets\models\motrya.bpm"
 		LoadBPM OFFSET MeshVebra,			"assets\models\vebra.bpm"

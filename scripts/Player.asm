@@ -208,7 +208,7 @@ Plr_Control ENDP
 Plr_DrawCompassMap PROC EXPORT
 	LOCAL flVal:REAL4, v2Val:Vector2
 	
-	.IF (Maze)
+	.IF (Maze) && (PlrState == PLAYER_STATE_GAME)
 		fcmp CamRot.X, f(0.4)
 		.IF (!Carry?)
 			call glPushMatrix
@@ -227,6 +227,7 @@ Plr_DrawCompassMap PROC EXPORT
 				invoke glCallList, MdlParticle
 				
 				invoke glScalef, f(0.9), f(0.9), f(0.9)
+				invoke glScale2fv, ADDR MazeMapSize
 				invoke glEnable, GL_BLEND
 				invoke glBlendFunc, GL_ZERO, GL_ONE_MINUS_SRC_COLOR
 				invoke glBindTexture, GL_TEXTURE_2D, MazeLayoutTex

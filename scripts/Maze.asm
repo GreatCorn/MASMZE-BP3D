@@ -136,6 +136,7 @@ MazeShopTimer	REAL4 0.0
 MazePartAmb		ParticleSystem <>
 MazePartDust	ParticleSystem <>
 
+KoluplykAnimPlr	BPAnimPlayer <>
 MotryaAnimPlr	BPAnimPlayer <>
 
 .DATA?
@@ -145,6 +146,7 @@ MazeCurRoof		DWORD ?
 MazeCurWall		DWORD ?
 MazeCurWallMDL	DWORD ?
 MazeDoorPos		Vector3 <?, ?, ?>	; Maze end door cell center position
+MazeMapSize		Vector2 <?, ?>
 MazePlrPos		Vector2 <?, ?>		; Player cell position
 MazeSeed		DWORD ?
 
@@ -558,6 +560,8 @@ Maze_DrawLayout PROC EXPORT
 					invoke glCallList, MdlShop
 					invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
 					invoke glCallList, MdlPlane
+					invoke glBindTexture, GL_TEXTURE_2D, TexKoluplyk
+					invoke bpDrawMesh, ADDR MeshKoluplyk
 					invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
 					call glPopMatrix
 					.IF (MazeShopTimer)
@@ -906,7 +910,7 @@ Maze_Generate PROC EXPORT Seed:DWORD
 	
 	bpMEM32 nRandSeed, Seed
 	
-	invoke nRand, 8
+	invoke nRand, 7
 	.IF (al > 2)
 		mov MazeType, MAZE_TYPE_NORMAL
 	.ELSE
@@ -995,11 +999,20 @@ Maze_Generate PROC EXPORT Seed:DWORD
 		
 		invoke Maze_OrCellI, Pos.X, Pos.Y, MAZE_CELL_VISITED
 		
+		xor al, al
 		.REPEAT	; Choose random available direction to go
-			invoke nRand, 4
-			mov cl, al
-			mov al, 1
-			shl al, cl
+			.IF (MazeType == MAZE_TYPE_SQUIGGLY)
+				.IF (al)
+					shl al, 1
+				.ELSE
+					mov al, 1
+				.ENDIF
+			.ELSE
+				invoke nRand, 4
+				mov cl, al
+				mov al, 1
+				shl al, cl
+			.ENDIF
 		.UNTIL (MazePool & al)
 		
 		.IF (al == FREE_UP)	; Set passes (no walls)
@@ -1132,6 +1145,19 @@ Maze_GenerateLayoutTex PROC EXPORT
 	
 	invoke bpFree, bpDefHeap, 0, buf
 	pop pbx
+	
+	mov eax, MazeSize[0]
+	.IF (eax > MazeSize[4])
+		mov MazeMapSize.X, FLT_1
+		fild MazeSize[4]
+		fidiv MazeSize[0]
+		fstp MazeMapSize.Y
+	.ELSE
+		fild MazeSize[0]
+		fidiv MazeSize[4]
+		fstp MazeMapSize.X
+		mov MazeMapSize.Y, FLT_1
+	.ENDIF
 	ret
 Maze_GenerateLayoutTex ENDP
 
@@ -1602,7 +1628,7 @@ Maze_SpawnElements PROC EXPORT
 		; Items
 		; Compass
 		.IF !(PlrItems & MAZE_ITEM_COMPASS) && (MazeLayer > 11)
-			.IF !(rv(nRand, 5))
+			.IF !(rv(nRand, 4))
 				print "Spawned compass at "
 				or MazeItems, MAZE_ITEM_COMPASS
 				invoke Maze_GetRandomPos, ADDR MazeCompassPos, TRUE
@@ -1646,11 +1672,14 @@ Maze_SpawnElements PROC EXPORT
 		; Shop
 		.IF (MazeByteSize > 80)
 			.IF ((PlrGlyphs >= 5) || (MazeItems & MAZE_ITEM_GLYPHS)) \
-			&& (MazeEntranceCell == 0) && !(rv(nRand, 3))
+			&& (MazeEntranceCell == 0) && !(rv(nRand, 2))
 				print "Spawned shop", 13, 10
 				mov MazeShop, TRUE
 				mov MazeShopTimer, 0
 				call Maze_GenerateLayoutTex
+				
+				mov KoluplykAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
+				invoke bpAnimPlay, ADDR KoluplykAnimPlr, ADDR AnimKoluplykShop
 			.ENDIF
 		.ENDIF
 		
@@ -1749,6 +1778,8 @@ Maze_Create PROC EXPORT
 	invoke Vector2Set, ADDR MazePartDust.Velocity, f(0.7), f(1)
 	invoke Particles_Create, ADDR MazePartDust
 	
+	mov KoluplykAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init Koluplyk animator
+	mov KoluplykAnimPlr.Mesh, OFFSET MeshKoluplyk
 	mov MotryaAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init Motrya animator
 	mov MotryaAnimPlr.Mesh, OFFSET MeshMotrya
 	ret
@@ -2145,10 +2176,11 @@ Maze_Process PROC EXPORT
 			.ENDIF		
 		.ENDIF
 		.IF (MazeShop)
+			
 			mov flVal, \							; (0, 0, 1)
 			vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET Vector3Forward)
 			.IF !(MazeShopTimer)
-				fcmp flVal, MazeItemDist
+				fcmp flVal, MazeItemDistImp
 				.IF (Carry?)
 					.IF !(UISubtitlesTimer)
 						vinvoke UI_ShowSubtitles, StrCCShop, f(0.1)
@@ -2156,11 +2188,19 @@ Maze_Process PROC EXPORT
 					
 					.IF (InputConfirm)
 						.IF (PlrGlyphs >= 5)
-							bpMEM32 MazeShopTimer, f(-1)
+							bpMEM32 MazeShopTimer, f(-2)
 							vinvoke UI_ShowSubtitles, StrCCShopBuy, UISubDur
 							sub PlrGlyphs, 5
 							or PlrItems, MAZE_ITEM_MAP
 							
+							.IF (SettingsGraphicsInterpolation)
+								mov KoluplykAnimPlr.Interpolation, \
+								BP_INTERPOLATE_LINEAR
+							.ENDIF
+							invoke bpAnimPlay, ADDR KoluplykAnimPlr, \
+							ADDR AnimKoluplykDig
+							
+							invoke alSourcePlay, SndDig
 							invoke alSourcePlay, SndMistake
 							invoke alSourcePlay, SndHbd
 						.ELSE
@@ -2186,6 +2226,8 @@ Maze_Process PROC EXPORT
 					invoke alSourceStop, SndHbd
 				.ENDIF
 			.ENDIF
+			
+			invoke bpProcessAnimPlayer, ADDR KoluplykAnimPlr, deltaTime
 		.ENDIF
 	.ENDIF
 	
