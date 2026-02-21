@@ -88,7 +88,8 @@ MazeCheckErasePos	Vector3 <>
 MazeCheckErasePosL	Vector3 <>
 
 MazeCrevice 	BPBool FALSE	; Maze crevice active
-MazeCrevicePos	DWORD 0, 0		; Maze crevice cell position
+MazeCreviceCell	DWORD 0, 0		; Maze crevice cell position
+MazeCrevicePos	Vector3 <>		; Maze crevice world position
 
 MazeDoorRot		REAL4 0.0		; Maze end door rotation
 
@@ -289,6 +290,36 @@ Maze_CollideLayout PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
 		mov colPos.Y, edx
 		.WHILE (SDWORD PTR edx <= bounds.W)
 			.IF (rv(Maze_InRange, colPos.X, colPos.Y))
+				.IF (MazeCrevice)
+					; Indentation lovers rejoice
+					mov ecx, colPos.X
+					mov edx, colPos.Y
+					.IF (ecx == MazeCreviceCell[0]) \
+					&& (edx == MazeCreviceCell[4])
+						.IF (PosPtr == OFFSET CamPos)
+							fcmp PlrCrouch, f(0.4)
+							.IF (!Carry?) || (MazeCrevice == 2)
+								mov ecx, MazePlrPos.X
+								mov edx, MazePlrPos.Y
+								.IF (ecx == MazeCreviceCell[0]) && \
+								(edx == MazeCreviceCell[4])
+									mov MazeCrevice, 2
+								.ELSE
+									mov MazeCrevice, 1
+								.ENDIF
+							.ELSE
+								jmp mazeColLayCrevice
+							.ENDIF
+						.ELSE
+							mazeColLayCrevice:
+							fld f(2)
+							fadd Radius
+							fstp flVal
+							invoke Collide_Rectangle, PosPtr, \
+							ADDR MazeCrevicePos, flVal, flVal
+						.ENDIF
+					.ENDIF
+				.ENDIF
 				invoke Vector2Copy, ADDR worldPos, ADDR colPos
 				sal worldPos.X, 1	; *2
 				sal worldPos.Y, 1	; *2
@@ -499,6 +530,15 @@ Maze_DrawLayout PROC EXPORT
 				
 				invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
 				
+				; Crevice
+				.IF (MazeCrevice)
+					mov ecx, Pos.X
+					mov edx, Pos.Y
+					.IF (ecx == MazeCreviceCell[0])&&(edx == MazeCreviceCell[4])
+						invoke glCallList, MdlCrevice
+					.ENDIF
+				.ENDIF
+				
 				mov ecx, MazeEntranceCell
 				mov al, cell
 				.IF (Pos.Y == 0) && (Pos.X == ecx)	; Draw entrance door
@@ -591,6 +631,7 @@ Maze_Finish PROC EXPORT
 	and PlrItems, not MAZE_ITEM_MAP
 	
 	mov MazeCheck, MAZE_CHECK_NONE
+	mov MazeCrevice, 0
 	mov MazeItems, 0
 	mov MazeLocked, MAZE_LOCK_NONE
 	mov MazeNote, 0
@@ -842,6 +883,7 @@ Maze_Generate PROC EXPORT Seed:DWORD
 	
 	mov MazeGenerating, TRUE
 	
+	print " ", 13, 10
 	print "Generating maze with size "
 	print str$(MazeSize[0]), 32
 	print str$(MazeSize[4]), 9
@@ -1540,6 +1582,22 @@ Maze_SetPropI PROC EXPORT X:SDWORD, Y:SDWORD, Prop:BYTE, Rotated:BPBool
 Maze_SetPropI ENDP
 
 Maze_SpawnElements PROC EXPORT
+	; Crevice
+	.IF (rv(nRand, 10) > 6) && (MazeLayer > 4)
+		print "Spawned crevice at "
+		mov MazeCrevice, 1
+		invoke Maze_GetRandomPos, ADDR MazeCrevicePos, TRUE
+		Vector32DPrint MazeCrevicePos
+		invoke fpuSetRounding, FPU_ROUND_TRUNC
+		fld MazeCrevicePos.X
+		fistp MazeCreviceCell[0]
+		sar MazeCreviceCell[0], 1
+		fld MazeCrevicePos.Z
+		fistp MazeCreviceCell[4]
+		sar MazeCreviceCell[4], 1
+		invoke fpuSetRounding, FPU_ROUND_ROUND
+	.ENDIF
+	
 	.IF (MazeState == MAZE_STATE_GAME)
 		; Items
 		; Compass
@@ -1565,6 +1623,7 @@ Maze_SpawnElements PROC EXPORT
 				Vector32DPrint MazeGlyphsPos
 			.ENDIF
 		.ENDIF
+		
 		
 		; Key
 		.IF (rv(nRand, MazeLayer) > 7)
@@ -1632,7 +1691,7 @@ Maze_SpawnElements PROC EXPORT
 			ENDSW
 		.ENDIF
 	.ENDIF
-	
+		
 	SWITCH MazeLayer	; Notes
 		CASE 8
 			mov MazeNote, 1
@@ -1976,8 +2035,10 @@ Maze_Process PROC EXPORT
 		invoke fpuSetRounding, FPU_ROUND_TRUNC
 		fld CamPos.X
 		fistp MazePlrPos.X
+		sar MazePlrPos.X, 1
 		fld CamPos.Z
 		fistp MazePlrPos.Y
+		sar MazePlrPos.Y, 1
 		invoke fpuSetRounding, FPU_ROUND_ROUND
 		
 		.IF (MazeItems & MAZE_ITEM_GLYPHS)
@@ -2008,6 +2069,7 @@ Maze_Process PROC EXPORT
 				.ENDIF
 			.ENDIF
 		.ENDIF
+
 		.IF (MazeTeleport)
 			fld MazeTeleportRot
 			fadd delta20

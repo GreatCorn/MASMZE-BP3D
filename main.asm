@@ -867,7 +867,9 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					
 				IFDEF MODE_DEBUG
 				CASE 'C'
-					xor PlrItems, MAZE_ITEM_COMPASS
+					.IF (Keys[VK_SHIFT])
+						xor PlrItems, MAZE_ITEM_COMPASS
+					.ENDIF
 				CASE 'F'
 					bpMEM32 deltaScale, f(4)
 					invoke MulSoundPitch, f(4)

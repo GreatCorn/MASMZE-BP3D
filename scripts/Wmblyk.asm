@@ -337,6 +337,19 @@ Wmblyk_Process PROC EXPORT
 		fmul v3Val.Y
 		fadd WmblykPos.X
 		fstp WmblykPos.X
+		
+		; Crevice crawl
+		mov flVal, rv(Vector32DDistanceSqr, ADDR WmblykPos, ADDR MazeCrevicePos)
+		fcmp flVal, f(4)
+		.IF (Carry?)
+			.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykCrawl)
+				invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykCrawl
+			.ENDIF
+		.ELSE
+			.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykWalk)
+				vinvoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
+			.ENDIF
+		.ENDIF
 			
 		invoke Maze_GetCellOffsetF, WmblykPos.X, WmblykPos.Z
 		push pax
@@ -514,7 +527,8 @@ Wmblyk_Process PROC EXPORT
 		
 		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET CamPos)
 		fcmp flVal, f(0.75)
-		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)
+		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME) && \
+		(WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykCrawl)
 			mov PlrState, PLAYER_STATE_STRANGLE
 			mov Wmblyk, WMBLYK_STRANGLE
 			mov WmblykStateVal, 0

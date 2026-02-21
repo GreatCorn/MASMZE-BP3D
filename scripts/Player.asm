@@ -127,7 +127,7 @@ Plr_Control PROC EXPORT
 		invoke Vector2Copy, ADDR InputMovementClamped, ADDR InputMovement
 	.ENDIF
 	
-	.IF (InputCrouch)	; Handle crouching
+	.IF (InputCrouch) || (MazeCrevice == 2)	; Handle crouching
 		mov PlrCrouch, rv(flLerp, PlrCrouch, f(0.5), delta20)
 	.ELSE
 		mov PlrCrouch, rv(flLerp, PlrCrouch, 0, delta20)
@@ -805,7 +805,13 @@ Plr_Process PROC EXPORT
 	call Plr_ProcessState
 	
 	.IF (Maze)
-		invoke Maze_CollideLayout, ADDR CamPos, f(0.7), TRUE
+		IFDEF MODE_DEBUG
+		.IF !(Keys[VK_C])
+		ENDIF
+			invoke Maze_CollideLayout, ADDR CamPos, f(0.7), TRUE
+		IFDEF MODE_DEBUG
+		.ENDIF
+		ENDIF
 		.IF (PlrItems & MAZE_ITEM_COMPASS)
 			.IF (MazeLocked == MAZE_LOCK_LOCKED)
 				mov pax, OFFSET MazeKeyPos
