@@ -339,15 +339,18 @@ Wmblyk_Process PROC EXPORT
 		fstp WmblykPos.X
 		
 		; Crevice crawl
-		mov flVal, rv(Vector32DDistanceSqr, ADDR WmblykPos, ADDR MazeCrevicePos)
-		fcmp flVal, f(4)
-		.IF (Carry?)
-			.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykCrawl)
-				invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykCrawl
-			.ENDIF
-		.ELSE
-			.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykWalk)
-				vinvoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
+		.IF (MazeCrevice)
+			mov flVal, \
+			rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET MazeCrevicePos)
+			fcmp flVal, f(4)
+			.IF (Carry?)
+				.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykCrawl)
+					invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykCrawl
+				.ENDIF
+			.ELSE
+				.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykWalk)
+					vinvoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
+				.ENDIF
 			.ENDIF
 		.ENDIF
 			

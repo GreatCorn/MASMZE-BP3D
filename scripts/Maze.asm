@@ -830,7 +830,7 @@ Maze_Finish PROC EXPORT
 					bpMEM32 MazeCurWallMDL, MdlWallSlant
 			ENDSW
 		.ELSEIF (MazeLayer > 42)						; Heavy zone
-			invoke nRand, 3	; Wall
+			invoke nRand, 4	; Wall
 			SWITCH eax
 				CASE 0
 					bpMEM32 MazeCurWall, TexMetal
@@ -838,8 +838,10 @@ Maze_Finish PROC EXPORT
 					bpMEM32 MazeCurWall, TexBricks
 				CASE 2
 					bpMEM32 MazeCurWall, TexConcrete
+				CASE 2
+					bpMEM32 MazeCurWall, TexRustPanel
 			ENDSW
-			invoke nRand, 3	; Floor
+			invoke nRand, 4	; Floor
 			SWITCH eax
 				CASE 0
 					bpMEM32 MazeCurFloor, TexDiamond
@@ -847,6 +849,8 @@ Maze_Finish PROC EXPORT
 					bpMEM32 MazeCurFloor, TexTileBig
 				CASE 2
 					bpMEM32 MazeCurFloor, TexWalkway
+				CASE 3
+					bpMEM32 MazeCurFloor, TexWalkwaySmall
 			ENDSW
 			invoke nRand, 4	; Wall model
 			SWITCH eax
@@ -2244,7 +2248,7 @@ Maze_Process PROC EXPORT
 							
 							invoke alSourcePlay, SndDig
 							invoke alSourcePlay, SndMistake
-							invoke alSourcePlay, SndHbd
+							invoke alSourcePlay, SndHBD
 						.ELSE
 							vinvoke UI_ShowSubtitles, StrCCShopNo, UISubDur
 						.ENDIF
@@ -2261,11 +2265,11 @@ Maze_Process PROC EXPORT
 				.IF (SettingsGraphicsParticles)
 					invoke Particles_Spawn, ADDR MazePartDust, 1
 				.ENDIF
-				invoke SndSetPos, SndHbd, ADDR MazePartDust.Position
+				invoke SndSetPos, SndHBD, ADDR MazePartDust.Position
 				
 				.IF !(MazeShopTimer & FLT_NEG)
 					mov MazeShop, FALSE
-					invoke alSourceStop, SndHbd
+					invoke alSourceStop, SndHBD
 				.ENDIF
 			.ENDIF
 			

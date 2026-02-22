@@ -812,6 +812,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		.ELSE
 			mov al, BP_INTERPOLATE_CONSTANT
 		.ENDIF
+		mov HBDAnimPlr.Interpolation, al
 		mov KubaleAnimPlr.Interpolation, al
 		mov MotryaAnimPlr.Interpolation, al
 		mov VebraAnimPlr.Interpolation, al
