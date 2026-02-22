@@ -50,6 +50,7 @@ ENUML
 	E MAZE_STATE_WASTELAND_FADE_IN
 	E MAZE_STATE_WASTELAND
 	E MAZE_STATE_WASTELAND_FADE_OUT
+	E MAZE_STATE_TRENCH
 	E MAZE_STATE_END
 	E MAZE_STATE_CROA
 	E MAZE_STATE_BORDER
@@ -128,10 +129,13 @@ MazeTramSpeed	REAL4 0.0		; Tram speed to accelerate
 MazeTramSnd		DWORD 0			; Tram announcement sound index
 MazeTramWait	REAL4 0.0		; Tram wait at stop timer
 
-MazeTrench		BPBool FALSE
-
 MazeShop		BPBool FALSE
 MazeShopTimer	REAL4 0.0
+
+MazeTrench		BPBool FALSE
+MazeTrenchTimer	REAL4 0.0
+
+MazeVasPos		Vector3 <>
 
 MazePartAmb		ParticleSystem <>
 MazePartDust	ParticleSystem <>
@@ -642,6 +646,7 @@ Maze_Finish PROC EXPORT
 	mov MazeSlam, FALSE
 	mov MazeSlamRot, 0
 	mov MazeTeleport, FALSE
+	mov MazeTrench, FALSE
 	
 	; Reset entities
 	call Maze_ResetEntities
@@ -866,6 +871,13 @@ Maze_Finish PROC EXPORT
 		ENDSW
 	.ENDIF
 	
+	; Trench
+	.IF (MazeLayer > 22)
+		.IF !(rv(nRand, 12))
+			call Maze_SpawnTrench
+		.ENDIF
+	.ENDIF
+	
 	.IF !(MazeTrench)
 		call Maze_SpawnElements
 	.ENDIF
@@ -904,7 +916,7 @@ Maze_Generate PROC EXPORT Seed:DWORD
 	mov MazeSize[12], eax
 	
 	; Create maze array (zero memory by default)
-	mov Maze, rv(bpCreate2DArray, 1, MazeSize[0], MazeSize[4])
+	mov Maze, rv(bp2DArrayCreate, 1, MazeSize[0], MazeSize[4])
 	mov MazeByteSize, ecx	; Size returned in ecx by function
 	invoke RtlZeroMemory, Maze, MazeByteSize
 	
@@ -1749,6 +1761,36 @@ Maze_SpawnElements PROC EXPORT
 	bpMEM32 MazeNotePos.Y, f(0.01)
 	ret
 Maze_SpawnElements ENDP
+
+Maze_SpawnTrench PROC EXPORT
+	print "Spawned trench", 13, 10
+	mov MazeTrench, TRUE
+	fild MazeLayer
+	fsqrt
+	fmul f(0.02)
+	fstp MazeTrenchTimer
+	
+	bpMEM32 MazeCurWall, TexDirt
+	bpMEM32 MazeCurFloor, TexDirt
+	bpMEM32 MazeCurWallMDL, MdlWallTrench
+	
+	bpMEM32 CamBaseFOV, f(60)
+	
+	invoke alSourcePlay, SndAmbT
+	invoke alSourcef, SndWmblykB, AL_PITCH, f(0.2)
+	invoke alSourcef, SndWmblykB, AL_GAIN, f(10)
+	invoke alSourcePlay, SndWmblykB
+	invoke alSourceStop, SndAmb
+	
+	mov MazeState, MAZE_STATE_TRENCH
+	
+	fild MazeSize[12]
+	fmul f(2)
+	fsub f(1)
+	fstp MazeVasPos.Y
+	mov MazeVasPos.X, FLT_1
+	ret
+Maze_SpawnTrench ENDP
 
 
 Maze_Create PROC EXPORT

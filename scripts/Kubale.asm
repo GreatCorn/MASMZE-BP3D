@@ -102,7 +102,7 @@ Kubale_Process PROC EXPORT
 	.ELSEIF (Kubale == KUBALE_ACTIVE)
 		mov FogDensity, rv(flLerp, FogDensity, f(0.5), delta2)
 		
-		mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPosL)
+		mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
 		
 		mov flVal, rv(Plr_FrustumDot, OFFSET KubalePos)
 		mov blocked, FALSE
@@ -160,8 +160,7 @@ Kubale_Process PROC EXPORT
 			.ENDIF
 			
 			; Player collision
-			invoke Collide_Distance, ADDR CamPos, ADDR KubalePos, \
-			f(0.5), dist
+			invoke Collide_Distance, ADDR CamPos, ADDR KubalePos, f(0.5), dist
 			
 			; Wmblyk
 			.IF (Wmblyk == WMBLYK_STILL)
