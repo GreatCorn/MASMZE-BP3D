@@ -14,10 +14,18 @@ HBDTimer	REAL4 0.0
 .CODE
 HBD_Spawn PROC EXPORT
 	print "Spawned Huenbergondel at "
+	mov HBD, HBD_SLEEP
 	mov HBDAnimPlr.FrameType, BPA_FRAME_VERTEX
 	mov HBDAnimPlr.Mesh, OFFSET MeshHBD
 	invoke Maze_GetRandomPos, ADDR HBDPos, TRUE
 	Vector32DPrint HBDPos
+	invoke Vector2Set, ADDR HBDPosT, HBDPos.X, HBDPos.Z
+	invoke Vector2Copy, ADDR HBDCell, ADDR HBDPosT
+	invoke fpuSetRounding, FPU_ROUND_TRUNC
+	invoke Vector2RoundInt, ADDR HBDCell
+	invoke fpuSetRounding, FPU_ROUND_ROUND
+	sar HBDCell.X, 1
+	sar HBDCell.Y, 1
 	mov HBDTimer, rv(flRandRange, f(5), f(8))
 	ret
 HBD_Spawn ENDP
@@ -105,15 +113,21 @@ HBD_Process PROC EXPORT
 			.ENDIF
 			
 			invoke Vector2Copy, ADDR HBDPosT, ADDR HBDCell
+			invoke Vector2F, ADDR HBDPosT
 			invoke Vector2MulF, ADDR HBDPosT, f(2)
 			invoke Vector2Add, ADDR HBDPosT, ADDR Vector2One
-			invoke Vector2F, ADDR HBDPosT
 			
+			Vector2Print HBDPosT
+			
+			invoke SndSetPos, SndHBDO, ADDR HBDPos
 			invoke alSourcePlay, SndHBDO
 			
-			mov HBDAnimPlr.Speed, FLT_1 and FLT_NEG
+			mov HBDAnimPlr.Speed, FLT_1 or FLT_NEG
 			invoke bpAnimPlay, ADDR HBDAnimPlr, ADDR AnimHBDBlink
 		.ELSEIF (HBD == HBD_MOVE)
+			mov HBD, HBD_SLEEP
+			bpMEM32 HBDTimer, f(4)
+			
 			invoke Vector32DSet, ADDR HBDPos, HBDPosT.X, HBDPosT.Y
 			invoke alSourceStop, SndHBD
 			
@@ -123,16 +137,23 @@ HBD_Process PROC EXPORT
 	.ENDIF
 	
 	.IF (HBD == HBD_MOVE)
-		mov HBDRot[0], rv(flLerpAngle, HBDRot[0], HBDRot[4], delta10)
+		mov HBDRot[0], rv(flLerpAngle, HBDRot[0], HBDRot[4], delta2)
 		fcmp HBDTimer, f(1)
 		.IF (Carry?)
-			.IF (rv(SndPlaying, SndHBD) == AL_STOPPED)
+			mov HBDPos.X, rv(flMove, HBDPos.X, HBDPosT.X, delta2)
+			mov HBDPos.Z, rv(flMove, HBDPos.Z, HBDPosT.Y, delta2)
+			invoke SndSetPos, SndHBD, ADDR HBDPos
+			.IF (rv(SndPlaying, SndHBD) != AL_PLAYING)
 				invoke alSourcePlay, SndHBD
 			.ENDIF
-			mov HBDPos.X, rv(flMove, HBDPos.X, HBDPosT.X, deltaTime)
-			mov HBDPos.Z, rv(flMove, HBDPos.Z, HBDPosT.Y, deltaTime)
-			invoke SndSetPos, SndHBD, ADDR HBDPos
 		.ENDIF
+	.ENDIF
+	
+	invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(1.2), 0
+	.IF (al) && (HBD == HBD_MOVE) && (PlrState == PLAYER_STATE_GAME)
+		
+		invoke alSourcePlay, SndImpact
+		mov PlrState, PLAYER_STATE_DYING
 	.ENDIF
 	
 	invoke bpProcessAnimPlayer, ADDR HBDAnimPlr, deltaTime

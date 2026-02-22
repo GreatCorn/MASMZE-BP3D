@@ -67,6 +67,8 @@ PlrState			DWORD PLAYER_STATE_ENTER
 PlrStateCallback	BPPtr 0
 PlrStateTimer		REAL4 0.0
 
+PlrStepPitch		REAL4 1.0
+
 PlrPartRain	ParticleSystem	<>
 
 .CODE
@@ -723,7 +725,7 @@ Plr_Shake PROC Amplitude:REAL4
 Plr_Shake ENDP
 
 Plr_Step PROC EXPORT HalfStep:BPBool
-	LOCAL flVal:REAL4
+	LOCAL v2Val:Vector2
 	mov al, HalfStep
 	.IF (PlrPlayStep == al)
 		not al
@@ -733,10 +735,16 @@ Plr_Step PROC EXPORT HalfStep:BPBool
 		push pax
 		fld PlrSpeedScaled
 		fmul st, st
-		fstp flVal
-		invoke alSourcef, eax, AL_GAIN, flVal
+		fstp v2Val.X
+		invoke alSourcef, eax, AL_GAIN, v2Val.X
 		
-		invoke flRandRange, f(0.9), f(1.1)
+		fld PlrStepPitch
+		fsub f(0.1)
+		fstp v2Val.X
+		fld PlrStepPitch
+		fadd f(0.1)
+		fstp v2Val.Y
+		invoke flRandRange, v2Val.X, v2Val.Y
 		pop pcx
 		invoke alSourcef, ecx, AL_PITCH, eax
 	.ENDIF

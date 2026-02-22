@@ -236,6 +236,8 @@ ENUM	BIND_NONE, \
 AppName DB "MASMZE-3D", 0	; App name & caption
 AsmTime	DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), 13, 10, 0
 
+clSky	REAL4 0.24, 0.24, 0.22, 1.0
+
 .DATA
 ; ----- Forms, form creation -----
 FARB	BPForm <>		; Dummy form to load wgl functions and init ARB ext
@@ -682,8 +684,6 @@ InitARBContext PROC EXPORT
 	invoke glEnableClientState, GL_VERTEX_ARRAY
 	invoke glEnableClientState, GL_TEXTURE_COORD_ARRAY
 	invoke glEnableClientState, GL_NORMAL_ARRAY
-	
-	invoke glClearColor4fv, ADDR clBlack
 	mov pax, TRUE
 	ret
 InitARBContext ENDP
@@ -725,8 +725,10 @@ InitGraphics PROC EXPORT
 	
 	invoke glEnable, GL_LIGHTING
 	invoke glEnable, GL_LIGHT0
-	invoke glLightModelfv, GL_LIGHT_MODEL_AMBIENT, OFFSET clBlack
-	invoke glLightfv, GL_LIGHT0, GL_SPECULAR, OFFSET clWhite
+	invoke glClearColor4fv, ADDR clBlack
+	invoke glFogfv, GL_FOG_COLOR, ADDR clBlack
+	invoke glLightModelfv, GL_LIGHT_MODEL_AMBIENT, ADDR clBlack
+	invoke glLightfv, GL_LIGHT0, GL_SPECULAR, ADDR clWhite
 	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0
 	invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, f(0.5)
 	

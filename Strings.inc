@@ -95,6 +95,7 @@ SV	StrCCShopBuy
 SV	StrCCShopNo
 SV	StrCCTeleport
 SV	StrCCTeleportBad
+SV	StrCCTrench
 SV	StrTipEBD
 SV	StrTipHBD
 SV	StrTipKubale

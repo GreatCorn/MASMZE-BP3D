@@ -71,13 +71,10 @@ SettingsRegComplete		DB "Complete", 0
 SettingsRegCurLayer		DB "CurLayer", 0
 SettingsRegCurWidth		DB "CurWidth", 0
 SettingsRegCurHeight	DB "CurHeight", 0
-SettingsRegFloor		DB "Floor", 0
 SettingsRegGlyphs		DB "Glyphs", 0
 SettingsRegLayer		DB "Layer", 0
 SettingsRegMazeW		DB "MazeW", 0
 SettingsRegMazeH		DB "MazeH", 0
-SettingsRegRoof			DB "Roof", 0
-SettingsRegWall			DB "Wall", 0
 
 SettingsIniPath	DB "settings.ini", 0
 SettingsRegPath DB "Software\\GreatCorn\\MASMZE-3D", 0
@@ -137,9 +134,6 @@ Settings_EraseSave PROC EXPORT Temporary:BPBool
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegLayer
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCompass
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegGlyphs
-		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegFloor
-		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegWall
-		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegRoof
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegMazeW
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegMazeH
 	.ENDIF
@@ -485,12 +479,6 @@ Settings_LoadGame PROC EXPORT
 			ret
 		.ENDIF
 		
-		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegFloor, 0, \
-		NULL, ADDR MazeCurFloor, ADDR pcbData
-		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegWall, 0, \
-		NULL, ADDR MazeCurWall, ADDR pcbData
-		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegRoof, 0, \
-		NULL, ADDR MazeCurRoof, ADDR pcbData
 		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegMazeW, 0, \
 		NULL, ADDR MazeSize[0], ADDR pcbData
 		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegMazeH, 0, \
@@ -681,12 +669,6 @@ Settings_SaveGame PROC EXPORT Temporary:BPBool
 		.ENDIF
 		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegGlyphs, 0, \
 		REG_BINARY, ADDR PlrGlyphs, 1
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegFloor, 0, \
-		REG_DWORD, ADDR MazeCurFloor, 4
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegWall, 0, \
-		REG_DWORD, ADDR MazeCurWall, 4
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegRoof, 0, \
-		REG_DWORD, ADDR MazeCurRoof, 4
 		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeW, 0, \
 		REG_DWORD, ADDR MazeSize[0], 4
 		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeH, 0, \

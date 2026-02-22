@@ -4,10 +4,12 @@ MAZE_CELL_VISITED	EQU 00000100b
 MAZE_CELL_ROTATED	EQU 00001000b
 MAZE_CELL_PROPS		EQU 11110000b
 
-MAZE_PROP_SHIFT		EQU 4
-MAZE_PROP_DOORWAY	EQU 1 shl MAZE_PROP_SHIFT
-MAZE_PROP_TABURETKA	EQU 2 shl MAZE_PROP_SHIFT
-MAZE_PROP_LAMP		EQU 3 shl MAZE_PROP_SHIFT
+MAZE_PROP_SHIFT			EQU 4
+MAZE_PROP_DOORWAY		EQU 1 shl MAZE_PROP_SHIFT
+MAZE_PROP_TABURETKA		EQU 2 shl MAZE_PROP_SHIFT
+MAZE_PROP_LAMP			EQU 3 shl MAZE_PROP_SHIFT
+MAZE_PROP_ARCH			EQU 4 shl MAZE_PROP_SHIFT
+MAZE_PROP_WINDOWS		EQU 5 shl MAZE_PROP_SHIFT
 
 ENUM \
 	MAZE_CHECK_NONE, \
@@ -132,7 +134,6 @@ MazeTramWait	REAL4 0.0		; Tram wait at stop timer
 MazeShop		BPBool FALSE
 MazeShopTimer	REAL4 0.0
 
-MazeTrench		BPBool FALSE
 MazeTrenchTimer	REAL4 0.0
 
 MazeVasPos		Vector3 <>
@@ -375,11 +376,11 @@ Maze_DrawCheck PROC EXPORT
 	
 	call glPushMatrix
 	invoke glTranslate3fv, ADDR MazeCheckPos
-	invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
+	invoke glBindTexture, GL_TEXTURE_2D, TexFloor
 	invoke glCallList, MdlCheckFloor
-	invoke glBindTexture, GL_TEXTURE_2D, MazeCurRoof
+	invoke glBindTexture, GL_TEXTURE_2D, TexRoof
 	invoke glCallList, MdlCheckRoof
-	invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
+	invoke glBindTexture, GL_TEXTURE_2D, TexWall
 	invoke glCallList, MdlCheckWalls
 	
 	; Draw exit door
@@ -504,8 +505,10 @@ Maze_DrawLayout PROC EXPORT
 				
 				invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
 				invoke glCallList, MdlPlane
-				invoke glBindTexture, GL_TEXTURE_2D, MazeCurRoof
-				invoke glCallList, MdlPlaneR
+				.IF (MazeState != MAZE_STATE_TRENCH)
+					invoke glBindTexture, GL_TEXTURE_2D, MazeCurRoof
+					invoke glCallList, MdlPlaneR
+				.ENDIF
 				
 				; Props
 				call glPushMatrix
@@ -531,10 +534,29 @@ Maze_DrawLayout PROC EXPORT
 				.ELSEIF (al == MAZE_PROP_LAMP)
 					invoke glBindTexture, GL_TEXTURE_2D, TexLamp
 					invoke glCallList, MdlLamp
+				.ELSEIF (al == MAZE_PROP_ARCH)
+					.IF (MazeState == MAZE_STATE_TRENCH)
+						invoke glBindTexture, GL_TEXTURE_2D, TexPlanks
+						invoke glCallList, MdlPlanks
+					.ELSE
+					
+					.ENDIF
 				.ENDIF
 				call glPopMatrix
 				
 				invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
+				mov al, cell
+				and al, MAZE_CELL_PROPS
+				.IF (al == MAZE_PROP_WINDOWS)
+					.IF (MazeState == MAZE_STATE_TRENCH)
+						bpPush32 MazeCurWallMDL
+						bpMEM32 MazeCurWallMDL, MdlWall
+						invoke glBindTexture, GL_TEXTURE_2D, TexPlanks
+					.ELSE
+						bpPush32 MazeCurWallMDL
+						
+					.ENDIF
+				.ENDIF
 				
 				; Crevice
 				.IF (MazeCrevice)
@@ -613,6 +635,10 @@ Maze_DrawLayout PROC EXPORT
 					invoke glCallList, MazeCurWallMDL
 				.ENDIF
 				
+				and cell, MAZE_CELL_PROPS
+				.IF (cell == MAZE_PROP_WINDOWS)
+					bpPop32 MazeCurWallMDL
+				.ENDIF
 				call glPopMatrix
 			.ENDIF
 			inc Pos.Y
@@ -626,9 +652,7 @@ Maze_DrawLayout PROC EXPORT
 	ret
 Maze_DrawLayout ENDP
 
-Maze_Finish PROC EXPORT
-	LOCAL bounds:Vector4, posY:DWORD, typeVal:DWORD
-	
+Maze_Finish PROC EXPORT	
 	; Something uses it at start idfk what
 	push pbx
 	
@@ -643,10 +667,10 @@ Maze_Finish PROC EXPORT
 	mov MazeItems, 0
 	mov MazeLocked, MAZE_LOCK_NONE
 	mov MazeNote, 0
+	mov MazeShop, FALSE
 	mov MazeSlam, FALSE
 	mov MazeSlamRot, 0
 	mov MazeTeleport, FALSE
-	mov MazeTrench, FALSE
 	
 	; Reset entities
 	call Maze_ResetEntities
@@ -666,215 +690,6 @@ Maze_Finish PROC EXPORT
 	fstp MazeDoorPos.Z
 	bpMEM32 MazeDoorPos.Y, CamHeight
 	
-	; Props and clear MAZE_CELL_VISITED
-	xor pbx, pbx
-	.WHILE (pbx < MazeByteSize)
-		mov pcx, Maze
-		and BYTE PTR [pcx+pbx], 00000011b
-		
-		invoke nRand, 2
-		.IF !(al)
-			invoke intRandRange, 2, 16
-			shl eax, MAZE_PROP_SHIFT
-			push pax
-			invoke nRand, 2
-			pop pdx
-			mov pcx, Maze
-			or BYTE PTR [pcx+pbx], dl	; Prop val
-			.IF (al)	; Rotate
-				or BYTE PTR [pcx+pbx], MAZE_CELL_ROTATED
-			.ENDIF
-		.ENDIF
-		inc pbx
-	.ENDW
-	
-	.IF !(rv(nRand, 8))	; Room
-		mov ebx, MazeSize[0]
-		shr ebx, 1	; /2
-		mov bounds.X, rv(intRandRange, 1, ebx)
-		mov bounds.Z, rv(intRandRange, ebx, MazeSize[0])
-		mov ebx, MazeSize[4]
-		shr ebx, 1	; /2
-		mov bounds.Y, rv(intRandRange, 1, ebx)
-		mov bounds.W, rv(intRandRange, ebx, MazeSize[4])
-		
-		mov typeVal, rv(nRand, 4)	; Fill with doorways or not
-		
-		mov ebx, bounds.X
-		.WHILE (ebx <= bounds.Z)
-			mov edx, bounds.Y
-			.WHILE (edx <= bounds.W)
-				mov posY, edx
-				.IF (edx != bounds.W)
-					.IF (ebx == bounds.X) || (ebx == bounds.Z)
-						invoke Maze_GetCellI, ebx, posY
-						.IF (al & MAZE_CELL_PASSLEFT) && (typeVal)
-							invoke Maze_SetPropI, ebx, posY, \
-							MAZE_PROP_DOORWAY, TRUE
-						.ENDIF
-					.ELSE
-						invoke Maze_OrCellI, ebx, posY, MAZE_CELL_PASSLEFT
-					.ENDIF
-				.ENDIF
-				.IF (ebx != bounds.Z)
-					mov edx, posY
-					.IF (edx == bounds.Y) || (edx == bounds.W)
-						invoke Maze_GetCellI, ebx, posY
-						.IF (al & MAZE_CELL_PASSTOP) && (typeVal)
-							invoke Maze_SetPropI, ebx, posY, \
-							MAZE_PROP_DOORWAY, FALSE
-						.ENDIF
-					.ELSE
-						invoke Maze_OrCellI, ebx, posY, MAZE_CELL_PASSTOP
-					.ENDIF
-				.ENDIF
-				mov edx, posY
-				inc edx
-			.ENDW
-			inc ebx
-		.ENDW
-		print "Generated room from "
-		print str$(bounds.X), ',', 32
-		print str$(bounds.Y)
-		print " to "
-		print str$(bounds.Z), ',', 32
-		print str$(bounds.W), 13, 10
-	.ENDIF
-		
-	
-	.IF (MazeLayer == 1)
-		invoke Maze_SetPropI, 1, 0, MAZE_PROP_TABURETKA, 0
-	.ELSE
-		invoke nRand, 6		; Random start pos
-		.IF !(al)
-			mov MazeEntranceCell, rv(nRand, MazeSize[0])
-			print "Randomized start cell position", 13, 10
-		.ELSE
-			mov MazeEntranceCell, 0
-		.ENDIF
-		
-		; Environmental variety
-		.IF (MazeLayer <= 21)							; Plain zone
-			invoke nRand, 5	; Wall
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurWall, TexWall
-				CASE 1
-					bpMEM32 MazeCurWall, TexWhitewall
-				CASE 2
-					bpMEM32 MazeCurWall, TexWallpaper
-				CASE 3
-					bpMEM32 MazeCurWall, TexPlaster
-				CASE 4
-					bpMEM32 MazeCurWall, TexWallPainted
-			ENDSW
-			invoke nRand, 5	; Floor
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurFloor, TexFloor
-				CASE 1
-					bpMEM32 MazeCurFloor, TexMetalFloor
-				CASE 2
-					bpMEM32 MazeCurFloor, TexTilefloor
-				CASE 3
-					bpMEM32 MazeCurFloor, TexFloorParquet
-				CASE 4
-					bpMEM32 MazeCurFloor, TexFloorLinoleum
-			ENDSW
-			
-			invoke nRand, 2	; Wall model
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurWallMDL, MdlWall
-				CASE 1
-					bpMEM32 MazeCurWallMDL, MdlWallWainscot
-			ENDSW
-		.ELSEIF (MazeLayer > 21) && (MazeLayer <= 42)	; Moderate zone
-			invoke nRand, 5	; Wall
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurWall, TexWhitewall
-				CASE 1
-					bpMEM32 MazeCurWall, TexBricks
-				CASE 2
-					bpMEM32 MazeCurWall, TexConcrete
-				CASE 3
-					bpMEM32 MazeCurWall, TexPlaster
-				CASE 4
-					bpMEM32 MazeCurWall, TexWallPainted
-			ENDSW
-			invoke nRand, 5	; Floor
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurFloor, TexFloor
-				CASE 1
-					bpMEM32 MazeCurFloor, TexMetalFloor
-				CASE 2
-					bpMEM32 MazeCurFloor, TexTilefloor
-				CASE 3
-					bpMEM32 MazeCurFloor, TexDiamond
-				CASE 4
-					bpMEM32 MazeCurFloor, TexTileBig
-			ENDSW
-			invoke nRand, 5	; Wall model
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurWallMDL, MdlWall
-				CASE 1
-					bpMEM32 MazeCurWallMDL, MdlWallClerestory
-				CASE 2
-					bpMEM32 MazeCurWallMDL, MdlWallWainscot
-				CASE 3
-					bpMEM32 MazeCurWallMDL, MdlWallSlit
-				CASE 4
-					bpMEM32 MazeCurWallMDL, MdlWallSlant
-			ENDSW
-		.ELSEIF (MazeLayer > 42)						; Heavy zone
-			invoke nRand, 4	; Wall
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurWall, TexMetal
-				CASE 1
-					bpMEM32 MazeCurWall, TexBricks
-				CASE 2
-					bpMEM32 MazeCurWall, TexConcrete
-				CASE 2
-					bpMEM32 MazeCurWall, TexRustPanel
-			ENDSW
-			invoke nRand, 4	; Floor
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurFloor, TexDiamond
-				CASE 1
-					bpMEM32 MazeCurFloor, TexTileBig
-				CASE 2
-					bpMEM32 MazeCurFloor, TexWalkway
-				CASE 3
-					bpMEM32 MazeCurFloor, TexWalkwaySmall
-			ENDSW
-			invoke nRand, 4	; Wall model
-			SWITCH eax
-				CASE 0
-					bpMEM32 MazeCurWallMDL, MdlWallColumn
-				CASE 1
-					bpMEM32 MazeCurWallMDL, MdlWallArch
-				CASE 2
-					bpMEM32 MazeCurWallMDL, MdlWallTunnel
-				CASE 3
-					bpMEM32 MazeCurWallMDL, MdlWallSlant
-			ENDSW
-		.ENDIF
-		invoke nRand, 3
-		SWITCH eax
-			CASE 0
-				bpMEM32 MazeCurRoof, TexRoof
-			CASE 1
-				bpMEM32 MazeCurRoof, TexMetalRoof
-			CASE 2
-				bpMEM32 MazeCurRoof, TexConcreteRoof
-		ENDSW
-	.ENDIF
-	
 	; Trench
 	.IF (MazeLayer > 22)
 		.IF !(rv(nRand, 12))
@@ -882,7 +697,7 @@ Maze_Finish PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
-	.IF !(MazeTrench)
+	.IF (MazeState != MAZE_STATE_TRENCH)
 		call Maze_SpawnElements
 	.ENDIF
 	
@@ -1294,7 +1109,7 @@ Maze_OrCellI PROC EXPORT X:SDWORD, Y:SDWORD, Val:BYTE
 Maze_OrCellI ENDP
 
 Maze_ProcessState PROC EXPORT
-	LOCAL flVal:REAL4
+	LOCAL flVal:REAL4, v3Val:Vector3
 	
 	.IF (MazeState == MAZE_STATE_SAFE)	; Play siren
 		.IF !(MazeStateTimer)
@@ -1338,6 +1153,55 @@ Maze_ProcessState PROC EXPORT
 		
 		mov MazeSiren, rv(flLerp, MazeSiren, 0, delta2)
 		vinvoke Plr_Shake, MazeSiren
+	.ELSEIF (MazeState == MAZE_STATE_TRENCH)
+		mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeVasPos)
+		
+		; Vasylko effects
+		
+		; Sky color
+		fld flVal
+		fmul f(0.1)
+		fstp flVal
+		mov flVal, rv(flClamp, flVal, 0, f(1))
+		invoke Vector3Copy, ADDR v3Val, ADDR clBlack
+		invoke Vector3Lerp, ADDR v3Val, ADDR clSky, flVal
+		invoke glFogfv, GL_FOG_COLOR, ADDR v3Val
+		invoke glClearColor4fv, ADDR v3Val
+		
+		; Slow player down
+		vinvoke Vector32DLerp, OFFSET CamPos, OFFSET CamPosP, f(0.6)
+		
+		fld PlrSpeedScaled
+		fmul deltaTime
+		fmul f(0.1)
+		fsubr MazeTrenchTimer
+		fstp MazeTrenchTimer
+		
+		.IF (MazeTrenchTimer & FLT_NEG)	
+			mov MazeState, MAZE_STATE_GAME
+			
+			invoke glClearColor4fv, ADDR clBlack
+			invoke glFogfv, GL_FOG_COLOR, ADDR clBlack
+			invoke alSourceStop, SndAmbT
+			invoke alSourcePlay, SndAmb
+			
+			invoke alSourcef, SndWmblykB, AL_PITCH, f(1)
+			invoke alSourcef, SndWmblykB, AL_GAIN, f(1)
+			invoke alSourceStop, SndWmblykB
+			
+			mov UIFade, UI_FADE_IN
+			mov UIFadeCallback, 0
+			mov UIFadeVal, FLT_1
+			
+			bpMEM32 CamBaseFOV, f(75)
+			bpMEM32 CamRotSmooth, f(16)
+			bpMEM32 PlrStepPitch, f(1)
+			
+			call Maze_SpawnElements
+			vinvoke UI_ShowSubtitles, StrCCTrench, UISubDur
+			
+			invoke alSourcePlay, SndMistake
+		.ENDIF
 	.ENDIF
 		
 	.IF (MazeStateTimer)
@@ -1624,6 +1488,7 @@ Maze_SetPropI PROC EXPORT X:SDWORD, Y:SDWORD, Prop:BYTE, Rotated:BPBool
 Maze_SetPropI ENDP
 
 Maze_SpawnElements PROC EXPORT
+	LOCAL bounds:Vector4, posY:DWORD, typeVal:DWORD
 	; Crevice
 	.IF (rv(nRand, 10) > 6) && (MazeLayer > 4)
 		print "Spawned crevice at "
@@ -1638,6 +1503,215 @@ Maze_SpawnElements PROC EXPORT
 		fistp MazeCreviceCell[4]
 		sar MazeCreviceCell[4], 1
 		invoke fpuSetRounding, FPU_ROUND_ROUND
+	.ENDIF
+	
+	; Props and clear MAZE_CELL_VISITED
+	xor pbx, pbx
+	.WHILE (pbx < MazeByteSize)
+		mov pcx, Maze
+		and BYTE PTR [pcx+pbx], 00000011b
+		
+		invoke nRand, 2
+		.IF !(al)
+			invoke intRandRange, 2, 16
+			shl eax, MAZE_PROP_SHIFT
+			push pax
+			invoke nRand, 2
+			pop pdx
+			mov pcx, Maze
+			or BYTE PTR [pcx+pbx], dl	; Prop val
+			.IF (al)	; Rotate
+				or BYTE PTR [pcx+pbx], MAZE_CELL_ROTATED
+			.ENDIF
+		.ENDIF
+		inc pbx
+	.ENDW
+	
+	.IF !(rv(nRand, 8))	; Room
+		mov ebx, MazeSize[0]
+		shr ebx, 1	; /2
+		mov bounds.X, rv(intRandRange, 1, ebx)
+		mov bounds.Z, rv(intRandRange, ebx, MazeSize[0])
+		mov ebx, MazeSize[4]
+		shr ebx, 1	; /2
+		mov bounds.Y, rv(intRandRange, 1, ebx)
+		mov bounds.W, rv(intRandRange, ebx, MazeSize[4])
+		
+		mov typeVal, rv(nRand, 4)	; Fill with doorways or not
+		
+		mov ebx, bounds.X
+		.WHILE (ebx <= bounds.Z)
+			mov edx, bounds.Y
+			.WHILE (edx <= bounds.W)
+				mov posY, edx
+				.IF (edx != bounds.W)
+					.IF (ebx == bounds.X) || (ebx == bounds.Z)
+						invoke Maze_GetCellI, ebx, posY
+						.IF (al & MAZE_CELL_PASSLEFT) && (typeVal)
+							invoke Maze_SetPropI, ebx, posY, \
+							MAZE_PROP_DOORWAY, TRUE
+						.ENDIF
+					.ELSE
+						invoke Maze_OrCellI, ebx, posY, MAZE_CELL_PASSLEFT
+					.ENDIF
+				.ENDIF
+				.IF (ebx != bounds.Z)
+					mov edx, posY
+					.IF (edx == bounds.Y) || (edx == bounds.W)
+						invoke Maze_GetCellI, ebx, posY
+						.IF (al & MAZE_CELL_PASSTOP) && (typeVal)
+							invoke Maze_SetPropI, ebx, posY, \
+							MAZE_PROP_DOORWAY, FALSE
+						.ENDIF
+					.ELSE
+						invoke Maze_OrCellI, ebx, posY, MAZE_CELL_PASSTOP
+					.ENDIF
+				.ENDIF
+				mov edx, posY
+				inc edx
+			.ENDW
+			inc ebx
+		.ENDW
+		print "Generated room from "
+		print str$(bounds.X), ',', 32
+		print str$(bounds.Y)
+		print " to "
+		print str$(bounds.Z), ',', 32
+		print str$(bounds.W), 13, 10
+	.ENDIF
+		
+	; Start taburetka, random start pos and env var
+	.IF (MazeLayer == 1)
+		invoke Maze_SetPropI, 1, 0, MAZE_PROP_TABURETKA, 0
+	.ELSE
+		invoke nRand, 6		; Random start pos
+		.IF !(al)
+			mov MazeEntranceCell, rv(nRand, MazeSize[0])
+			print "Randomized start cell position", 13, 10
+		.ELSE
+			mov MazeEntranceCell, 0
+		.ENDIF
+		
+		; Environmental variety
+		.IF (MazeLayer <= 21)							; Plain zone
+			invoke nRand, 5	; Wall
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurWall, TexWall
+				CASE 1
+					bpMEM32 MazeCurWall, TexWhitewall
+				CASE 2
+					bpMEM32 MazeCurWall, TexWallpaper
+				CASE 3
+					bpMEM32 MazeCurWall, TexPlaster
+				CASE 4
+					bpMEM32 MazeCurWall, TexWallPainted
+			ENDSW
+			invoke nRand, 5	; Floor
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurFloor, TexFloor
+				CASE 1
+					bpMEM32 MazeCurFloor, TexMetalFloor
+				CASE 2
+					bpMEM32 MazeCurFloor, TexTilefloor
+				CASE 3
+					bpMEM32 MazeCurFloor, TexFloorParquet
+				CASE 4
+					bpMEM32 MazeCurFloor, TexFloorLinoleum
+			ENDSW
+			
+			invoke nRand, 2	; Wall model
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurWallMDL, MdlWall
+				CASE 1
+					bpMEM32 MazeCurWallMDL, MdlWallWainscot
+			ENDSW
+		.ELSEIF (MazeLayer > 21) && (MazeLayer <= 42)	; Moderate zone
+			invoke nRand, 5	; Wall
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurWall, TexWhitewall
+				CASE 1
+					bpMEM32 MazeCurWall, TexBricks
+				CASE 2
+					bpMEM32 MazeCurWall, TexConcrete
+				CASE 3
+					bpMEM32 MazeCurWall, TexPlaster
+				CASE 4
+					bpMEM32 MazeCurWall, TexWallPainted
+			ENDSW
+			invoke nRand, 5	; Floor
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurFloor, TexFloor
+				CASE 1
+					bpMEM32 MazeCurFloor, TexMetalFloor
+				CASE 2
+					bpMEM32 MazeCurFloor, TexTilefloor
+				CASE 3
+					bpMEM32 MazeCurFloor, TexDiamond
+				CASE 4
+					bpMEM32 MazeCurFloor, TexTileBig
+			ENDSW
+			invoke nRand, 5	; Wall model
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurWallMDL, MdlWall
+				CASE 1
+					bpMEM32 MazeCurWallMDL, MdlWallClerestory
+				CASE 2
+					bpMEM32 MazeCurWallMDL, MdlWallWainscot
+				CASE 3
+					bpMEM32 MazeCurWallMDL, MdlWallSlit
+				CASE 4
+					bpMEM32 MazeCurWallMDL, MdlWallSlant
+			ENDSW
+		.ELSEIF (MazeLayer > 42)						; Heavy zone
+			invoke nRand, 4	; Wall
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurWall, TexMetal
+				CASE 1
+					bpMEM32 MazeCurWall, TexBricks
+				CASE 2
+					bpMEM32 MazeCurWall, TexConcrete
+				CASE 2
+					bpMEM32 MazeCurWall, TexRustPanel
+			ENDSW
+			invoke nRand, 4	; Floor
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurFloor, TexDiamond
+				CASE 1
+					bpMEM32 MazeCurFloor, TexTileBig
+				CASE 2
+					bpMEM32 MazeCurFloor, TexWalkway
+				CASE 3
+					bpMEM32 MazeCurFloor, TexWalkwaySmall
+			ENDSW
+			invoke nRand, 4	; Wall model
+			SWITCH eax
+				CASE 0
+					bpMEM32 MazeCurWallMDL, MdlWallColumn
+				CASE 1
+					bpMEM32 MazeCurWallMDL, MdlWallArch
+				CASE 2
+					bpMEM32 MazeCurWallMDL, MdlWallTunnel
+				CASE 3
+					bpMEM32 MazeCurWallMDL, MdlWallSlant
+			ENDSW
+		.ENDIF
+		invoke nRand, 3
+		SWITCH eax
+			CASE 0
+				bpMEM32 MazeCurRoof, TexRoof
+			CASE 1
+				bpMEM32 MazeCurRoof, TexMetalRoof
+			CASE 2
+				bpMEM32 MazeCurRoof, TexConcreteRoof
+		ENDSW
 	.ENDIF
 	
 	.IF (MazeState == MAZE_STATE_GAME)
@@ -1666,6 +1740,16 @@ Maze_SpawnElements PROC EXPORT
 			.ENDIF
 		.ENDIF
 		
+		; Huenbergondel
+		.IF (MazeLayer > 21) && !(Kubale) ;&& (!Virdya) && (!HDL)
+			.IF (MazeType == MAZE_TYPE_SQUIGGLY)
+				.IF (rv(nRand, 2))
+					;call HDL_Spawn
+				.ENDIF
+			.ELSEIF (Wmblyk != WMBLYK_WALK) && (Wmblyk != WMBLYK_STILL)
+				call HBD_Spawn
+			.ENDIF
+		.ENDIF
 		
 		; Key
 		.IF (rv(nRand, MazeLayer) > 7)
@@ -1677,12 +1761,14 @@ Maze_SpawnElements PROC EXPORT
 		
 		; Kubale
 		.IF (rv(nRand, MazeLayer) > 10) && (MazeTram == MAZE_TRAM_NONE)
-			.IF !(rv(nRand, 10)) || !(KubaleAppeared)
-				push KUBALE_EVENT
-			.ELSE
-				push KUBALE_ACTIVE
+			.IF (rv(nRand, 2))
+				.IF !(rv(nRand, 10)) || !(KubaleAppeared)
+					push KUBALE_EVENT
+				.ELSE
+					push KUBALE_ACTIVE
+				.ENDIF
+				call Kubale_Spawn
 			.ENDIF
-			call Kubale_Spawn
 		.ENDIF
 		
 		; Shop
@@ -1767,8 +1853,9 @@ Maze_SpawnElements PROC EXPORT
 Maze_SpawnElements ENDP
 
 Maze_SpawnTrench PROC EXPORT
+	LOCAL pos:Vector2
+	
 	print "Spawned trench", 13, 10
-	mov MazeTrench, TRUE
 	fild MazeLayer
 	fsqrt
 	fmul f(0.02)
@@ -1777,8 +1864,6 @@ Maze_SpawnTrench PROC EXPORT
 	bpMEM32 MazeCurWall, TexDirt
 	bpMEM32 MazeCurFloor, TexDirt
 	bpMEM32 MazeCurWallMDL, MdlWallTrench
-	
-	bpMEM32 CamBaseFOV, f(60)
 	
 	invoke alSourcePlay, SndAmbT
 	invoke alSourcef, SndWmblykB, AL_PITCH, f(0.2)
@@ -1791,8 +1876,50 @@ Maze_SpawnTrench PROC EXPORT
 	fild MazeSize[12]
 	fmul f(2)
 	fsub f(1)
-	fstp MazeVasPos.Y
+	fstp MazeVasPos.Z
 	mov MazeVasPos.X, FLT_1
+	
+	
+	bpMEM32 CamBaseFOV, f(60)
+	bpMEM32 CamRotSmooth, f(4)
+	bpMEM32 PlrStepPitch, f(0.25)
+	
+	; Clean first column and spawn planks
+	xor ecx, ecx
+	.WHILE (ecx < MazeSize[0])
+		mov pos.X, ecx
+		xor edx, edx
+		.WHILE (edx < MazeSize[4])
+			mov pos.Y, edx
+			.IF (pos.X == 0) && (pos.Y > 0)
+				invoke Maze_OrCellI, pos.X, pos.Y, MAZE_CELL_PASSTOP
+			.ENDIF
+			
+			; Spawn planks
+			.IF (rv(nRand, 2))
+				invoke Maze_GetCellI, pos.X, pos.Y
+				.IF !(al & MAZE_CELL_PASSTOP)
+					inc pos.Y
+					invoke Maze_GetCellI, pos.X, pos.Y
+					dec pos.Y
+					.IF !(al & MAZE_CELL_PASSTOP)
+						invoke Maze_SetPropI, pos.X, pos.Y, \
+						MAZE_PROP_ARCH, FALSE
+					.ENDIF
+				.ENDIF
+			.ENDIF
+			
+			; Spawn planks
+			.IF (rv(nRand, 2))
+				invoke Maze_SetPropI, pos.X, pos.Y, MAZE_PROP_WINDOWS, FALSE
+			.ENDIF
+			
+			mov edx, pos.Y
+			inc edx
+		.ENDW
+		mov ecx, pos.X
+		inc ecx
+	.ENDW
 	ret
 Maze_SpawnTrench ENDP
 

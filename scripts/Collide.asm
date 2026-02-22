@@ -20,6 +20,7 @@ Distance:REAL4
 		mov pax, Pos
 		mov pcx, ColliderPos
 	.ELSE
+		xor pax, pax
 		ret
 	.ENDIF
 		

@@ -228,7 +228,7 @@ Kubale_Process PROC EXPORT
 		pop pbx
 		
 		; Teleport if far enough away
-		fcmp dist, f(64)
+		fcmp dist, f(96)
 		.IF (!Carry?)
 			print "Teleporting Kubale", 13, 10
 			mov al, 64	; Repeated check for visibility
@@ -240,6 +240,13 @@ Kubale_Process PROC EXPORT
 				fcmp flVal, KubaleDot
 				.IF (Carry?)	; Invisible
 					.BREAK
+				.ELSE
+					mov flVal, \
+					rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
+					fcmp flVal, f(48)
+					.IF (!Carry?)
+						.BREAK
+					.ENDIF
 				.ENDIF
 				pop pax
 				dec al
