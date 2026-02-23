@@ -840,6 +840,15 @@ Stiffness:REAL4, Damping:REAL4, T:REAL4
 	ret
 DampedSpringAngle ENDP
 
+ChrIsAlpha PROC EXPORT Chr:BYTE
+	.IF ((Chr >= 65) && (Chr <= 90)) || ((Chr >= 97) && (Chr <= 122))
+		mov pax, TRUE
+		ret
+	.ENDIF
+	xor pax, pax
+	ret
+ChrIsAlpha ENDP
+
 ;   Non-terminating manual int to string conversion macro (for settings UI)
 IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD, Terminate:BPBool
 	LOCAL Val1:DWORD, Ngtv:BYTE

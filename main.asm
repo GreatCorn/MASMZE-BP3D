@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-;BP_COMPATIBILITY_W9X		EQU <1>
+BP_COMPATIBILITY_W9X		EQU <1>
 BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
@@ -25,11 +25,17 @@ IFDEF BP_WININC
 	includelib advapi32.lib
 	include include\stdlib.inc
 	includelib msvcrt.lib
+	
+	include include\winsock2.inc
+	includelib ws2_32.lib
 ELSEIFNDEF BP_CUSTOM_INCLUDES
 	include include\advapi32.inc
 	includelib advapi32.lib
 	include include\msvcrt.inc
 	includelib msvcrt.lib
+	
+	include include\ws2_32.inc
+	includelib ws2_32.lib
 	
 	include include\masm32.inc
 	includelib masm32.lib
@@ -349,6 +355,10 @@ InputUIConfirmT			BPPtr FALSE
 
 ClearBuffers	BPBool TRUE
 FogDensity		REAL4 0.5
+
+NetPort			SWORD 8080
+NetSock			SOCKET 0
+NetServerAddr	DB "localhost", 118 dup (0)
 
 .DATA?
 delta2		REAL4 ?
@@ -743,6 +753,107 @@ InitGraphics PROC EXPORT
 	ret
 InitGraphics ENDP
 
+InitNetwork PROC EXPORT
+	LOCAL wsaData:WSADATA
+	
+	.IF (rv(WSAStartup, 202h, ADDR wsaData))
+		print "WSAStartup failed.", 13, 10
+		;call WSACleanup
+	.ENDIF
+	
+	ret
+InitNetwork ENDP
+
+NetConnect PROC EXPORT
+	LOCAL ipAddr:DWORD, servAddr:sockaddr_in
+	print "Connecting to "
+	print OFFSET NetServerAddr, 13, 10
+	
+	push pbx
+	ASSUME pbx:PTR hostent
+	
+	; Assume NetServerAddr was already populated
+	.IF (rv(ChrIsAlpha, NetServerAddr[0]))
+		mov pbx, rv(gethostbyname, OFFSET NetServerAddr)
+	.ELSE
+		mov ipAddr, rv(inet_addr, OFFSET NetServerAddr)
+		mov pbx, rv(gethostbyaddr, ADDR ipAddr, 4, AF_INET)
+	.ENDIF
+	
+	.IF !(pbx)
+		print "Resolving address failed.", 13, 10
+		ret
+	.ENDIF
+	
+	invoke RtlZeroMemory, ADDR servAddr, SIZEOF sockaddr_in
+	IFDEF BP_WININC
+		mov ax, [pbx].h_addrtype
+	ELSE
+		mov ax, [pbx].h_addr	; dumbfuk
+	ENDIF
+	mov servAddr.sin_family, ax
+	invoke htons, NetPort
+	mov servAddr.sin_port, ax
+	
+	mov NetSock, rv(socket, AF_INET, SOCK_DGRAM, 0)
+	.IF (NetSock == INVALID_SOCKET)
+		print "Opening socket failed.", 13, 10
+		ret
+	.ENDIF
+	
+	ASSUME pbx:nothing
+	pop pbx
+	ret
+NetConnect ENDP
+
+NetHost PROC EXPORT 
+	LOCAL localAddr:sockaddr_in
+	print "Hosting server...", 13, 10
+	
+	mov localAddr.sin_family, AF_INET
+	IFDEF BP_WININC
+		mov localAddr.sin_addr.s_addr, INADDR_ANY
+	ELSE
+		mov localAddr.sin_addr.S_un.S_addr, INADDR_ANY	; dumbfuk
+	ENDIF
+	invoke htons, NetPort
+	mov localAddr.sin_port, ax
+	
+	mov NetSock, rv(socket, AF_INET, SOCK_DGRAM, 0)
+	.IF (NetSock == INVALID_SOCKET)
+		print "Opening socket failed.", 13, 10
+		ret
+	.ENDIF
+	
+	invoke bind, NetSock, ADDR localAddr, SIZEOF sockaddr_in
+	.IF (pax == SOCKET_ERROR)
+		print "Binding socket failed.", 13, 10
+		ret
+	.ENDIF
+	
+	vinvoke CreateThread, NULL, 0, OFFSET NetProcessLoop, ADDR localAddr, 0,NULL 
+	ret
+NetHost ENDP
+
+NetProcessLoop PROC EXPORT lpSock:LPVOID
+	LOCAL buf[64]:BYTE, fSock:SOCKET, fLen:DWORD
+	
+	.WHILE (NetSock)
+		invoke recvfrom, NetSock, ADDR buf, SIZEOF buf, 0, ADDR fSock, ADDR fLen
+		.IF (eax == SOCKET_ERROR)
+			print "Error receiving data on socket.", 13, 10
+			.CONTINUE
+		.ELSEIF (eax == 0)	; Closed connection
+			invoke closesocket, NetSock
+			mov NetSock, 0
+			.BREAK
+		.ENDIF
+		
+		invoke Sleep, 32
+	.ENDW
+	ret
+NetProcessLoop ENDP
+
 ProcessScene PROC EXPORT
 	call Plr_Process
 	call Maze_Process
@@ -765,8 +876,10 @@ ProcessScene ENDP
 
 ;   FMain bindings
 OnCreate PROC EXPORT
+	
 	call InitAudio
 	call InitGraphics
+	call InitNetwork
 	print "Finished base initialization.", 13, 10
 	
 	call FX_Create
@@ -904,6 +1017,12 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'M'
 					call Maze_GenerateLayoutTex
 					xor PlrItems, MAZE_ITEM_MAP
+				CASE 'N'
+					.IF (Keys[VK_SHIFT])
+						call NetHost
+					.ELSE
+						call NetConnect
+					.ENDIF
 				CASE 'B'
 					.IF (Keys[VK_SHIFT])
 						invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
@@ -1346,6 +1465,13 @@ start:
 	
 	invoke bpCreateForm, OFFSET FMain
 	
+	print "Exiting...", 13, 10
+	
+	.IF (NetSock)
+		invoke closesocket, NetSock
+		mov NetSock, 0
+	.ENDIF
+	call WSACleanup
 	; Form processing exited, we can safely terminate process
 	invoke TerminateProcess, rv(GetCurrentProcess), 0
 end start
