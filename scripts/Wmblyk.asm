@@ -63,7 +63,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		
 		invoke alSourcePlay, SndWmblykB
 		
-		print "walking, at ", 13, 10
+		print "walking, at "
 		Vector32DPrint WmblykPos
 	.ENDIF
 	mbm Wmblyk, State

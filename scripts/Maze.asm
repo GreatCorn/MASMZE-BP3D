@@ -2379,7 +2379,7 @@ Maze_Process PROC EXPORT
 			.IF (PlrState == PLAYER_STATE_GAME)||(PlrState == PLAYER_STATE_ETC)
 				push pbx
 				lea pbx, MazeTeleportPos1
-				.WHILE (pbx <= OFFSET MazeTeleportPos2)
+				.WHILE (pbx <= OFFSET MazeTeleportPos2) && (MazeTeleport)
 					mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, pbx)
 					fcmp flVal, f(0.3)
 					.IF (Carry?)
@@ -2421,9 +2421,13 @@ Maze_Process PROC EXPORT
 								.IF (pbx == OFFSET MazeTeleportPos1)
 									vinvoke Plr_Teleport, MazeTeleportPos2.X,\
 									MazeTeleportPos2.Z
+									print "Teleported to teleport 2: "
+									Vector32DPrint MazeTeleportPos2
 								.ELSE
 									vinvoke Plr_Teleport, MazeTeleportPos1.X,\
 									MazeTeleportPos1.Z
+									print "Teleported to teleport 1: "
+									Vector32DPrint MazeTeleportPos1
 								.ENDIF
 								
 								invoke alSourcePlay, SndMistake

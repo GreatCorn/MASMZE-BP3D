@@ -747,6 +747,7 @@ Plr_Step ENDP
 Plr_Teleport PROC EXPORT X:REAL4, Y:REAL4
 	invoke Vector32DSet, ADDR CamPos, X, Y
 	invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
+	invoke Vector32DCopy, ADDR CamPosP, ADDR CamPos
 	ret
 Plr_Teleport ENDP
 
@@ -808,7 +809,7 @@ Plr_Process PROC EXPORT
 	
 	.IF (Maze)
 		IFDEF MODE_DEBUG
-		.IF !(Keys[VK_C])
+		.IF !(Keys['C'])
 		ENDIF
 			invoke Maze_CollideLayout, ADDR CamPos, f(0.7), TRUE
 		IFDEF MODE_DEBUG

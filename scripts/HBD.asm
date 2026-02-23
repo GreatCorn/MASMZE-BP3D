@@ -150,7 +150,7 @@ HBD_Process PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
-	invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(0.85), 0
+	invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(0.7), 0
 	mov movePool, al
 	
 	.IF (HBD == HBD_MOVE)
