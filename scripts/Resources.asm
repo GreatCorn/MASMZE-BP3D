@@ -20,6 +20,7 @@ AnimKoluplykShop	BPAnimTrack <>
 AnimKubaleMove		BPAnimTrack <>	
 AnimMotryaIdle		BPAnimTrack <>	
 AnimMotryaSave		BPAnimTrack <>
+AnimVasFloat		BPAnimTrack <>
 AnimVebraGo			BPAnimTrack <>
 AnimVebraSit		BPAnimTrack <>
 AnimWmblykCrawl		BPAnimTrack <>
@@ -89,9 +90,6 @@ MdlTramG			DWORD ?
 MdlUpFloor			DWORD ?
 MdlUpRoof			DWORD ?
 MdlUpWalls			DWORD ?
-MdlVasT				DWORD ?, ?, ?
-MdlVebraExit		DWORD ?, ?, ?, ?, ?, ?
-MdlVebraLook		DWORD ?, ?
 MdlVirdyaBack		DWORD ?, ?, ?, ?, ?, ?
 MdlVirdyaBody		DWORD ?
 MdlVirdyaH			DWORD ?, ?
@@ -122,6 +120,7 @@ MeshHBD				BPMesh?
 MeshKoluplyk		BPMesh?
 MeshKubale			BPMesh?
 MeshMotrya			BPMesh?
+MeshVas				BPMesh?
 MeshVebra			BPMesh?
 MeshWmblyk			BPMesh?
 
@@ -318,6 +317,9 @@ LoadResources PROC EXPORT
 		mov AnimMotryaIdle.Looping, TRUE
 		LoadBPA OFFSET AnimMotryaSave,		"assets\anim\motryaSave.bpa"
 		
+		LoadBPA OFFSET AnimVasFloat,	"assets\anim\vasFloat.bpa"
+		mov AnimVasFloat.Looping, TRUE
+		
 		LoadBPA OFFSET AnimVebraGo,		"assets\anim\vebraGo.bpa"
 		LoadBPA OFFSET AnimVebraSit,	"assets\anim\vebraSit.bpa"
 		
@@ -404,17 +406,6 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlUpFloor,			"assets\models\upFloor.bpl"
 		LoadBPL OFFSET MdlUpRoof,			"assets\models\upRoof.bpl"
 		LoadBPL OFFSET MdlUpWalls,			"assets\models\upWalls.bpl"
-		LoadBPL OFFSET MdlVasT[0],			"assets\models\vasT1.bpl"
-		LoadBPL OFFSET MdlVasT[4],			"assets\models\vasT2.bpl"
-		LoadBPL OFFSET MdlVasT[8],			"assets\models\vasT3.bpl"
-		LoadBPL OFFSET MdlVebraExit[0],		"assets\models\vebraExit1.bpl"
-		LoadBPL OFFSET MdlVebraExit[4],		"assets\models\vebraExit2.bpl"
-		LoadBPL OFFSET MdlVebraExit[8],		"assets\models\vebraExit3.bpl"
-		LoadBPL OFFSET MdlVebraExit[12],	"assets\models\vebraExit4.bpl"
-		LoadBPL OFFSET MdlVebraExit[16],	"assets\models\vebraExit5.bpl"
-		LoadBPL OFFSET MdlVebraExit[20],	"assets\models\vebraExit6.bpl"
-		LoadBPL OFFSET MdlVebraLook[0],		"assets\models\vebraLook1.bpl"
-		LoadBPL OFFSET MdlVebraLook[4],		"assets\models\vebraLook2.bpl"
 		LoadBPL OFFSET MdlVirdyaBack[0],	"assets\models\virdyaBack1.bpl"
 		LoadBPL OFFSET MdlVirdyaBack[4],	"assets\models\virdyaBack2.bpl"
 		LoadBPL OFFSET MdlVirdyaBack[8],	"assets\models\virdyaBack3.bpl"
@@ -470,6 +461,7 @@ LoadResources PROC EXPORT
 		LoadBPM OFFSET MeshKoluplyk,		"assets\models\koluplyk.bpm"
 		LoadBPM OFFSET MeshKubale,			"assets\models\kubale.bpm"
 		LoadBPM OFFSET MeshMotrya,			"assets\models\motrya.bpm"
+		LoadBPM OFFSET MeshVas,				"assets\models\vas.bpm"
 		LoadBPM OFFSET MeshVebra,			"assets\models\vebra.bpm"
 		LoadBPM OFFSET MeshWmblyk,			"assets\models\wmblyk.bpm"
 

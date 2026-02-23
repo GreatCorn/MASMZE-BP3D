@@ -347,7 +347,8 @@ InputUIRight			BPPtr FALSE
 InputUIConfirm			BPPtr FALSE
 InputUIConfirmT			BPPtr FALSE
 
-FogDensity	REAL4 0.5
+ClearBuffers	BPBool TRUE
+FogDensity		REAL4 0.5
 
 .DATA?
 delta2		REAL4 ?
@@ -1153,7 +1154,9 @@ OnRender PROC EXPORT
 	.ENDIF
 				
 	invoke glViewport, 0, 0, FXRenderSize.X, FXRenderSize.Y
-	invoke glClear, GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT
+	.IF (ClearBuffers)
+		invoke glClear, GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT
+	.ENDIF
 	invoke glStencilOp, GL_KEEP, GL_KEEP, GL_REPLACE
 	invoke glColor4fv, OFFSET clWhite
 	invoke glAlphaFunc, GL_GREATER, f(0.5)

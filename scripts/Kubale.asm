@@ -143,6 +143,9 @@ Kubale_Process PROC EXPORT
 				fadd KubalePos.X
 				fstp KubalePos.X
 				
+				.IF !(rv(nRand, 4))
+					xor KubaleAnimPlr.Speed, FLT_NEG
+				.ENDIF
 				invoke bpProcessAnimPlayer, ADDR KubaleAnimPlr, deltaTime
 			.ELSE
 				and KubaleAction, not KUBALE_ACT_MOVE

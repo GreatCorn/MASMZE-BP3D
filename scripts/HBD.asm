@@ -8,25 +8,30 @@ HBDAnimPlr	BPAnimPlayer <>
 HBDCell		Vector2 <>
 HBDPos		Vector3 <>
 HBDPosT		Vector2 <>	; Target position (in target cell)
-HBDRot		REAL4 0.0, 0.0	; Functional rotation, displayed rotation
+HBDRot		REAL4 0.0, 0.0	; Displayed rotation, functional rotation
 HBDTimer	REAL4 0.0
 
 .CODE
-HBD_Spawn PROC EXPORT
-	print "Spawned Huenbergondel at "
-	mov HBD, HBD_SLEEP
-	mov HBDAnimPlr.FrameType, BPA_FRAME_VERTEX
-	mov HBDAnimPlr.Mesh, OFFSET MeshHBD
-	invoke Maze_GetRandomPos, ADDR HBDPos, TRUE
-	Vector32DPrint HBDPos
-	invoke Vector2Set, ADDR HBDPosT, HBDPos.X, HBDPos.Z
-	invoke Vector2Copy, ADDR HBDCell, ADDR HBDPosT
-	invoke fpuSetRounding, FPU_ROUND_TRUNC
-	invoke Vector2RoundInt, ADDR HBDCell
-	invoke fpuSetRounding, FPU_ROUND_ROUND
-	sar HBDCell.X, 1
-	sar HBDCell.Y, 1
-	mov HBDTimer, rv(flRandRange, f(5), f(8))
+HBD_Spawn PROC EXPORT State:BPEnum
+	mov al, State
+	mov HBD, al
+	.IF (State == HBD_NONE)
+		invoke alSourceStop, SndHBD
+	.ELSE
+		print "Spawned Huenbergondel at "
+		mov HBDAnimPlr.FrameType, BPA_FRAME_VERTEX
+		mov HBDAnimPlr.Mesh, OFFSET MeshHBD
+		invoke Maze_GetRandomPos, ADDR HBDPos, TRUE
+		Vector32DPrint HBDPos
+		invoke Vector2Set, ADDR HBDPosT, HBDPos.X, HBDPos.Z
+		invoke Vector2Copy, ADDR HBDCell, ADDR HBDPosT
+		invoke fpuSetRounding, FPU_ROUND_TRUNC
+		invoke Vector2RoundInt, ADDR HBDCell
+		invoke fpuSetRounding, FPU_ROUND_ROUND
+		sar HBDCell.X, 1
+		sar HBDCell.Y, 1
+		mov HBDTimer, rv(flRandRange, f(5), f(8))
+	.ENDIF
 	ret
 HBD_Spawn ENDP
 
@@ -35,7 +40,7 @@ HBD_Draw PROC EXPORT
 	invoke glBindTexture, GL_TEXTURE_2D, TexHBD
 	call glPushMatrix
 	invoke glTranslate3fv, ADDR HBDPos
-	invoke glRotatefr, HBDRot[4], 0, f(1), 0
+	invoke glRotatefr, HBDRot[0], 0, f(1), 0
 	invoke bpDrawMesh, ADDR MeshHBD
 	invoke glScalef, f(-1), f(1), f(1)
 	invoke glCullFace, GL_FRONT
@@ -46,7 +51,7 @@ HBD_Draw PROC EXPORT
 HBD_Draw ENDP
 
 HBD_Process PROC EXPORT
-	LOCAL MovePool:BYTE
+	LOCAL movePool:BYTE, v3Val:Vector3, hbdFwd:Vector3
 	
 	fld HBDTimer
 	fsub deltaTime
@@ -58,36 +63,36 @@ HBD_Process PROC EXPORT
 			bpMEM32 HBDTimer, f(2)
 			
 			; Choose direction to go
-			mov MovePool, 0
+			mov movePool, 0
 			.IF (HBDCell.Y > 0)		; Up
-				invoke Maze_GetCellI, HBDCell.X, HBDCell.Y
-				.IF (al & MAZE_CELL_PASSTOP)
-					or MovePool, FREE_UP
+				.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
+					or movePool, MAZE_FREE_UP
 				.ENDIF
 			.ENDIF
 			.IF (HBDCell.X > 0)		; Left
-				invoke Maze_GetCellI, HBDCell.X, HBDCell.Y
-				.IF (al & MAZE_CELL_PASSLEFT)
-					or MovePool, FREE_LEFT
+				.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
+					or movePool, MAZE_FREE_LEFT
 				.ENDIF
 			.ENDIF
 			mov eax, HBDCell.Y
 			.IF (eax < MazeSize[12]); Down
 				inc HBDCell.Y
-				invoke Maze_GetCellI, HBDCell.X, HBDCell.Y
-				dec HBDCell.Y
-				.IF (al & MAZE_CELL_PASSTOP)
-					or MovePool, FREE_DOWN
+				.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
+					or movePool, MAZE_FREE_DOWN
 				.ENDIF
+				dec HBDCell.Y
 			.ENDIF
 			mov eax, HBDCell.X
 			.IF (eax < MazeSize[8])	; Right
 				inc HBDCell.X
-				invoke Maze_GetCellI, HBDCell.X, HBDCell.Y
-				dec HBDCell.X
-				.IF (al & MAZE_CELL_PASSLEFT)
-					or MovePool, FREE_RIGHT
+				.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
+					or movePool, MAZE_FREE_RIGHT
 				.ENDIF
+				dec HBDCell.X
+			.ENDIF
+			.IF !(movePool)
+				print "Huenbergondel stuck", 13, 10
+				ret
 			.ENDIF
 			
 			xor al, al
@@ -96,18 +101,29 @@ HBD_Process PROC EXPORT
 				mov cl, al
 				mov al, 1
 				shl al, cl
-			.UNTIL (MovePool & al)
+				mov ecx, HBDRot[4]
+				; Give it up baby
+				.IF ((ecx == 0) && (al == MAZE_FREE_UP)) \
+				|| ((ecx == PIHalf) && (al == MAZE_FREE_LEFT)) \
+				|| ((ecx == PI) && (al == MAZE_FREE_DOWN)) \
+				|| ((ecx == PIHalfN) && (al == MAZE_FREE_RIGHT))
+					; Check if HBD is going backward
+					.IF (movePool != al)	; Not our only option
+						xor al, al	; Try again
+					.ENDIF
+				.ENDIF
+			.UNTIL (movePool & al)
 			
-			.IF (al == FREE_UP)
+			.IF (al == MAZE_FREE_UP)
 				bpMEM32 HBDRot[4], PI
 				dec HBDCell.Y
-			.ELSEIF (al == FREE_LEFT)
+			.ELSEIF (al == MAZE_FREE_LEFT)
 				bpMEM32 HBDRot[4], PIHalfN
 				dec HBDCell.X
-			.ELSEIF (al == FREE_DOWN)
+			.ELSEIF (al == MAZE_FREE_DOWN)
 				mov HBDRot[4], 0
 				inc HBDCell.Y
-			.ELSEIF (al == FREE_RIGHT)
+			.ELSEIF (al == MAZE_FREE_RIGHT)
 				bpMEM32 HBDRot[4], PIHalf
 				inc HBDCell.X		
 			.ENDIF
@@ -116,8 +132,6 @@ HBD_Process PROC EXPORT
 			invoke Vector2F, ADDR HBDPosT
 			invoke Vector2MulF, ADDR HBDPosT, f(2)
 			invoke Vector2Add, ADDR HBDPosT, ADDR Vector2One
-			
-			Vector2Print HBDPosT
 			
 			invoke SndSetPos, SndHBDO, ADDR HBDPos
 			invoke alSourcePlay, SndHBDO
@@ -136,8 +150,11 @@ HBD_Process PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
+	invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(0.85), 0
+	mov movePool, al
+	
 	.IF (HBD == HBD_MOVE)
-		mov HBDRot[0], rv(flLerpAngle, HBDRot[0], HBDRot[4], delta2)
+		mov HBDRot[0], rv(flLerpAngle, HBDRot[0], HBDRot[4], delta10)
 		fcmp HBDTimer, f(1)
 		.IF (Carry?)
 			mov HBDPos.X, rv(flMove, HBDPos.X, HBDPosT.X, delta2)
@@ -146,14 +163,27 @@ HBD_Process PROC EXPORT
 			.IF (rv(SndPlaying, SndHBD) != AL_PLAYING)
 				invoke alSourcePlay, SndHBD
 			.ENDIF
-		.ENDIF
-	.ENDIF
 	
-	invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(1.2), 0
-	.IF (al) && (HBD == HBD_MOVE) && (PlrState == PLAYER_STATE_GAME)
-		
-		invoke alSourcePlay, SndImpact
-		mov PlrState, PLAYER_STATE_DYING
+			.IF (movePool) && (PlrState == PLAYER_STATE_GAME)
+				; Calculate dot product to check if plr is in front
+				fld HBDRot[4]
+				fsincos
+				fstp hbdFwd.Z
+				fstp hbdFwd.X
+				
+				invoke Vector32DCopy, ADDR v3Val, ADDR CamPos
+				invoke Vector32DSub, ADDR v3Val, ADDR HBDPos
+				invoke Vector32DNormalize, ADDR v3Val
+				invoke Vector32DDot, ADDR v3Val, ADDR hbdFwd
+				
+				fcmp eax, f(0.5)
+				.IF (!Carry?)
+					bpMPM UIDeadTipStr, StrTipHBD
+					invoke alSourcePlay, SndImpact
+					mov PlrState, PLAYER_STATE_DYING
+				.ENDIF
+			.ENDIF
+		.ENDIF
 	.ENDIF
 	
 	invoke bpProcessAnimPlayer, ADDR HBDAnimPlr, deltaTime

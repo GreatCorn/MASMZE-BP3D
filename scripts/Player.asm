@@ -63,6 +63,8 @@ PlrItems		BPEnum 0
 PlrCompassRot	REAL4 0.0
 PlrCompassVel	REAL4 0.0
 
+PlrMouseCool	DWORD 10	; Mouse cooldown frames
+
 PlrState			DWORD PLAYER_STATE_ENTER
 PlrStateCallback	BPPtr 0
 PlrStateTimer		REAL4 0.0
@@ -100,16 +102,20 @@ Plr_Control PROC EXPORT
 	
 	; Look
 	.IF (FMain.MouseMode == BP_MOUSE_MODE_LOCKED)
-		fld InputLook.Y
-		fadd CamRot.X
-		fstp CamRot.X
-		mov CamRot.X, rv(flClamp, CamRot.X, PIHalfN, PIHalf)
-		
-		fld InputLook.X
-		fsubr CamRot.Y
-		fstp CamRot.Y
-		mov CamRot.Y, rv(flAngle, CamRot.Y)
-		mov CamRotL.Y, rv(flAngle, CamRotL.Y)
+		.IF (PlrMouseCool)
+			dec PlrMouseCool
+		.ELSE
+			fld InputLook.Y
+			fadd CamRot.X
+			fstp CamRot.X
+			mov CamRot.X, rv(flClamp, CamRot.X, PIHalfN, PIHalf)
+			
+			fld InputLook.X
+			fsubr CamRot.Y
+			fstp CamRot.Y
+			mov CamRot.Y, rv(flAngle, CamRot.Y)
+			mov CamRotL.Y, rv(flAngle, CamRotL.Y)
+		.ENDIF
 	.ENDIF
 	
 	; Clamp movement magnitude
@@ -397,25 +403,12 @@ Plr_DrawIntro ENDP
 
 ;   Checks if a point is in the (2D) frustum of the player camera
 Plr_FrustumDot PROC EXPORT Position:BPPtr
-	LOCAL Dot:Vector2
+	LOCAL Dot:Vector3
 	
-	mov pax, Position
-	fld REAL4 PTR [pax]
-	fsub CamPosL.X
-	fstp Dot.X
-	fld REAL4 PTR [pax+8]
-	fsub CamPosL.Z
-	fstp Dot.Y
-	
-	invoke Vector2Normalize, ADDR Dot
-	fld Dot.X
-	fmul PlrForward.X
-	fld Dot.Y
-	fmul PlrForward.Z
-	fadd
-	sub psp, SIZEOF BPPtr
-	fstp REAL4 PTR [psp]
-	pop pax
+	invoke Vector32DCopy, ADDR Dot, Position
+	invoke Vector32DSub, ADDR Dot, ADDR CamPosL
+	invoke Vector32DNormalize, ADDR Dot
+	invoke Vector32DDot, ADDR Dot, ADDR PlrForward
 	ret
 Plr_FrustumDot ENDP
 
