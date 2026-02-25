@@ -787,9 +787,12 @@ NetConnect PROC EXPORT
 	
 	invoke RtlZeroMemory, ADDR servAddr, SIZEOF sockaddr_in
 	IFDEF BP_WININC
+		invoke RtlMoveMemory, ADDR servAddr.sin_addr, [pbx].h_addr, \
+		[pbx].h_length
 		mov ax, [pbx].h_addrtype
 	ELSE
-		mov ax, [pbx].h_addr	; dumbfuk
+		invoke RtlMoveMemory, ADDR servAddr.sin_addr, [pbx].h_addr, [pbx].h_len
+		mov ax, [pbx].h_addr
 	ENDIF
 	mov servAddr.sin_family, ax
 	invoke htons, NetPort
