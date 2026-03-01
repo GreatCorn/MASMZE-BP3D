@@ -1970,9 +1970,8 @@ UI_HandleMenuEscape PROC EXPORT
 		bpMEM32 deltaScale, f(1)
 		mov MazeNote, 0
 	.ELSEIF (UIState == UI_STATE_GAME)
+		vinvoke PauseGame, TRUE
 		invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_VISIBLE
-		mov deltaScale, 0
-		invoke PauseSounds, TRUE
 		
 		mov UIState, UI_STATE_MENU_PAUSE
 	.ELSEIF (UIState >= UI_STATE_MENU_SETTINGS_CONTROLS_BINDINGS)
@@ -1989,11 +1988,11 @@ UI_HandleMenuEscape PROC EXPORT
 	.ELSEIF (UIState >= UI_STATE_MENU_REALLY_EXIT)
 		mov UIState, UI_STATE_MENU_PAUSE
 	.ELSEIF (UIState == UI_STATE_MENU_PAUSE)
+		vinvoke PauseGame, FALSE
 		invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
 		invoke Vector2Copy, ADDR bpMouseClientPrev, ADDR FMain.ScreenCnt
 		invoke Vector2Copy, ADDR bpMouseScreenPrev, ADDR FMain.ScreenCnt
-		bpMEM32 deltaScale, f(1)
-		invoke PauseSounds, FALSE
+		
 		mov UIState, UI_STATE_GAME
 	.ENDIF
 	ret

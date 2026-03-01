@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-BP_COMPATIBILITY_W9X		EQU <1>
+;BP_COMPATIBILITY_W9X		EQU <1>
 BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
@@ -764,8 +764,23 @@ InitNetwork PROC EXPORT
 	ret
 InitNetwork ENDP
 
+NetClose PROC EXPORT
+	.IF (UIState >= UI_STATE_MENU_PAUSE)
+		mov deltaScale, 0
+	.ENDIF
+	
+	.IF (NetSock)
+		invoke closesocket, NetSock
+		mov NetSock, 0
+	.ENDIF
+	ret
+NetClose ENDP
+
 NetConnect PROC EXPORT
 	LOCAL ipAddr:DWORD, servAddr:sockaddr_in
+	
+	call NetClose
+	
 	print "Connecting to "
 	print OFFSET NetServerAddr, 13, 10
 	
@@ -787,30 +802,45 @@ NetConnect PROC EXPORT
 	
 	invoke RtlZeroMemory, ADDR servAddr, SIZEOF sockaddr_in
 	IFDEF BP_WININC
-		invoke RtlMoveMemory, ADDR servAddr.sin_addr, [pbx].h_addr, \
-		[pbx].h_length
+		movzx pax, [pbx].h_length
+		invoke RtlMoveMemory, ADDR servAddr.sin_addr, [pbx].h_addr_list, pax
 		mov ax, [pbx].h_addrtype
 	ELSE
-		invoke RtlMoveMemory, ADDR servAddr.sin_addr, [pbx].h_addr, [pbx].h_len
+		movzx pax, [pbx].h_len
+		invoke RtlMoveMemory, ADDR servAddr.sin_addr, [pbx].h_list, pax
 		mov ax, [pbx].h_addr
 	ENDIF
 	mov servAddr.sin_family, ax
 	invoke htons, NetPort
 	mov servAddr.sin_port, ax
 	
-	mov NetSock, rv(socket, AF_INET, SOCK_DGRAM, 0)
+	mov NetSock, rv(socket, AF_INET, SOCK_STREAM, 0)
 	.IF (NetSock == INVALID_SOCKET)
 		print "Opening socket failed.", 13, 10
 		ret
 	.ENDIF
 	
+	vinvoke CreateThread, NULL, 0, OFFSET NetConnectLoop, ADDR servAddr, 0, NULL
+	;vinvoke NetConnectLoop, ADDR servAddr
 	ASSUME pbx:nothing
 	pop pbx
 	ret
 NetConnect ENDP
 
+NetConnectLoop PROC EXPORT lpSock:LPVOID
+	invoke connect, NetSock, lpSock, SIZEOF sockaddr_in
+	.IF (pax == SOCKET_ERROR)
+		print "Connecting socket failed.", 13, 10
+		ret
+	.ENDIF
+	ret
+NetConnectLoop ENDP
+
 NetHost PROC EXPORT 
 	LOCAL localAddr:sockaddr_in
+	
+	call NetClose
+	
 	print "Hosting server...", 13, 10
 	
 	mov localAddr.sin_family, AF_INET
@@ -822,7 +852,7 @@ NetHost PROC EXPORT
 	invoke htons, NetPort
 	mov localAddr.sin_port, ax
 	
-	mov NetSock, rv(socket, AF_INET, SOCK_DGRAM, 0)
+	mov NetSock, rv(socket, AF_INET, SOCK_STREAM, 0)
 	.IF (NetSock == INVALID_SOCKET)
 		print "Opening socket failed.", 13, 10
 		ret
@@ -834,28 +864,66 @@ NetHost PROC EXPORT
 		ret
 	.ENDIF
 	
-	vinvoke CreateThread, NULL, 0, OFFSET NetProcessLoop, ADDR localAddr, 0,NULL 
+	invoke listen, NetSock, 5
+	.IF (pax == SOCKET_ERROR)
+		print "Listening failed.", 13, 10
+		ret
+	.ENDIF
+	
+	.IF (UIState >= UI_STATE_MENU_PAUSE)
+		mov deltaScale, FLT_1
+	.ENDIF
+	
+	vinvoke CreateThread, NULL, 0, OFFSET NetProcessLoop, ADDR localAddr, 0,NULL
+	;vinvoke NetProcessLoop, ADDR localAddr
 	ret
 NetHost ENDP
 
 NetProcessLoop PROC EXPORT lpSock:LPVOID
-	LOCAL buf[64]:BYTE, fSock:SOCKET, fLen:DWORD
+	LOCAL buf[64]:BYTE, fSock:sockaddr_in, fLen:DWORD, msg:SOCKET
 	
 	.WHILE (NetSock)
-		invoke recvfrom, NetSock, ADDR buf, SIZEOF buf, 0, ADDR fSock, ADDR fLen
-		.IF (eax == SOCKET_ERROR)
-			print "Error receiving data on socket.", 13, 10
-			.CONTINUE
-		.ELSEIF (eax == 0)	; Closed connection
-			invoke closesocket, NetSock
-			mov NetSock, 0
-			.BREAK
+		; UDP code
+		;invoke recvfrom, NetSock, ADDR buf, SIZEOF buf, 0, ADDR fSock, ADDR fLen
+		;.IF (eax == SOCKET_ERROR)
+		;	print "Error receiving data on socket.", 13, 10
+		;	.CONTINUE
+		;.ELSEIF (eax == 0)	; Closed connection
+		;	invoke closesocket, NetSock
+		;	mov NetSock, 0
+		;	.BREAK
+		;.ENDIF
+		;invoke Sleep, 32
+		print "Waiting for connection...", 13, 10
+		mov fLen, SIZEOF sockaddr_in
+		mov msg, rv(accept, NetSock, ADDR fSock, ADDR fLen)
+		.IF (msg == INVALID_SOCKET)
+			print "Accept error.", 13, 10
 		.ENDIF
-		
-		invoke Sleep, 32
+		invoke recv, msg, ADDR buf, SIZEOF buf, 0
+		.IF (pax == SOCKET_ERROR)
+			print "Error receiving data on socket.", 13, 10
+			invoke closesocket, msg
+			.CONTINUE
+		.ELSEIF (pax == SOCKET_ERROR)
+			invoke closesocket, msg
+			.CONTINUE
+		.ENDIF
 	.ENDW
 	ret
 NetProcessLoop ENDP
+
+PauseGame PROC EXPORT PauseBool:BPBool
+	.IF !(NetSock)
+		.IF (PauseBool)
+			mov deltaScale, 0
+		.ELSE
+			mov deltaScale, FLT_1
+		.ENDIF
+	.ENDIF
+	invoke PauseSounds, PauseBool
+	ret
+PauseGame ENDP
 
 ProcessScene PROC EXPORT
 	call Plr_Process
@@ -1470,10 +1538,6 @@ start:
 	
 	print "Exiting...", 13, 10
 	
-	.IF (NetSock)
-		invoke closesocket, NetSock
-		mov NetSock, 0
-	.ENDIF
 	call WSACleanup
 	; Form processing exited, we can safely terminate process
 	invoke TerminateProcess, rv(GetCurrentProcess), 0

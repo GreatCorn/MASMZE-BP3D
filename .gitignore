@@ -12,4 +12,6 @@
 *.png
 *.png~
 
+release/
+
 main.lib

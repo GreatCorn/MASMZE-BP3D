@@ -1161,24 +1161,26 @@ Maze_ProcessState PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
 	
 	.IF (MazeState == MAZE_STATE_SAFE)	; Play siren
-		.IF !(MazeStateTimer)
-			bpMEM32 MazeStateTimer, f(51)
-			mov MazeStateCallback, OFFSET mazeSafe
-			invoke alSourcePlay, SndSiren
+		.IF (PlrState < PLAYER_STATE_INTRO_DARK)
+			.IF !(MazeStateTimer)
+				bpMEM32 MazeStateTimer, f(51)
+				mov MazeStateCallback, OFFSET mazeSafe
+				invoke alSourcePlay, SndSiren
+			.ENDIF
+			
+			fild MazeLayer
+			fmul f(0.2)
+			fsubr f(1)
+			fstp flVal
+			
+			mov eax, flVal
+			.IF (eax & FLT_NEG)
+				mov flVal, 0
+			.ENDIF
+			
+			mov MazeSiren, rv(flLerp, MazeSiren, flVal, delta2)
+			invoke alSourcef, SndSiren, AL_GAIN, MazeSiren
 		.ENDIF
-		
-		fild MazeLayer
-		fmul f(0.2)
-		fsubr f(1)
-		fstp flVal
-		
-		mov eax, flVal
-		.IF (eax & FLT_NEG)
-			mov flVal, 0
-		.ENDIF
-		
-		mov MazeSiren, rv(flLerp, MazeSiren, flVal, delta2)
-		invoke alSourcef, SndSiren, AL_GAIN, MazeSiren
 	.ELSEIF (MazeState == MAZE_STATE_STOP_SIREN)
 		.IF !(MazeStateTimer)
 			bpMEM32 MazeStateTimer, f(10)
