@@ -10,9 +10,15 @@ SV	StrLoadSounds
 SV	StrLoadFinished
 SV	StrMenuPaused
 SV	StrMenuResume
+SV	StrMenuMultiplayer
 SV	StrMenuSettings
 SV	StrMenuQuit
 SV	StrMenuReallyQuit
+SV	StrMenuHost
+SV	StrMenuConnect
+SV	StrMenuIP
+SV	StrMenuPort
+SV	StrMenuUsername
 SV	StrMenuYes
 SV	StrMenuNo
 SV	StrMenuOK

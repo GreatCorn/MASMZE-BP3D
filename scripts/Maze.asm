@@ -1390,6 +1390,20 @@ Maze_Progress PROC EXPORT
 		inc MazeSize[4]
 	.ENDIF
 	
+	.IF (NetSock)
+		mov eax, NetMagic
+		add eax, MazeLayer
+		mov nRandSeed, eax
+		
+		invoke fpuSetRounding, FPU_ROUND_CEIL
+		fild MazeLayer
+		fdiv f(3.15)
+		fld st
+		fistp MazeSize[0]
+		invoke fpuSetRounding, FPU_ROUND_FLOOR
+		fistp MazeSize[4]
+		invoke fpuSetRounding, FPU_ROUND_ROUND
+	.ENDIF
 	invoke Maze_Generate, nRandSeed
 	vinvoke Settings_SaveGame, TRUE
 	ret

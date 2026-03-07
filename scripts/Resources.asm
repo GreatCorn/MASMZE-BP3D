@@ -920,3 +920,12 @@ StrToFl PROC EXPORT StrPtr:BPPtr, FlPtr:BPPtr
 	fstp REAL4 PTR [pax]
 	ret
 StrToFl ENDP
+
+StrToInt PROC EXPORT StrPtr:BPPtr
+	IFDEF atof	; WinInc
+		invoke atoi, StrPtr;, pax
+	ELSE		; MASM
+		invoke crt_atoi, StrPtr;, pax
+	ENDIF
+	ret
+StrToInt ENDP

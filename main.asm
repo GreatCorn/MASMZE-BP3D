@@ -216,14 +216,14 @@ vrv MACRO ProcName:REQ, Args:VARARG
 	EXITM <pax>
 ENDM
 
-;   Simple MASM SADD replacement. Declares a string and returns its ADDR in pax.
+;   Simple MASM SADD replacement. Declares a string and returns OFFSET in pax.
 ;   qStr:String - quoted string.
 s MACRO qStr:REQ
 	LOCAL strDb
 	.DATA
 		strDb DB qStr,0
 	.CODE
-	EXITM <ADDR strDb>
+	EXITM <OFFSET strDb>
 ENDM
 
 ;   Make the argument into a string (for preprocessor @ data).
@@ -262,21 +262,22 @@ ARBPixelAttribs DWORD \
 
 ; Pixel attributes to apply MSAA
 ARBPixelAttribsMSAA DWORD \	
-	2001h, GL_TRUE, \			; WGL_DRAW_TO_WINDOW_ARB = true
-	2010h, GL_TRUE, \			; WGL_SUPPORT_OPENGL_ARB = true
-	2011h, GL_TRUE, \			; WGL_DOUBLE_BUFFER_ARB = true
-	2013h, 202Bh, \				; WGL_PIXEL_TYPE_ARB = WGL_TYPE_RGBA_ARB
-	2014h, 24, \				; WGL_COLOR_BITS_ARB = 24
-	2022h, 24, \				; WGL_DEPTH_BITS_ARB = 24
-	2023h, 1, \					; WGL_STENCIL_BITS_ARB = 1
-	2041h, 1, \					; WGL_SAMPLE_BUFFERS_ARB = 1 (multisample)
-	2042h, 0, \					; WGL_SAMPLES_ARB = 0
+	2001h, GL_TRUE, \	; WGL_DRAW_TO_WINDOW_ARB = true
+	2010h, GL_TRUE, \	; WGL_SUPPORT_OPENGL_ARB = true
+	2011h, GL_TRUE, \	; WGL_DOUBLE_BUFFER_ARB = true
+	2013h, 202Bh, \		; WGL_PIXEL_TYPE_ARB = WGL_TYPE_RGBA_ARB
+	2014h, 24, \		; WGL_COLOR_BITS_ARB = 24
+	2022h, 24, \		; WGL_DEPTH_BITS_ARB = 24
+	2023h, 1, \			; WGL_STENCIL_BITS_ARB = 1
+	2041h, 1, \			; WGL_SAMPLE_BUFFERS_ARB = 1 (multisample)
+	2042h, 0, \			; WGL_SAMPLES_ARB = 0
 0		
 
 ; ----- INPUT -----
-Keys BPBool 255 DUP (0)
+Keys BPBool 256 DUP (0)
 LastInput BPPtr 0
-LastInputTimer REAL4 0.2, 0.05
+LastInputTimer REAL4 0.0, 0.0
+LastInputTimes REAL4 0.25, 0.04
 
 ; Input binds
 IBUp		BPPtr "W"
@@ -356,10 +357,6 @@ InputUIConfirmT			BPPtr FALSE
 ClearBuffers	BPBool TRUE
 FogDensity		REAL4 0.5
 
-NetPort			SWORD 8080
-NetSock			SOCKET 0
-NetServerAddr	DB "localhost", 118 dup (0)
-
 .DATA?
 delta2		REAL4 ?
 delta10		REAL4 ?
@@ -378,6 +375,8 @@ ScreenMode	BPEnum ?
 wglChoosePixelFormatARB			BPPtr ?
 wglGetPixelFormatAttribivARB	BPPtr ?
 wglSwapIntervalEXT				BPPtr ?
+
+include scripts\NetCode.inc
 
 ;PROC_TRACE		EQU <1>
 PROC_TRACE_ALL	EQU <1>
@@ -404,6 +403,7 @@ SAVEGAME_REG	EQU <1>
 include scripts\Settings.asm
 include scripts\UI.asm
 
+include scripts\NetCode.asm
 .CODE
 
 GPadParse PROTO :BPEnum, :BPPtr
@@ -434,6 +434,9 @@ DrawScene PROC EXPORT
 		call Wmblyk_Draw
 	.ENDIF
 	call Plr_Draw
+	.IF (NetSock)
+		call Net_Draw
+	.ENDIF
 	IFDEF MODE_DEBUG	; Wireframe cancel
 		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
 		invoke glEnable, GL_TEXTURE_2D
@@ -764,164 +767,14 @@ InitNetwork PROC EXPORT
 	ret
 InitNetwork ENDP
 
-NetClose PROC EXPORT
-	.IF (UIState >= UI_STATE_MENU_PAUSE)
+PauseGame PROC EXPORT Paused:BPBool
+	.IF (Paused) && !(NetSock)
 		mov deltaScale, 0
-	.ENDIF
-	
-	.IF (NetSock)
-		invoke closesocket, NetSock
-		mov NetSock, 0
-	.ENDIF
-	ret
-NetClose ENDP
-
-NetConnect PROC EXPORT
-	LOCAL ipAddr:DWORD, servAddr:sockaddr_in
-	
-	call NetClose
-	
-	print "Connecting to "
-	print OFFSET NetServerAddr, 13, 10
-	
-	push pbx
-	ASSUME pbx:PTR hostent
-	
-	; Assume NetServerAddr was already populated
-	.IF (rv(ChrIsAlpha, NetServerAddr[0]))
-		mov pbx, rv(gethostbyname, OFFSET NetServerAddr)
+		invoke PauseSounds, TRUE
 	.ELSE
-		mov ipAddr, rv(inet_addr, OFFSET NetServerAddr)
-		mov pbx, rv(gethostbyaddr, ADDR ipAddr, 4, AF_INET)
-	.ENDIF
-	
-	.IF !(pbx)
-		print "Resolving address failed.", 13, 10
-		ret
-	.ENDIF
-	
-	invoke RtlZeroMemory, ADDR servAddr, SIZEOF sockaddr_in
-	IFDEF BP_WININC
-		movzx pax, [pbx].h_length
-		invoke RtlMoveMemory, ADDR servAddr.sin_addr, [pbx].h_addr_list, pax
-		mov ax, [pbx].h_addrtype
-	ELSE
-		movzx pax, [pbx].h_len
-		invoke RtlMoveMemory, ADDR servAddr.sin_addr, [pbx].h_list, pax
-		mov ax, [pbx].h_addr
-	ENDIF
-	mov servAddr.sin_family, ax
-	invoke htons, NetPort
-	mov servAddr.sin_port, ax
-	
-	mov NetSock, rv(socket, AF_INET, SOCK_STREAM, 0)
-	.IF (NetSock == INVALID_SOCKET)
-		print "Opening socket failed.", 13, 10
-		ret
-	.ENDIF
-	
-	vinvoke CreateThread, NULL, 0, OFFSET NetConnectLoop, ADDR servAddr, 0, NULL
-	;vinvoke NetConnectLoop, ADDR servAddr
-	ASSUME pbx:nothing
-	pop pbx
-	ret
-NetConnect ENDP
-
-NetConnectLoop PROC EXPORT lpSock:LPVOID
-	invoke connect, NetSock, lpSock, SIZEOF sockaddr_in
-	.IF (pax == SOCKET_ERROR)
-		print "Connecting socket failed.", 13, 10
-		ret
-	.ENDIF
-	ret
-NetConnectLoop ENDP
-
-NetHost PROC EXPORT 
-	LOCAL localAddr:sockaddr_in
-	
-	call NetClose
-	
-	print "Hosting server...", 13, 10
-	
-	mov localAddr.sin_family, AF_INET
-	IFDEF BP_WININC
-		mov localAddr.sin_addr.s_addr, INADDR_ANY
-	ELSE
-		mov localAddr.sin_addr.S_un.S_addr, INADDR_ANY	; dumbfuk
-	ENDIF
-	invoke htons, NetPort
-	mov localAddr.sin_port, ax
-	
-	mov NetSock, rv(socket, AF_INET, SOCK_STREAM, 0)
-	.IF (NetSock == INVALID_SOCKET)
-		print "Opening socket failed.", 13, 10
-		ret
-	.ENDIF
-	
-	invoke bind, NetSock, ADDR localAddr, SIZEOF sockaddr_in
-	.IF (pax == SOCKET_ERROR)
-		print "Binding socket failed.", 13, 10
-		ret
-	.ENDIF
-	
-	invoke listen, NetSock, 5
-	.IF (pax == SOCKET_ERROR)
-		print "Listening failed.", 13, 10
-		ret
-	.ENDIF
-	
-	.IF (UIState >= UI_STATE_MENU_PAUSE)
 		mov deltaScale, FLT_1
+		invoke PauseSounds, FALSE
 	.ENDIF
-	
-	vinvoke CreateThread, NULL, 0, OFFSET NetProcessLoop, ADDR localAddr, 0,NULL
-	;vinvoke NetProcessLoop, ADDR localAddr
-	ret
-NetHost ENDP
-
-NetProcessLoop PROC EXPORT lpSock:LPVOID
-	LOCAL buf[64]:BYTE, fSock:sockaddr_in, fLen:DWORD, msg:SOCKET
-	
-	.WHILE (NetSock)
-		; UDP code
-		;invoke recvfrom, NetSock, ADDR buf, SIZEOF buf, 0, ADDR fSock, ADDR fLen
-		;.IF (eax == SOCKET_ERROR)
-		;	print "Error receiving data on socket.", 13, 10
-		;	.CONTINUE
-		;.ELSEIF (eax == 0)	; Closed connection
-		;	invoke closesocket, NetSock
-		;	mov NetSock, 0
-		;	.BREAK
-		;.ENDIF
-		;invoke Sleep, 32
-		print "Waiting for connection...", 13, 10
-		mov fLen, SIZEOF sockaddr_in
-		mov msg, rv(accept, NetSock, ADDR fSock, ADDR fLen)
-		.IF (msg == INVALID_SOCKET)
-			print "Accept error.", 13, 10
-		.ENDIF
-		invoke recv, msg, ADDR buf, SIZEOF buf, 0
-		.IF (pax == SOCKET_ERROR)
-			print "Error receiving data on socket.", 13, 10
-			invoke closesocket, msg
-			.CONTINUE
-		.ELSEIF (pax == SOCKET_ERROR)
-			invoke closesocket, msg
-			.CONTINUE
-		.ENDIF
-	.ENDW
-	ret
-NetProcessLoop ENDP
-
-PauseGame PROC EXPORT PauseBool:BPBool
-	.IF !(NetSock)
-		.IF (PauseBool)
-			mov deltaScale, 0
-		.ELSE
-			mov deltaScale, FLT_1
-		.ENDIF
-	.ENDIF
-	invoke PauseSounds, PauseBool
 	ret
 PauseGame ENDP
 
@@ -939,6 +792,9 @@ ProcessScene PROC EXPORT
 	.ENDIF
 	.IF (Wmblyk)
 		call Wmblyk_Process
+	.ENDIF
+	.IF (NetSock)
+		call Net_Process
 	.ENDIF
 	call Plr_LateProcess
 	ret
@@ -1005,7 +861,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 		.ENDIF
 			
 		mov LastInput, 0
-		bpMEM32 LastInputTimer, f(0.2)
+		bpMEM32 LastInputTimer, LastInputTimes[0]
 		
 		.IF ([pbx].Pressed)
 			.IF (UIBinding == BIND_KEY_MOUSE) && ([pbx].Keycode != VK_ESCAPE)
@@ -1013,6 +869,11 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				bpMPM BPPtr PTR [pax], [pbx].Keycode
 				call UI_HandleMenuEscape
 				mov SettingsChanged, TRUE
+			.ENDIF
+			
+			; OnEdit
+			.IF (UIFocusType == UI_EDIT)
+				invoke UI_EditInput, [pbx].Keycode
 			.ENDIF
 			
 			SWITCH [pbx].Keycode
@@ -1026,8 +887,10 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov LastInput, OFFSET InputUIDown
 				CASE IBUILeft
 					mov InputUILeft, TRUE
+					mov LastInput, OFFSET InputUILeft
 				CASE IBUIRight
 					mov InputUIRight, TRUE
+					mov LastInput, OFFSET InputUIRight
 				
 				CASE IBUIConfirm
 					mov InputUIConfirm, TRUE
@@ -1090,10 +953,22 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					xor PlrItems, MAZE_ITEM_MAP
 				CASE 'N'
 					.IF (Keys[VK_SHIFT])
-						call NetHost
+						invoke CreateThread, NULL, 0, OFFSET Net_Host, 0, 0, NULL
 					.ELSE
-						call NetConnect
+						invoke CreateThread, NULL, 0, OFFSET Net_Connect, 0, 0, NULL
 					.ENDIF
+				CASE 'P'
+					print "Players:", 13, 10
+					xor pax, pax
+					.WHILE (pax < SIZEOF NetPlayers)
+						.IF (NetPlayers[pax].PlayerID != -1)
+							pushad
+							shr pax, NetPlayerShift
+							print str$(pax), 13, 10
+							popad
+						.ENDIF
+						add pax, SIZEOF NetPlayer
+					.ENDW
 				CASE 'B'
 					.IF (Keys[VK_SHIFT])
 						invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
@@ -1234,7 +1109,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 		.ENDIF
 		
 		mov LastInput, 0
-		bpMEM32 LastInputTimer, f(0.2)
+		bpMEM32 LastInputTimer, LastInputTimes[0]
 		
 		.IF (UIBinding == BIND_JOYSTICK)
 			.IF (BPInType == BP_INPUT_JOY_AXIS)
@@ -1260,7 +1135,13 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				mov LastInput, OFFSET InputUIDown
 			.ENDIF
 			invoke GPadInput, BPInType, pbx, JBUILeft, ADDR InputUILeft
+			.IF (InputUILeft)
+				mov LastInput, OFFSET InputUILeft
+			.ENDIF
 			invoke GPadInput, BPInType, pbx, JBUIRight, ADDR InputUIRight
+			.IF (InputUIRight)
+				mov LastInput, OFFSET InputUIRight
+			.ENDIF
 			invoke GPadInput, BPInType, pbx, JBUIConfirm, ADDR InputUIConfirm
 			bpMEM32 InputUIConfirmT, InputUIConfirm
 			
@@ -1325,19 +1206,17 @@ OnRender PROC EXPORT
 		fsub deltaUnscaled
 		fstp LastInputTimer[0]
 		
-		fcmp LastInputTimer[0]
-		.IF (Carry?)
+		.IF (LastInputTimer[0] & FLT_NEG)
 			fld LastInputTimer[4]
 			fsub deltaUnscaled
 			fstp LastInputTimer[4]
 			
-			fcmp LastInputTimer[4]
-			.IF (Carry?)
+			.IF (LastInputTimer[4] & FLT_NEG)
 				mov pax, LastInput
 				mov BYTE PTR [pax], TRUE
 				
 				fld LastInputTimer[4]
-				fadd f(0.1)
+				fadd LastInputTimes[4]
 				fstp LastInputTimer[4]
 			.ENDIF
 		.ENDIF
@@ -1538,6 +1417,7 @@ start:
 	
 	print "Exiting...", 13, 10
 	
+	call Net_Close
 	call WSACleanup
 	; Form processing exited, we can safely terminate process
 	invoke TerminateProcess, rv(GetCurrentProcess), 0

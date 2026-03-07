@@ -9,6 +9,8 @@ ENUML
 		E UI_STATE_MENU_MAIN
 		E UI_STATE_MENU_REALLY_EXIT
 		
+		E UI_STATE_MENU_MULTIPLAYER
+		
 		E UI_STATE_MENU_SETTINGS
 		E 	UI_STATE_MENU_SETTINGS_GRAPHICS
 		E 	UI_STATE_MENU_SETTINGS_CONTROLS
@@ -28,7 +30,9 @@ UI_BTN_M	EQU 2*UI_SCALE				; Button margin (only between two
 										; buttons, not around)
 UI_BTN_W	EQU 80*UI_SCALE				; Button width
 UI_BTN_WS	EQU UI_BTN_W/2 - UI_BTN_M	; Small button width
-UI_CB_MAX	EQU 7						; Max amount of combobox items
+UI_CB_MAX	EQU 7						; Max amount of cb items before scroll
+UI_EDIT_H	EQU 20*UI_SCALE
+UI_EDIT_CH	EQU UI_BTN_H - 2*UI_SCALE
 UI_HR_H		EQU UI_HR_T + UI_BTN_M*2	; UI horizontal line height
 UI_HR_T		EQU 1*UI_SCALE				; UI horizontal line thickness
 UI_NOTE		EQU 160*UI_SCALE
@@ -43,7 +47,8 @@ ENUM	UI_NONE, \
 		UI_SLIDER, \
 		UI_COMBOBOX, \
 		UI_CHECKBOX, \
-		UI_MAPPER
+		UI_MAPPER, \
+		UI_EDIT
 		
 ENUM	UICB_NONE, \
 		UICB_LANGUAGE, \
@@ -83,6 +88,12 @@ UIComboboxSelected	BYTE 0	; Currently selected item to display check
 UIComboboxXLerp		REAL4 0.0
 
 UIDisabled			BPBool FALSE
+
+UIEditCurPos		SDWORD 256
+UIEditStrPtr		BPPtr 0
+UIEditStrLen		DWORD 0
+UIEditStrMaxLen		DWORD 0
+UIEditNumeric		BPBool FALSE
 
 UIID				BYTE 0
 
@@ -569,6 +580,140 @@ UI_ComboboxHas PROC EXPORT String:BPPtr
 	ret
 UI_ComboboxHas ENDP
 
+UI_Edit PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, MaxLen:DWORD, \
+Numeric:BPBool, Caption:BPPtr
+	LOCAL xFrom:SDWORD, yFrom:SDWORD
+	
+	pushb UIButtonType
+	mov UIButtonType, UI_EDIT	
+	
+	mov eax, X
+	sub eax, UI_BTN_W/2
+	mov xFrom, eax
+	mov eax, Y
+	mov yFrom, eax
+	
+	push bpFontWidth
+	push bpFontHeight
+	FontSize 3, 6
+	invoke glColor4fv, OFFSET clWhite
+	invoke UI_Text, Caption, xFrom, yFrom, BP_ALIGN_LEFT, 0
+	pop bpFontHeight
+	pop bpFontWidth
+	
+	add Y, (UI_EDIT_H - UI_BTN_H)
+	invoke UI_Button, String, X, Y, BP_ALIGN_CENTER
+	
+	mov al, UIID
+	.IF (UIFocus == al)
+		mov UIEditStrLen, rv(StrLength, String)
+		mov UIEditCurPos, rv(intClamp, UIEditCurPos, 0, UIEditStrLen)
+		
+		fild UIEditStrLen
+		fmul f(0.5)
+		fisubr UIEditCurPos
+		fmul bpFontWidth
+		fmul bpFontSpacing
+		fiadd X
+		fistp xFrom
+		mov eax, Y
+		add eax, (UI_BTN_H-UI_EDIT_CH)/2
+		mov yFrom, eax
+		
+		call glPushMatrix
+		invoke glBindTexture, GL_TEXTURE_2D, 0
+		invoke glColor3fv, ADDR clBlack
+		invoke glTranslatei, xFrom, yFrom, 0
+		invoke glScalef, f(2), f(%(UI_EDIT_CH)), f(1)
+		invoke glCallList, ScreenQuad
+		invoke glColor3fv, ADDR clWhite
+		call glPopMatrix
+		
+		; Input passed to UI_EditInput from OnInput
+		bpMPM UIEditStrPtr, String
+		bpMEM32 UIEditStrMaxLen, MaxLen
+		mbm UIEditNumeric, Numeric
+	.ENDIF
+	
+	popb UIButtonType
+	ret
+UI_Edit ENDP
+
+UI_EditInput PROC EXPORT Keycode:DWORD
+	LOCAL valid:BPBool
+	mov valid, FALSE
+	
+	; Decode (this is bad, but fuck it)
+	SWITCH Keycode
+		CASE 46
+			mov Keycode, 127	; Del
+		CASE 189
+			mov Keycode, '-'
+		CASE 190
+			mov Keycode, '.'
+	ENDSW
+	
+	.IF (Keycode >= 45) && (Keycode <= 57)
+		mov valid, TRUE
+	.ENDIF
+	.IF !(UIEditNumeric)
+		.IF ((Keycode >= 65) && (Keycode <= 90)) || (Keycode == 32)
+			mov valid, TRUE
+		.ENDIF
+	.ENDIF
+	mov UIEditStrLen, rv(StrLength, UIEditStrPtr)
+	
+	mov pax, UIEditStrPtr
+	mov pcx, UIEditCurPos
+	.IF (valid)
+		mov pdx, UIEditStrLen
+		inc pdx
+		.IF (pdx < UIEditStrMaxLen)
+			add pax, pcx
+			mov pcx, pax
+			inc pcx
+			mov pdx, UIEditStrLen
+			add pdx, UIEditStrPtr
+			sub pdx, pax
+			inc pdx
+			push pax
+			invoke RtlMoveMemory, pcx, pax, pdx
+			pop pax
+			mov pcx, Keycode
+			mov BYTE PTR [pax], cl
+			inc UIEditCurPos
+		.ENDIF
+	.ELSEIF (Keycode == 127) && (pcx < UIEditStrLen)
+		add pax, pcx
+		mov pdx, UIEditStrLen
+		add pdx, UIEditStrPtr
+		sub pdx, pax
+		mov pcx, pax
+		inc pcx
+		invoke RtlMoveMemory, pax, pcx, pdx
+		mov pax, UIEditStrPtr
+
+		print "Del", 13, 10
+	.ELSEIF (Keycode == 8) && (pcx)
+		add pax, pcx
+		dec pax
+		mov pdx, UIEditStrLen
+		add pdx, UIEditStrPtr
+		sub pdx, pax
+		mov pcx, pax
+		inc pcx
+		invoke RtlMoveMemory, pax, pcx, pdx
+		mov pax, UIEditStrPtr
+		dec UIEditCurPos
+		print "Backspace", 13, 10
+	.ENDIF
+	
+	print str$(Keycode), 9
+	print str$(UIEditStrLen), 9
+	print str$(UIEditCurPos), 13, 10
+	ret
+UI_EditInput ENDP
+
 UI_HR PROC EXPORT X:SDWORD, Y:SDWORD
 	sub X, UI_BTN_W/2
 	add Y, (UI_HR_H - UI_HR_T)/2
@@ -894,6 +1039,7 @@ Y:SDWORD, HorAlign:BPEnum, VerAlign:BPEnum
 	ret
 UI_TextInput ENDP
 
+
 UI_DrawComboboxMenu PROC EXPORT
 	LOCAL menuHeight:DWORD, actualHeight:DWORD
 	LOCAL xOffset:DWORD, yOffset:DWORD
@@ -1068,8 +1214,52 @@ UI_DrawFullscreen PROC EXPORT Alpha:REAL4
 	ret
 UI_DrawFullscreen ENDP
 
+UI_DrawMenuMultiplayer PROC EXPORT
+	UI_MENU_MULTIPLAYER_HEIGHT	EQU UI_EDIT_H*3 + UI_BTN_H*3 + UI_BTN_M*2 + \
+	UI_HR_H*2
+	
+	mov ebx, ScreenHalf.Y
+	sub ebx, UI_MENU_MULTIPLAYER_HEIGHT/2
+	
+	invoke UI_Edit, ADDR NetPlayers.Username, ScreenHalf.X, ebx, \
+	SIZEOF NetPlayers.Username, FALSE, StrMenuUsername
+	add ebx, UI_EDIT_H
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	invoke UI_Edit, ADDR NetServerAddr, ScreenHalf.X, ebx, \
+	SIZEOF NetServerAddr, TRUE, StrMenuIP
+	add ebx, UI_EDIT_H + UI_BTN_M
+	
+	invoke UI_Edit, ADDR NetPortStr, ScreenHalf.X, ebx, \
+	SIZEOF NetPortStr, TRUE, StrMenuPort
+	add ebx, UI_EDIT_H + UI_BTN_M
+	
+	invoke UI_Button, StrMenuHost, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		invoke CreateThread, NULL, 0, OFFSET Net_Host, 0, 0, NULL
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Button, StrMenuConnect, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		invoke CreateThread, NULL, 0, OFFSET Net_Connect, 0, 0, NULL
+	.ENDIF
+	add ebx, UI_BTN_H
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	invoke UI_Button, StrMenuBack, UIXFrom, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		call UI_HandleMenuEscape
+	.ENDIF
+	ret
+UI_DrawMenuMultiplayer ENDP
+
 UI_DrawMenuPause PROC EXPORT
-	UI_MENU_PAUSE_HEIGHT	EQU UI_BTN_H*4 + UI_BTN_M*3
+	UI_MENU_PAUSE_HEIGHT	EQU UI_BTN_H*5 + UI_BTN_M*4
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_PAUSE_HEIGHT/2
 	
@@ -1079,6 +1269,12 @@ UI_DrawMenuPause PROC EXPORT
 	invoke UI_Button, StrMenuResume, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
 		call UI_HandleMenuEscape
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Button, StrMenuMultiplayer, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		mov UIState, UI_STATE_MENU_MULTIPLAYER
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
@@ -2366,6 +2562,8 @@ UI_Draw PROC EXPORT
 	SWITCH UIState
 		CASE UI_STATE_MENU_PAUSE
 			call UI_DrawMenuPause
+		CASE UI_STATE_MENU_MULTIPLAYER
+			call UI_DrawMenuMultiplayer
 		CASE UI_STATE_MENU_SETTINGS
 			call UI_DrawMenuSettings
 		CASE UI_STATE_MENU_SETTINGS_CONTROLS
@@ -2473,6 +2671,8 @@ UI_Process PROC EXPORT
 				mov InputUIUp, TRUE
 				mov UIMove, 2
 			.ENDIF
+		.ELSEIF (UIFocusType == UI_EDIT)
+			mov UIMove, 0
 		.ELSE
 			mov UIMove, 0
 		.ENDIF
@@ -2481,12 +2681,16 @@ UI_Process PROC EXPORT
 				mbm UIPressed, UIFocus
 			.ELSEIF (UIFocusType == UI_BUTTON_SMALL)
 				mov InputUIDown, TRUE
+			.ELSEIF (UIFocusType == UI_EDIT)
+				inc UIEditCurPos
 			.ENDIF
 		.ELSEIF (InputUILeft)
 			.IF (UIComboboxMenu > 0)
 				call UI_HandleMenuEscape
 			.ELSEIF (UIFocusType == UI_BUTTON_SMALL)
 				mov InputUIUp, TRUE
+			.ELSEIF (UIFocusType == UI_EDIT)
+				dec UIEditCurPos
 			.ENDIF
 		.ENDIF
 		.IF (InputUIUp)
@@ -2531,7 +2735,7 @@ UI_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 		
-		.IF (UIFocusType != UI_SLIDER)
+		.IF (UIFocusType != UI_SLIDER) ;&& (UIFocusType != UI_EDIT)
 			mov InputUILeft, FALSE
 			mov InputUIRight, FALSE
 		.ENDIF
