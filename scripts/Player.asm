@@ -65,7 +65,7 @@ PlrCompassVel	REAL4 0.0
 
 PlrMouseCool	DWORD 10	; Mouse cooldown frames
 
-PlrState			DWORD PLAYER_STATE_ENTER
+PlrState			DWORD PLAYER_STATE_ETC
 PlrStateCallback	BPPtr 0
 PlrStateTimer		REAL4 0.0
 

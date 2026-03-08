@@ -55,14 +55,15 @@ Net_ProcessLoop PROTO :LPVOID
 .DATA
 NetPort			SWORD 5001
 NetPortStr		DB "5001", 0, 0
+NetServerAddr	DB "127.0.0.1", 7 dup (0)
 NetSock			SOCKET 0
 NetHosting		BPBool FALSE
+
+NetMagic		DWORD 0
 NetPlayers		NetPlayer NET_MAX_PLAYERS dup (<>)
 NetPlayersV		NetPlayerVolatile NET_MAX_PLAYERS dup (<>)
 NetPlayersVL	NetPlayerVolatile NET_MAX_PLAYERS dup (<>)	; Local interpolated
 NetPlayersCount DWORD 0
 NetPlayerID		DWORD -1
-NetMagic		DWORD 0
-NetServerAddr	DB "127.0.0.1", 7 dup (0)
 
 NetVolatileTimer	REAL4 0.0, 0.064	; Send volatile info timer, interval

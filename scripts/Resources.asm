@@ -156,6 +156,7 @@ TexKubale			DWORD ?
 TexKubaleV			DWORD 9 DUP(?)
 TexLamp				DWORD ?
 TexLight			DWORD ?
+TexLogo				DWORD ?, ?
 TexMap				DWORD ?
 TexMetal			DWORD ?
 TexMetalFloor		DWORD ?
@@ -238,7 +239,7 @@ SndKubale		DWORD ?
 SndKubaleAppear	DWORD ?
 SndKubaleV		DWORD ?
 SndMistake		DWORD ?
-SndMus			DWORD ?, ?, ?, ?, ?
+SndMus			DWORD ?, ?, ?, ?, ?, ?
 SndRand			DWORD ?, ?, ?, ?, ?, ?
 SndSave			DWORD ?
 SndScribble		DWORD ?
@@ -528,6 +529,8 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexKubaleV[28],	"assets\textures\kubaleV9.bpt"
 		LoadBPT OFFSET TexLamp,			"assets\textures\lamp.bpt"
 		LoadBPT OFFSET TexLight,		"assets\textures\light.bpt"
+		LoadBPT OFFSET TexLogo[0],		"assets\textures\logo1.bpt"
+		LoadBPT OFFSET TexLogo[4],		"assets\textures\logo2.bpt"
 		LoadBPT OFFSET TexMap,			"assets\textures\map.bpt"
 		LoadBPT OFFSET TexMetal,		"assets\textures\metal.bpt"
 		LoadBPT OFFSET TexMetalFloor,	"assets\textures\metalFloor.bpt"
@@ -653,6 +656,8 @@ LoadResources PROC EXPORT
 		invoke alSourcei, SndMus[12], AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndMus[16],		"assets\sounds\mus5.bps"
 		invoke alSourcef, SndMus[16], AL_GAIN, f(0.5)
+		LoadBPS OFFSET SndMus[20],		"assets\sounds\mus6.bps"
+		invoke alSourcef, SndMus[20], AL_GAIN, f(0.5)
 		LoadBPS OFFSET SndRand[0],		"assets\sounds\rand1.bps"
 		LoadBPS OFFSET SndRand[4],		"assets\sounds\rand2.bps"
 		LoadBPS OFFSET SndRand[8],		"assets\sounds\rand3.bps"

@@ -429,12 +429,12 @@ Maze_DrawCheck PROC EXPORT
 	
 	call glPushMatrix
 	invoke glTranslate3fv, ADDR MazeCheckPos
-	invoke glBindTexture, GL_TEXTURE_2D, TexFloor
-	invoke glCallList, MdlCheckFloor
 	invoke glBindTexture, GL_TEXTURE_2D, TexRoof
 	invoke glCallList, MdlCheckRoof
 	invoke glBindTexture, GL_TEXTURE_2D, TexWall
 	invoke glCallList, MdlCheckWalls
+	invoke glBindTexture, GL_TEXTURE_2D, TexFloor
+	invoke glCallList, MdlCheckFloor
 	
 	; Draw exit door
 	invoke glTranslatef, 0, 0, f(6.1)
@@ -2083,29 +2083,6 @@ Maze_Draw PROC EXPORT
 			invoke glEnable, GL_FOG
 		.ENDIF
 		
-		.IF (PlrState == PLAYER_STATE_EXITING)	; Exit door stairs
-			call glPushMatrix
-			mov eax, MazeSize[8]
-			shl eax, 1
-			mov ecx, MazeSize[12]
-			inc ecx
-			shl ecx, 1
-			invoke glTranslatei, eax, 0, ecx
-			invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
-			invoke glCallList, MdlStairsM
-			
-			invoke glBindTexture, GL_TEXTURE_2D, TexDoorBlur
-			invoke glScalef, f(1), f(0.99), f(1)
-			invoke glEnable, GL_BLEND
-			invoke glDisable, GL_LIGHTING
-			invoke glDisable, GL_FOG
-			invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
-			invoke glCallList, MdlStairsM
-			invoke glDisable, GL_BLEND
-			invoke glEnable, GL_LIGHTING
-			invoke glEnable, GL_FOG
-			call glPopMatrix
-		.ENDIF
 		; Items
 		.IF (MazeItems & MAZE_ITEM_COMPASS)
 			call glPushMatrix
@@ -2189,7 +2166,34 @@ Maze_Draw PROC EXPORT
 		.ENDIF
 		call Maze_DrawCheck
 	.ENDIF
+	
+	
+	.IF (PlrState == PLAYER_STATE_EXITING)	; Exit door stairs
+		call glPushMatrix
+		sub psp, SIZEOF BPPtr*3
+		fld MazeDoorPos.X
+		fsub f(1)
+		fstp REAL4 PTR [psp]
+		mov REAL4 PTR [psp+4], 0
+		fld MazeDoorPos.Z
+		fstp REAL4 PTR [psp+8]
+		call glTranslatef
+		invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
+		invoke glCallList, MdlStairsM
 		
+		invoke glBindTexture, GL_TEXTURE_2D, TexDoorBlur
+		invoke glScalef, f(1), f(0.99), f(1)
+		invoke glEnable, GL_BLEND
+		invoke glDisable, GL_LIGHTING
+		invoke glDisable, GL_FOG
+		invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
+		invoke glCallList, MdlStairsM
+		invoke glDisable, GL_BLEND
+		invoke glEnable, GL_LIGHTING
+		invoke glEnable, GL_FOG
+		call glPopMatrix
+	.ENDIF
+	
 	.IF (SettingsGraphicsParticles)
 		invoke glEnable, GL_BLEND
 		invoke glDepthMask, GL_FALSE

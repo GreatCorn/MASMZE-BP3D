@@ -8,6 +8,8 @@ SV	StrLoadModels
 SV	StrLoadTextures
 SV	StrLoadSounds
 SV	StrLoadFinished
+SV	StrMenuContinue
+SV	StrMenuNewGame
 SV	StrMenuPaused
 SV	StrMenuResume
 SV	StrMenuMultiplayer

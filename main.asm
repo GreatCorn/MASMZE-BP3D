@@ -357,12 +357,20 @@ InputUIConfirmT			BPPtr FALSE
 ClearBuffers	BPBool TRUE
 FogDensity		REAL4 0.5
 
+ENUM	\
+		GAME_STATE_MENU, \
+		GAME_STATE_GAME, \
+		GAME_STATE_LOBBY
+GameState		BPEnum GAME_STATE_MENU
+
 .DATA?
 delta2		REAL4 ?
 delta10		REAL4 ?
 delta20		REAL4 ?
 deltaFixed	REAL4 ?
 FPS			REAL4 ?
+
+HasSave		BPBool ?
 
 XInput BPBool ?
 
@@ -437,6 +445,24 @@ DrawScene PROC EXPORT
 	.IF (NetSock)
 		call Net_Draw
 	.ENDIF
+	
+	.IF (GameState == GAME_STATE_MENU) && (UIMenuSplash >= 2)
+		invoke glBindTexture, GL_TEXTURE_2D, 0
+		call glPushMatrix
+		invoke glTranslatef, 0, 0, f(1.2)
+		invoke glRotatef, f(-90), f(1), 0, 0
+		invoke glRotatef, timeStart, 0, f(1), 0
+		invoke glCallList, MdlSigil[0]
+		fld timeStart
+		fmul f(2)
+		fchs
+		sub psp, SIZEOF BPPtr
+		fstp REAL4 PTR [psp]
+		pop eax
+		invoke glRotatef, eax, 0, f(1), 0
+		invoke glCallList, MdlSigil[4]
+		call glPopMatrix
+	.ENDIF
 	IFDEF MODE_DEBUG	; Wireframe cancel
 		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
 		invoke glEnable, GL_TEXTURE_2D
@@ -452,18 +478,26 @@ FixedScene PROC EXPORT
 	ret
 FixedScene ENDP
 
-;   Game initialize (everything loaded in, could be a bind to FMain.OnStart, but
-; we're using staged resource loading)
-GameInit PROC EXPORT
+;   Game initialize (everything already loaded in)
+GameInit PROC EXPORT Continue:BPBool
+	mov UIState, UI_STATE_GAME
+	mov GameState, GAME_STATE_GAME
+	mov deltaScale, FLT_1
+	mov UIFadeCallback, 0
+	
 	call Plr_Create
 	print "Finished game object initialization.", 13, 10
 	
-	.IF !(rv(Settings_LoadGame))
-		; If no save game is present start intro sequence
+	.IF (Continue)
+		call Settings_LoadGame
+		call GameStart
+		mov UIFade, UI_FADE_IN
+		mov UIFadeVal, FLT_1
+	.ELSE
 		mov PlrState, PLAYER_STATE_INTRO_DARK
 		mov MazeState, MAZE_STATE_SAFE
-	.ELSE
-		call GameStart
+		mov UIFade, UI_FADE_NONE
+		mov UIFadeVal, 0
 	.ENDIF
 	call CreateScene
 	
@@ -474,6 +508,7 @@ GameInit PROC EXPORT
 GameInit ENDP
 
 GameStart PROC EXPORT
+	mov PlrCanControl, TRUE
 	mov PlrStateCallback, 0
 	bpMEM32 CamBaseFOV, f(75)
 	
@@ -1246,7 +1281,10 @@ OnRender PROC EXPORT
 		ret
 	.ELSEIF (LoadState == LOADING_FINISHED)
 		mov LoadState, LOADING_TEXT
-		call GameInit
+		call Settings_CheckSave
+		mov HasSave, al
+		mov PlrCanControl, FALSE
+		;call GameInit
 	.ENDIF
 	
 	; Processing
@@ -1378,7 +1416,7 @@ start:
 	
 	; Set FPU precision mode to single precision
 	invoke fpuSetPrecision, FPU_PRECISION_REAL4
-	;invoke fpuSetInterrupt, FPU_EXCEPTION_INVALID
+	invoke fpuSetInterrupt, FPU_EXCEPTION_INVALID
 	
 	; Randomize nRand random generation
 	call nRandomize

@@ -117,6 +117,38 @@ SettingsRegistry HKEY ?	; Default registry key
 .CODE
 Settings_SetOption PROTO :BPPtr
 
+Settings_CheckSave PROC EXPORT
+	IFDEF SAVEGAME_REG
+	LOCAL pcbData:DWORD, pcbVal:DWORD
+	
+	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \
+	REG_OPTION_NON_VOLATILE, KEY_READ, NULL, ADDR SettingsRegistry, NULL
+	.IF (eax != ERROR_SUCCESS)
+		print "Failed to create registry key.", 13, 10
+		xor pax, pax
+		ret
+	.ENDIF
+	print "Checking game save from "
+	print ADDR SettingsRegPath, 13, 10
+	
+	mov pcbData, 4
+	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCurLayer, 0, \
+	NULL, ADDR pcbVal, ADDR pcbData
+	.IF (eax != ERROR_SUCCESS)	; Load temporary progress
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegLayer, 0, \
+		NULL, ADDR pcbVal, ADDR pcbData
+		.IF (eax != ERROR_SUCCESS)
+			invoke RegCloseKey, SettingsRegistry
+			xor pax, pax
+			ret
+		.ENDIF
+	.ENDIF
+	
+	mov pax, 1
+	ENDIF
+	ret
+Settings_CheckSave ENDP
+
 Settings_EraseSave PROC EXPORT Temporary:BPBool
 	IFDEF SAVEGAME_REG
 	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \

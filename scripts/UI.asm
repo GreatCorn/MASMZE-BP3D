@@ -71,7 +71,7 @@ IFDEF MODE_DEBUG
 UIDebug			BPBool FALSE
 ENDIF
 
-UIState			DWORD UI_STATE_GAME
+UIState			DWORD UI_STATE_MENU_MAIN
 
 UIBinding		BPEnum BIND_NONE
 UIBindAction	BPPtr 0
@@ -107,6 +107,9 @@ UIFocusPrev			BYTE 0
 UIFocusBeforePopup	BYTE 0
 UIFocusType			BPEnum UI_NONE
 UIPressed			BYTE 0
+
+UIMenuSplash		BPEnum 0
+UIMenuSplashTimer	REAL4 0.0
 
 UIMove				SDWORD 0
 UIPopupMenu			DWORD 0
@@ -168,10 +171,17 @@ UI_DrawDebug PROC EXPORT
 	call glLoadIdentity
 	RenderText "FPS: ", 16, 8
 	RenderText str$(FPS), 72, 8
-	RenderText real4$(CamPos.X), 16, 32
-	RenderText real4$(CamPos.Y), 112, 32
-	RenderText real4$(CamPos.Z), 208, 32
-	RenderText real4$(CamRot.Y), 304, 32
+	.IF (Keys[VK_SHIFT])
+		RenderText real4$(CamPosL.X), 16, 32
+		RenderText real4$(CamPosL.Y), 112, 32
+		RenderText real4$(CamPosL.Z), 208, 32
+		RenderText real4$(CamRotL.Y), 304, 32
+	.ELSE
+		RenderText real4$(CamPos.X), 16, 32
+		RenderText real4$(CamPos.Y), 112, 32
+		RenderText real4$(CamPos.Z), 208, 32
+		RenderText real4$(CamRot.Y), 304, 32
+	.ENDIF
 	RenderText real4$(PlrSpeed), 16, 56
 	RenderText real4$(PlrSpeedScaled), 112, 56
 	RenderText real4$(PlrHealth), 16, 80
@@ -1214,6 +1224,79 @@ UI_DrawFullscreen PROC EXPORT Alpha:REAL4
 	ret
 UI_DrawFullscreen ENDP
 
+UI_DrawMenuMain PROC EXPORT
+	UI_MENU_MAIN_HEIGHT	EQU 16*UI_SCALE + UI_BTN_H*5 + UI_BTN_M*5 + UI_HR_H
+	mov ebx, ScreenHalf.Y
+	sub ebx, UI_MENU_MAIN_HEIGHT/2
+	
+	FontSize 8, 16
+	invoke UI_Text, ADDR AppName, ScreenHalf.X, ebx, BP_ALIGN_CENTER, 0
+	add ebx, 16*UI_SCALE
+	
+	invoke UI_HR, UIXFrom, ebx
+	add ebx, UI_HR_H
+	
+	FontSize 4, 8
+	.IF !(HasSave)
+		mov UIDisabled, TRUE
+	.ENDIF
+	invoke UI_Button, StrMenuContinue, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		mov UIFade, UI_FADE_OUT
+		mov UIFadeCallback, OFFSET uiMenuContinue
+		mov UIFadeVal, 0
+		mov deltaScale, 0
+		mov UIState, UI_STATE_FADING
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Button, StrMenuNewGame, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		mov UIFade, UI_FADE_OUT
+		mov UIFadeCallback, OFFSET uiMenuNew
+		mov UIFadeVal, 0
+		mov deltaScale, 0
+		mov UIState, UI_STATE_FADING
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Button, StrMenuMultiplayer, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		mov UIState, UI_STATE_MENU_MULTIPLAYER
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Button, StrMenuSettings, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		mov UIState, UI_STATE_MENU_SETTINGS
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Button, StrMenuQuit, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+	.IF (al)
+		mov UIFade, UI_FADE_OUT
+		mov UIFadeCallback, OFFSET uiMenuExit
+		mov UIFadeVal, 0
+		mov deltaScale, 0
+		mov UIState, UI_STATE_FADING
+		call UI_HandleMenuEscape
+	.ENDIF
+	
+	ret
+	uiMenuContinue:
+		invoke alSourceStop, SndMus[20]
+		vinvoke GameInit, TRUE
+		ret
+	uiMenuNew:
+		invoke alSourceStop, SndMus[20]
+		vinvoke GameInit, FALSE
+		ret
+	uiMenuExit:
+		invoke bpDestroyForm, ADDR FMain
+		mov UIFadeCallback, 0
+		ret
+UI_DrawMenuMain ENDP
+
 UI_DrawMenuMultiplayer PROC EXPORT
 	UI_MENU_MULTIPLAYER_HEIGHT	EQU UI_EDIT_H*3 + UI_BTN_H*3 + UI_BTN_M*2 + \
 	UI_HR_H*2
@@ -1259,7 +1342,7 @@ UI_DrawMenuMultiplayer PROC EXPORT
 UI_DrawMenuMultiplayer ENDP
 
 UI_DrawMenuPause PROC EXPORT
-	UI_MENU_PAUSE_HEIGHT	EQU UI_BTN_H*5 + UI_BTN_M*4
+	UI_MENU_PAUSE_HEIGHT	EQU UI_BTN_H*4 + UI_BTN_M*3
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_PAUSE_HEIGHT/2
 	
@@ -1269,12 +1352,6 @@ UI_DrawMenuPause PROC EXPORT
 	invoke UI_Button, StrMenuResume, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
 		call UI_HandleMenuEscape
-	.ENDIF
-	add ebx, UI_BTN_H + UI_BTN_M
-	
-	invoke UI_Button, StrMenuMultiplayer, ScreenHalf.X, ebx, BP_ALIGN_CENTER
-	.IF (al)
-		mov UIState, UI_STATE_MENU_MULTIPLAYER
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
@@ -2028,8 +2105,8 @@ UI_DrawPopupMenu PROC EXPORT
 			
 			mov UISmallButtons, TRUE
 			mov edx, ScreenHalf.X
-			sub edx, UIPP_CANCEL_W/2 - UI_BTN_M*2
-			invoke UI_Button, StrMenuCancel, edx, ebx, BP_ALIGN_LEFT
+			sub edx, UI_BTN_WS + UI_BTN_M
+			invoke UI_Button, StrMenuCancel, edx, ebx, BP_ALIGN_CENTER
 			.IF (al)
 				call UI_HandleMenuEscape
 			.ENDIF
@@ -2049,8 +2126,8 @@ UI_DrawPopupMenu PROC EXPORT
 			.ENDIF
 			
 			mov edx, ScreenHalf.X
-			add edx, UI_BTN_WS/2 + UI_BTN_M
-			invoke UI_Button, StrMenuSave, edx, ebx, BP_ALIGN_LEFT
+			add edx, UI_BTN_WS + UI_BTN_M
+			invoke UI_Button, StrMenuSave, edx, ebx, BP_ALIGN_CENTER
 			.IF (al)
 				.IF (UIState == UI_STATE_MENU_SETTINGS_GRAPHICS)
 					lea pax, SettingsIniGraphics
@@ -2182,7 +2259,11 @@ UI_HandleMenuEscape PROC EXPORT
 			mov UIState, UI_STATE_MENU_SETTINGS
 		.ENDIF
 	.ELSEIF (UIState >= UI_STATE_MENU_REALLY_EXIT)
-		mov UIState, UI_STATE_MENU_PAUSE
+		.IF (GameState == GAME_STATE_MENU)
+			mov UIState, UI_STATE_MENU_MAIN		
+		.ELSE
+			mov UIState, UI_STATE_MENU_PAUSE
+		.ENDIF
 	.ELSEIF (UIState == UI_STATE_MENU_PAUSE)
 		vinvoke PauseGame, FALSE
 		invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
@@ -2190,6 +2271,12 @@ UI_HandleMenuEscape PROC EXPORT
 		invoke Vector2Copy, ADDR bpMouseScreenPrev, ADDR FMain.ScreenCnt
 		
 		mov UIState, UI_STATE_GAME
+	.ELSEIF (UIState == UI_STATE_MENU_MAIN)
+		.IF (UIMenuSplash < 2)
+			mov UIMenuSplashTimer, FLT_NEG
+			mov UIFade, UI_FADE_OUT
+			mov UIFadeVal, FLT_1
+		.ENDIF
 	.ENDIF
 	ret
 UI_HandleMenuEscape ENDP
@@ -2440,6 +2527,33 @@ UI_Draw PROC EXPORT
 		jmp uiFinish
 	.ENDIF
 	
+	; Splash screens
+	.IF (UIState == UI_STATE_MENU_MAIN) && (UIMenuSplash < 2)
+		invoke glClear, GL_COLOR_BUFFER_BIT
+		.IF (UIMenuSplash == 0)
+			invoke glBindTexture, GL_TEXTURE_2D, TexLogo[0]
+			mov ecx, FMain.ScreenSize.y
+			sub ecx, 142
+			shr ecx, 1
+			push 142
+		.ELSE
+			invoke glBindTexture, GL_TEXTURE_2D, TexLogo[4]
+			mov ecx, FMain.ScreenSize.y
+			sub ecx, 114
+			shr ecx, 1
+			push 114
+		.ENDIF
+		mov eax, FMain.ScreenSize.x
+		sub eax, 512
+		shr eax, 1
+		invoke glTranslatei, eax, ecx, 0
+		pop pax
+		invoke glScalei, 512, eax, 1
+		invoke glCallList, ScreenQuad
+		
+		jmp uiFinish
+	.ENDIF
+	
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	
 	; Menu background darkening frame
@@ -2562,6 +2676,8 @@ UI_Draw PROC EXPORT
 	SWITCH UIState
 		CASE UI_STATE_MENU_PAUSE
 			call UI_DrawMenuPause
+		CASE UI_STATE_MENU_MAIN
+			call UI_DrawMenuMain
 		CASE UI_STATE_MENU_MULTIPLAYER
 			call UI_DrawMenuMultiplayer
 		CASE UI_STATE_MENU_SETTINGS
@@ -2591,12 +2707,28 @@ UI_Draw PROC EXPORT
 	ENDIF
 	
 	uiFinish:
-	invoke glEnable, GL_LIGHTING
-	invoke glEnable, GL_DEPTH_TEST
-	invoke glDepthMask, GL_TRUE
-	.IF (SettingsGraphicsMSAA)
-		invoke glEnable, GL_MULTISAMPLE
-	.ENDIF
+		; UI menu splash fucking bruhh
+		.IF (UIState == UI_STATE_MENU_MAIN) && (UIMenuSplash < 3)
+			; Fade
+			.IF (UIFadeDisp)
+				call glPushMatrix
+				invoke glEnable, GL_BLEND
+				invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+				invoke glBindTexture, GL_TEXTURE_2D, 0
+				invoke glColor4f, 0, 0, 0, UIFadeDisp
+				invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
+				invoke glCallList, ScreenQuad
+				invoke glDisable, GL_BLEND
+				call glPopMatrix
+			.ENDIF
+		.ENDIF
+		
+		invoke glEnable, GL_LIGHTING
+		invoke glEnable, GL_DEPTH_TEST
+		invoke glDepthMask, GL_TRUE
+		.IF (SettingsGraphicsMSAA)
+			invoke glEnable, GL_MULTISAMPLE
+		.ENDIF
 	ret
 UI_Draw ENDP
 
@@ -2618,6 +2750,12 @@ UI_Process PROC EXPORT
 		.ENDIF
 	.ELSEIF (UIFade == UI_FADE_OUT)
 		.IF (UIState == UI_STATE_FADING)
+			.IF (GameState == GAME_STATE_MENU)
+				fld deltaUnscaled
+				fmul f(2)
+				fstp flVal
+				invoke SndFade, SndMus[20], 0, flVal
+			.ENDIF
 			mov eax, deltaUnscaled
 		.ELSE
 			mov eax, deltaTime
@@ -2662,7 +2800,23 @@ UI_Process PROC EXPORT
 	
 	
 	; Do menu stuff
-	.IF (UIState != UI_STATE_GAME)
+	.IF (UIState == UI_STATE_MENU_MAIN) && (UIMenuSplash < 2)
+		.IF !(UIMenuSplashTimer)
+			mov UIFade, UI_FADE_IN
+			mov UIFadeCallback, 0
+			mov UIFadeVal, FLT_1
+			mov UIFadeDisp, FLT_1
+			
+			bpMEM32 UIMenuSplashTimer, f(2)
+		.ELSEIF (UIMenuSplashTimer & FLT_NEG) && (UIFade == UI_FADE_NONE)
+			mov UIFade, UI_FADE_OUT
+			mov UIFadeCallback, OFFSET uiMenuLogoFade
+		.ENDIF
+		
+		fld UIMenuSplashTimer
+		fsub deltaUnscaled
+		fstp UIMenuSplashTimer
+	.ELSEIF (UIState != UI_STATE_GAME)
 		.IF (UIFocusType == UI_BUTTON_SMALL)	; Small button func shit
 			.IF (UIMove == 1)
 				mov InputUIDown, TRUE
@@ -2788,4 +2942,18 @@ UI_Process PROC EXPORT
 		.ENDIF
 	.ENDIF
 	ret
+	
+	uiMenuLogoFade:
+		mov UIMenuSplashTimer, 0
+		inc UIMenuSplash
+		.IF (UIMenuSplash == 2)
+			mov UIFade, UI_FADE_IN
+			mov UIFadeCallback, OFFSET uiMenuLogoFade
+			mov UIFadeVal, FLT_1
+			
+			invoke alSourcePlay, SndMus[20]
+		.ELSEIF (UIMenuSplash == 3)
+			mov UIFadeCallback, 0
+		.ENDIF
+		ret
 UI_Process ENDP
