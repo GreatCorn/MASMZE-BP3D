@@ -14,6 +14,7 @@ ENDIF
 include ..\BoilPlate3D\src\BP3D.asm
 
 IFDEF BP_COMPATIBILITY_W9X
+	ECHO Compiling MASMZE-BP3D with W9X compatibility flag.
 	MOUSE_RAW EQU 0
 	JOYSTICK_RAW EQU BP_IF_JOYSTICK
 ELSE
@@ -357,6 +358,8 @@ InputUIConfirmT			BPPtr FALSE
 ClearBuffers	BPBool TRUE
 FogDensity		REAL4 0.5
 
+PollProc		BPPtr 0
+
 ENUM	\
 		GAME_STATE_MENU, \
 		GAME_STATE_GAME, \
@@ -479,26 +482,14 @@ FixedScene PROC EXPORT
 FixedScene ENDP
 
 ;   Game initialize (everything already loaded in)
-GameInit PROC EXPORT Continue:BPBool
+GameInit PROC EXPORT
 	mov UIState, UI_STATE_GAME
-	mov GameState, GAME_STATE_GAME
 	mov deltaScale, FLT_1
 	mov UIFadeCallback, 0
 	
 	call Plr_Create
 	print "Finished game object initialization.", 13, 10
 	
-	.IF (Continue)
-		call Settings_LoadGame
-		call GameStart
-		mov UIFade, UI_FADE_IN
-		mov UIFadeVal, FLT_1
-	.ELSE
-		mov PlrState, PLAYER_STATE_INTRO_DARK
-		mov MazeState, MAZE_STATE_SAFE
-		mov UIFade, UI_FADE_NONE
-		mov UIFadeVal, 0
-	.ENDIF
 	call CreateScene
 	
 	bpMEM32 ListParticle, MdlParticle
@@ -521,7 +512,7 @@ GameStart PROC EXPORT
 	.IF (MazeCheck)
 		invoke alSourcePlay, SndMus[8]
 		invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
-		call UI_ShowLayerPopup
+		invoke UI_ShowTextPopup, StrLayerNumber, UISubDur
 		
 		mov UIFadeVal, FLT_1
 		mov UIFade, UI_FADE_IN
@@ -536,9 +527,10 @@ GameStart PROC EXPORT
 		mov PlrState, PLAYER_STATE_ENTER
 	.ELSE
 		mov PlrState, PLAYER_STATE_GAME
+		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamWalk
 		.IF (MazeCheck)
 			invoke Vector3Set, ADDR MazeCheckPos, 0, 0, 0
-			invoke Vector3Set, ADDR MazeDoorPos, f(1), CamHeight, f(6)
+			invoke Vector3Set, ADDR MazeDoorPos, f(1), CamHeight, f(5)
 			invoke Vector3Set, ADDR MazeCheckErasePos, f(1), f(1.5), f(0.5)
 			invoke Vector3Copy, ADDR MazeCheckErasePosL, ADDR MazeCheckErasePos
 			bpMEM32 CamPosL.Y, CamHeight
@@ -551,6 +543,18 @@ GameStart PROC EXPORT
 	.ENDIF
 	ret
 GameStart ENDP
+
+GameStartNew PROC EXPORT
+	invoke alSourceStop, SndMus[20]
+	call GameInit
+	mov PlrState, PLAYER_STATE_INTRO_DARK
+	mov MazeState, MAZE_STATE_SAFE
+	mov MazeLayer, 1
+	mov UIFade, UI_FADE_NONE
+	mov UIFadeVal, 0
+	mov GameState, GAME_STATE_GAME
+	ret
+GameStartNew ENDP
 
 GPadInput PROC EXPORT InType:BPEnum, InStruct:BPPtr, Input:BPPtr, \
 ValPtr:BPPtr	
@@ -802,6 +806,44 @@ InitNetwork PROC EXPORT
 	ret
 InitNetwork ENDP
 
+MenuInit PROC EXPORT
+	mov LoadState, LOADING_TEXT
+	call Settings_CheckSave
+	mov HasSave, al
+	mov PlrCanControl, FALSE
+	invoke Vector3Copy, ADDR CamPos, ADDR Vector3Zero
+	invoke Vector3Copy, ADDR CamPosL, ADDR Vector3Zero
+	invoke Vector3Copy, ADDR CamRot, ADDR Vector3Zero
+	invoke Vector3Copy, ADDR CamRotL, ADDR Vector3Zero
+	
+	mov deltaScale, FLT_1
+	
+	mov GameState, GAME_STATE_MENU
+	
+	mov UIState, UI_STATE_MENU_MAIN
+	
+	.IF (UIMenuSplash >= 2)
+		.IF (rv(SndPlaying, SndMus[20]) != AL_PLAYING)
+			invoke alSourcePlay, SndMus[20]
+		.ENDIF
+		mov UIMenuSplash, 2
+		mov UIFade, UI_FADE_IN
+		mov UIFadeCallback, 0
+		mov UIFadeVal, FLT_1
+	.ENDIF
+	
+	invoke alSourcef, SndMus[20], AL_GAIN, f(1)
+	
+	call Maze_ResetEntities
+	.IF (Maze)
+		call Maze_Free
+	.ENDIF
+	mov MazeCheck, 0
+	
+	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_VISIBLE
+	ret
+MenuInit ENDP
+
 PauseGame PROC EXPORT Paused:BPBool
 	.IF (Paused) && !(NetSock)
 		mov deltaScale, 0
@@ -1021,7 +1063,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 						inc MazeLayer
 					.ENDIF
 					invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
-					call UI_ShowLayerPopup
+					invoke UI_ShowTextPopup, StrLayerNumber, UISubDur
 					
 				CASE VK_OEM_MINUS
 					.IF (Keys[VK_SHIFT])
@@ -1030,7 +1072,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 						dec MazeLayer
 					.ENDIF
 					invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
-					call UI_ShowLayerPopup
+					invoke UI_ShowTextPopup, StrLayerNumber, UISubDur
 
 				CASE VK_F3
 					not UIDebug
@@ -1217,6 +1259,11 @@ OnInput ENDP
 OnRender PROC EXPORT
 	LOCAL v3Val:Vector3
 	
+	.IF (PollProc)
+		call PollProc
+		mov PollProc, 0
+	.ENDIF
+	
 	fld deltaTime
 	fmul f(2)
 	fst delta2
@@ -1280,16 +1327,13 @@ OnRender PROC EXPORT
 		call glFlush
 		ret
 	.ELSEIF (LoadState == LOADING_FINISHED)
-		mov LoadState, LOADING_TEXT
-		call Settings_CheckSave
-		mov HasSave, al
-		mov PlrCanControl, FALSE
+		call MenuInit
 		;call GameInit
 	.ENDIF
 	
 	; Processing
 	call UI_Process
-	.IF (deltaScale)
+	.IF (deltaTime)
 		call ProcessScene
 	.ENDIF
 	
@@ -1416,7 +1460,10 @@ start:
 	
 	; Set FPU precision mode to single precision
 	invoke fpuSetPrecision, FPU_PRECISION_REAL4
+	; Helps detect cases with 1.#INF00 and such (doesn't help tracing them tho)
+	IFDEF MODE_DEBUG
 	invoke fpuSetInterrupt, FPU_EXCEPTION_INVALID
+	ENDIF
 	
 	; Randomize nRand random generation
 	call nRandomize

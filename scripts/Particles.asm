@@ -139,16 +139,11 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		mov pcx, ParSysPtr
 		.IF ([pcx].Billboard)
 			.IF ([pcx].Billboard & PARTICLE_BILLBOARD_Y)
-				fld CamRotL.Y
-				fadd PI
-				fstp Alpha
-				vinvoke glRotatefr, Alpha, 0, f(1), 0
+				vinvoke glRotatef, CamBillboard.Y, 0, f(1), 0
 				mov pcx, ParSysPtr
 			.ENDIF
 			.IF ([pcx].Billboard & PARTICLE_BILLBOARD_X)
-				mov eax, CamRotL.X
-				xor eax, FLT_NEG
-				vinvoke glRotatefr, eax, f(1), 0, 0
+				vinvoke glRotatef, CamBillboard.X, f(1), 0, 0
 			.ENDIF
 			invoke glRotatefr, [pbx].Rotation, 0, 0, f(1)
 		.ELSE

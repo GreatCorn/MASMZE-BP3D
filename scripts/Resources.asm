@@ -505,6 +505,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexFloorLinoleum,"assets\textures\floorLinoleum.bpt"
 		LoadBPT OFFSET TexFloorParquet,	"assets\textures\floorParquet.bpt"
 		LoadBPT OFFSET TexGamma,		"assets\textures\gamma.bpt"
+		mov bpTextureClamp, TRUE
 		LoadBPT OFFSET TexGlyph[0],		"assets\textures\glyph1.bpt"
 		LoadBPT OFFSET TexGlyph[4],		"assets\textures\glyph2.bpt"
 		LoadBPT OFFSET TexGlyph[8],		"assets\textures\glyph3.bpt"
@@ -512,6 +513,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexGlyph[16],	"assets\textures\glyph5.bpt"
 		LoadBPT OFFSET TexGlyph[20],	"assets\textures\glyph6.bpt"
 		LoadBPT OFFSET TexGlyph[24],	"assets\textures\glyph7.bpt"
+		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexGlyphs,		"assets\textures\glyphs.bpt"
 		LoadBPT OFFSET TexHBD,			"assets\textures\hbd.bpt"
 		LoadBPT OFFSET TexKey,			"assets\textures\key.bpt"
@@ -553,9 +555,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexTaburetka,	"assets\textures\taburetka.bpt"
 		LoadBPT OFFSET TexTileBig,		"assets\textures\tileBig.bpt"
 		LoadBPT OFFSET TexTilefloor,	"assets\textures\tilefloor.bpt"
+		mov bpTextureClamp, TRUE
 		LoadBPT OFFSET TexTone,			"assets\textures\tone.bpt"
-		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP
-		invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP
+		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexTree,			"assets\textures\tree.bpt"
 		LoadBPT OFFSET TexTutorial,		"assets\textures\tutorial.bpt"
 		LoadBPT OFFSET TexTutorialJ,	"assets\textures\tutorialJ.bpt"
@@ -905,6 +907,19 @@ IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD, Terminate:BPBool
 	pop ebx
 	ret
 IntToStr ENDP
+
+StrBlank PROC EXPORT StrPtr:BPPtr
+	mov pax, StrPtr
+	.WHILE (BYTE PTR [pax])
+		.IF (BYTE PTR [pax] != 32) && (BYTE PTR [pax] != 9)
+			xor pax, pax
+			ret
+		.ENDIF
+		inc pax
+	.ENDW
+	mov pax, TRUE
+	ret
+StrBlank ENDP
 
 StrLength PROC EXPORT StrPtr:BPPtr
 	IFDEF strlen

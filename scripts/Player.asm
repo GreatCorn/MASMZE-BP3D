@@ -46,6 +46,7 @@ PlrSpeed		REAL4 0.0	; Current absolute player speed
 PlrSpeedScaled	REAL4 0.0	; Current scaled player speed (0.0 - PlrSpeedWalk)
 
 CamAnimPlr		BPAnimPlayer <>
+CamBillboard	Vector2 <>
 CamPosA			Vector3 <>
 CamRotA			Vector3 <>
 
@@ -772,11 +773,11 @@ Plr_Create PROC EXPORT
 Plr_Create ENDP
 
 Plr_Draw PROC EXPORT
-	.IF (PlrItems & MAZE_ITEM_COMPASS) || (PlrItems & MAZE_ITEM_MAP)
-		call Plr_DrawCompassMap
-	.ENDIF
 	.IF (PlrGlyphsInMaze)
 		call Plr_DrawGlyphs
+	.ENDIF
+	.IF (PlrItems & MAZE_ITEM_COMPASS) || (PlrItems & MAZE_ITEM_MAP)
+		call Plr_DrawCompassMap
 	.ENDIF
 	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
 	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
@@ -799,6 +800,16 @@ Plr_Process PROC EXPORT
 	fstp PlrRight.X
 	fst PlrForward.X
 	fstp PlrRight.Z
+	
+	; Get billboard
+	fld CamRotL.X
+	fmul R2D
+	fchs
+	fstp CamBillboard.X
+	fld CamRotL.Y
+	fadd PI
+	fmul R2D
+	fstp CamBillboard.Y
 	
 	; Move & rotate
 	.IF (PlrCanControl)

@@ -458,18 +458,15 @@ Maze_DrawCheck PROC EXPORT
 	invoke glCallList, MdlParticle
 	call glPopMatrix
 	
+	; Draw erase flare or Motrya
 	call glPushMatrix
-	.IF (MazeCheck == MAZE_CHECK_SAVED)
+	.IF (MazeCheck == MAZE_CHECK_SAVED) && (GameState != GAME_STATE_LOBBY)
 		invoke glTranslate3fv, ADDR MazeCheckErasePosL
 		fld CamRotL.Y
-		fadd PI
-		fst v3Val.X
 		fmul f(2)
 		fstp v3Val.Y
-		vinvoke glRotatefr, v3Val.X, 0, f(1), 0
-		mov eax, CamRotL.X
-		xor eax, FLT_NEG
-		vinvoke glRotatefr, eax, f(1), 0, 0
+		vinvoke glRotatef, CamBillboard.Y, 0, f(1), 0
+		vinvoke glRotatef, CamBillboard.X, f(1), 0, 0
 		vinvoke glRotatefr, v3Val.Y, 0, 0, f(1)
 		invoke glDisable, GL_DEPTH_TEST
 		invoke flRandRange, f(0.8), f(1)
@@ -730,7 +727,7 @@ Maze_Finish PROC EXPORT
 	
 	; Change layer string
 	invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
-	call UI_ShowLayerPopup
+	vinvoke UI_ShowTextPopup, StrLayerNumber, UISubDur
 	
 	; Set door world position
 	fild MazeSize[8]
@@ -2176,6 +2173,7 @@ Maze_Draw PROC EXPORT
 		fstp REAL4 PTR [psp]
 		mov REAL4 PTR [psp+4], 0
 		fld MazeDoorPos.Z
+		fadd f(1)
 		fstp REAL4 PTR [psp+8]
 		call glTranslatef
 		invoke glBindTexture, GL_TEXTURE_2D, MazeCurFloor
@@ -2242,7 +2240,8 @@ Maze_Fixed PROC EXPORT
 		mov flVal,vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET MazeDoorPos)
 		fcmp flVal, f(0.7)
 		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)
-			.IF (MazeLayer == 21) || (MazeLayer == 42) || (MazeLayer == 63)
+			.IF (MazeLayer == 21) || (MazeLayer == 42) || (MazeLayer == 63) \
+			|| (GameState == GAME_STATE_LOBBY)
 				.IF (MazeCheck == MAZE_CHECK_NONE)
 					bpMEM32 MazeCheckPos.X, MazeSize[8]
 					shl MazeCheckPos.X, 1	; *2
@@ -2455,6 +2454,9 @@ Maze_Process PROC EXPORT
 								UISubDur
 							.ENDIF
 							
+							.IF (MazeCrevice)
+								mov MazeCrevice, 1
+							.ENDIF
 							mov MazeTeleport, FALSE
 						.ENDIF
 					.ENDIF
@@ -2596,7 +2598,7 @@ Maze_Process PROC EXPORT
 					mov MazeCheck, MAZE_CHECK_SAVED
 					mov MazeStateTimer, FLT_1
 					mov MazeDoorRot, 0
-					invoke Vector32DSet, ADDR MazeDoorPos, f(1), f(6)
+					invoke Vector32DSet, ADDR MazeDoorPos, f(1), f(5)
 					invoke Vector32DAdd, ADDR MazeDoorPos, ADDR MazeCheckPos
 					invoke Vector3Set, ADDR MazeCheckErasePos,f(1),f(1.5),f(0.5)
 					invoke Vector32DAdd,ADDR MazeCheckErasePos,ADDR MazeCheckPos

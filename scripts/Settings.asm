@@ -144,6 +144,10 @@ Settings_CheckSave PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
+	.IF (GameState == GAME_STATE_MENU)
+		invoke IntToStr, StrLayerNumPtr, pcbVal, TRUE
+	.ENDIF
+	
 	mov pax, 1
 	ENDIF
 	ret
@@ -781,9 +785,11 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 	print "Setting option: "
 	.IF (OptionPtr == OFFSET SettingsAudioVolume)
 		print "audio/volume", 13, 10
+		IFDEF AUDIO_OPENAL
 		.IF (AudioDevice)
 			invoke alListenerf, AL_GAIN, SettingsAudioVolume
 		.ENDIF
+		ENDIF
 		
 	.ELSEIF (OptionPtr == OFFSET SettingsControlsJoystick)
 		print "controls/joystick", 13, 10

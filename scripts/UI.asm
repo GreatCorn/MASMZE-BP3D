@@ -61,7 +61,9 @@ ENUM	UIPP_NONE, \
 		UIPP_EXIT, \
 		UIPP_DISCARD, \
 		UIPP_RESTART, \
-		UIPP_BIND
+		UIPP_BIND, \
+		UIPP_OVERWRITE, \
+		UIPP_CONNFAIL
 .CONST
 UISubDur	REAL4 2.0
 
@@ -126,9 +128,10 @@ UIXFrom				SDWORD 0
 
 UIDeadTipStr		BPPtr 0
 
-UILayerPopup		BPEnum UI_FADE_NONE
-UILayerPopupTimer	REAL4 0.0
-UILayerPopupY		REAL4 0.0
+UITextPopup			BPEnum UI_FADE_NONE
+UITextPopupTimer	REAL4 0.0
+UITextPopupY		REAL4 0.0
+UITextPopupStr		BPPtr 0
 
 UISubtitlesStr		BPPtr 0
 UISubtitlesTimer	REAL4 0.0
@@ -197,6 +200,7 @@ UI_DrawDebug PROC EXPORT
 	ENDIF
 	RenderText "FPU:", 16, 176
 	RenderText str$(rv(fpuGetStackTop)), 112, 176
+	RenderText str$(PlrState), 16, 200
 	
 	
 	pop bpFontHeight
@@ -1248,15 +1252,28 @@ UI_DrawMenuMain PROC EXPORT
 		mov deltaScale, 0
 		mov UIState, UI_STATE_FADING
 	.ENDIF
+	mov al, UIFocus
+	.IF (al == UIID)
+		mov UITextPopup, UI_FADE_IN
+		bpMEM32 UITextPopupTimer, f(0.1)
+		.IF (UITextPopup == UI_FADE_NONE)
+			bpMEM32 UITextPopupY, f(%(-UI_BTN_H - UI_BTN_M))
+		.ENDIF
+		bpMPM UITextPopupStr, StrLayerNumber
+	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke UI_Button, StrMenuNewGame, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
-		mov UIFade, UI_FADE_OUT
-		mov UIFadeCallback, OFFSET uiMenuNew
-		mov UIFadeVal, 0
-		mov deltaScale, 0
-		mov UIState, UI_STATE_FADING
+		.IF (HasSave)
+			mov UIPopupMenu, UIPP_OVERWRITE
+		.ELSE
+			mov UIFade, UI_FADE_OUT
+			mov UIFadeCallback, OFFSET GameStartNew
+			mov UIFadeVal, 0
+			mov deltaScale, 0
+			mov UIState, UI_STATE_FADING
+		.ENDIF
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
@@ -1285,11 +1302,12 @@ UI_DrawMenuMain PROC EXPORT
 	ret
 	uiMenuContinue:
 		invoke alSourceStop, SndMus[20]
-		vinvoke GameInit, TRUE
-		ret
-	uiMenuNew:
-		invoke alSourceStop, SndMus[20]
-		vinvoke GameInit, FALSE
+		call GameInit
+		call Settings_LoadGame
+		call GameStart
+		mov UIFade, UI_FADE_IN
+		mov UIFadeVal, FLT_1
+		mov GameState, GAME_STATE_GAME
 		ret
 	uiMenuExit:
 		invoke bpDestroyForm, ADDR FMain
@@ -1304,7 +1322,7 @@ UI_DrawMenuMultiplayer PROC EXPORT
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_MULTIPLAYER_HEIGHT/2
 	
-	invoke UI_Edit, ADDR NetPlayers.Username, ScreenHalf.X, ebx, \
+	invoke UI_Edit, ADDR NetPlayers[0].Username, ScreenHalf.X, ebx, \
 	SIZEOF NetPlayers.Username, FALSE, StrMenuUsername
 	add ebx, UI_EDIT_H
 	
@@ -1321,13 +1339,17 @@ UI_DrawMenuMultiplayer PROC EXPORT
 	
 	invoke UI_Button, StrMenuHost, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
-		invoke CreateThread, NULL, 0, OFFSET Net_Host, 0, 0, NULL
+		.IF !(rv(StrBlank, ADDR NetPlayers[0].Username))
+			invoke CreateThread, NULL, 0, OFFSET Net_Host, 0, 0, NULL
+		.ENDIF
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke UI_Button, StrMenuConnect, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
-		invoke CreateThread, NULL, 0, OFFSET Net_Connect, 0, 0, NULL
+		.IF !(rv(StrBlank, ADDR NetPlayers[0].Username))
+			invoke CreateThread, NULL, 0, OFFSET Net_Connect, 0, 0, NULL
+		.ENDIF
 	.ENDIF
 	add ebx, UI_BTN_H
 	
@@ -1343,6 +1365,7 @@ UI_DrawMenuMultiplayer ENDP
 
 UI_DrawMenuPause PROC EXPORT
 	UI_MENU_PAUSE_HEIGHT	EQU UI_BTN_H*4 + UI_BTN_M*3
+	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_PAUSE_HEIGHT/2
 	
@@ -1361,9 +1384,16 @@ UI_DrawMenuPause PROC EXPORT
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
-	invoke UI_Button, StrMenuQuit, ScreenHalf.X, ebx, BP_ALIGN_CENTER
-	.IF (al)
-		mov UIPopupMenu, UIPP_EXIT
+	.IF (NetSock)
+		invoke UI_Button, StrMenuDisconnect, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+		.IF (al)
+			call Net_Close
+		.ENDIF
+	.ELSE
+		invoke UI_Button, StrMenuQuit, ScreenHalf.X, ebx, BP_ALIGN_CENTER
+		.IF (al)
+			mov UIPopupMenu, UIPP_EXIT
+		.ENDIF
 	.ENDIF
 	ret
 UI_DrawMenuPause ENDP
@@ -2190,12 +2220,73 @@ UI_DrawPopupMenu PROC EXPORT
 			.IF (al)
 				call UI_HandleMenuEscape
 			.ENDIF
+	
+		CASE UIPP_OVERWRITE
+			mov UIComboboxCount, 2
+			
+			UIPP_OVERWRITE_H	EQU UI_TXT_H*3+UI_TXT_M + UI_HR_H
+			
+			mov ebx, ScreenHalf.Y
+			sub ebx, UIPP_OVERWRITE_H/2
+			add ebx, UI_BRD_M
+			
+			invoke UI_Text, StrMenuOverwrite, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, 0
+			add ebx, UI_TXT_H*3+UI_TXT_M
+			
+			invoke UI_HR, ScreenHalf.X, ebx
+			add ebx, UI_HR_H
+			
+			mov UISmallButtons, TRUE
+			mov edx, ScreenHalf.X
+			sub edx, UI_BTN_WS + UI_BTN_M/2
+			invoke UI_Button, StrMenuNo, edx, ebx, BP_ALIGN_LEFT
+			.IF (al)
+				call UI_HandleMenuEscape
+			.ENDIF
+			
+			mov edx, ScreenHalf.X
+			add edx, UI_BTN_M/2
+			invoke UI_Button, StrMenuYes, edx, ebx, BP_ALIGN_LEFT
+			.IF (al)
+				mov UIFade, UI_FADE_OUT
+				mov UIFadeCallback, OFFSET GameStartNew
+				mov UIFadeVal, 0
+				mov deltaScale, 0
+				mov UIState, UI_STATE_FADING
+				call UI_HandleMenuEscape
+			.ENDIF
+			mov UISmallButtons, FALSE
+			
+		CASE UIPP_CONNFAIL
+			mov UIComboboxCount, 1
+			
+			UIPP_CONNFAIL_H		EQU UI_TXT_H*2+UI_TXT_M + UI_BTN_H + UI_HR_H
+			
+			mov ebx, ScreenHalf.Y
+			sub ebx, UIPP_RESTART_H/2
+			add ebx, UI_BRD_M
+			
+			invoke UI_Text, StrMenuConnFail, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, 0
+			add ebx, UI_TXT_H*2+UI_TXT_M
+			
+			invoke UI_HR, ScreenHalf.X, ebx
+			add ebx, UI_HR_H
+			
+			invoke UI_Button, StrMenuOK, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER
+			.IF (al)
+				call UI_HandleMenuEscape
+			.ENDIF
+			
 	ENDSW
 	ret
 	
 	uiExitFaded:
-		invoke bpDestroyForm, ADDR FMain
-		mov UIFadeCallback, 0
+		;invoke bpDestroyForm, ADDR FMain
+		;mov UIFadeCallback, 0
+		call MenuInit
 		ret
 	ret
 UI_DrawPopupMenu ENDP
@@ -2239,6 +2330,7 @@ UI_HandleMenuEscape PROC EXPORT
 	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
 	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
 		call GameStart
+		mov UIFadeVal, FLT_1
 	.ELSEIF (MazeNote & 16)
 		bpMEM32 deltaScale, f(1)
 		mov MazeNote, 0
@@ -2311,18 +2403,19 @@ UI_MouseFocus PROC EXPORT X:SDWORD, Y:SDWORD, ID:BYTE
 	ret
 UI_MouseFocus ENDP
 
-UI_ShowLayerPopup PROC EXPORT
-	mov UILayerPopup, UI_FADE_IN
-	bpMEM32 UILayerPopupTimer, f(2)
-	bpMEM32 UILayerPopupY, f(%(-UI_BTN_H - UI_BTN_M))
-	ret
-UI_ShowLayerPopup ENDP
-
 UI_ShowSubtitles PROC EXPORT String:BPPtr, Duration:REAL4
 	bpMPM UISubtitlesStr, String
 	bpMEM32 UISubtitlesTimer, Duration
 	ret
 UI_ShowSubtitles ENDP
+
+UI_ShowTextPopup PROC EXPORT StrPtr:BPPtr, Duration:REAL4
+	mov UITextPopup, UI_FADE_IN
+	bpMEM32 UITextPopupTimer, Duration
+	bpMEM32 UITextPopupY, f(%(-UI_BTN_H - UI_BTN_M))
+	bpMPM UITextPopupStr, StrPtr
+	ret
+UI_ShowTextPopup ENDP
 
 
 
@@ -2650,16 +2743,18 @@ UI_Draw PROC EXPORT
 		ENDSW
 	.ENDIF
 	
-	; Layer popup
-	.IF ((UILayerPopup) || (UIState == UI_STATE_MENU_PAUSE)) && !(MazeNote & 16)
+	; Text popup
+	.IF ((UITextPopup) || (UIState == UI_STATE_MENU_PAUSE)) && !(MazeNote & 16)\
+	&& (UITextPopupStr)
 		call glPushMatrix
-		.IF (UIState == UI_STATE_MENU_PAUSE)
+		mov pax, UITextPopupStr
+		.IF (UIState == UI_STATE_MENU_PAUSE) && (pax == StrLayerNumber)
 			mov eax, f(%(UI_BTN_M))
 		.ELSE
-			mov eax, UILayerPopupY
+			mov eax, UITextPopupY
 		.ENDIF
 		invoke glTranslatef, f(%(UI_BTN_M)), eax, 0
-		invoke UI_Text, StrLayerNumber, 0, 0, 0, 0
+		invoke UI_Text, UITextPopupStr, 0, 0, 0, 0
 		call glPopMatrix
 	.ENDIF
 	mov UIShadow, FALSE
@@ -2776,24 +2871,24 @@ UI_Process PROC EXPORT
 	fstp UIFadeDisp
 	
 	; Layer popup (at the start of layer)
-	.IF (UILayerPopup)
-		.IF (UILayerPopup == UI_FADE_IN)
-			mov UILayerPopupY, rv(flLerp, UILayerPopupY, f(%UI_BTN_M), delta10)
-		.ELSEIF (UILayerPopup == UI_FADE_OUT)
-			mov UILayerPopupY, rv(flLerp, UILayerPopupY, f(%(-UI_BTN_H-UI_BTN_M)), delta10)
+	.IF (UITextPopup)
+		.IF (UITextPopup == UI_FADE_IN)
+			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%UI_BTN_M), delta10)
+		.ELSEIF (UITextPopup == UI_FADE_OUT)
+			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%(-UI_BTN_H-UI_BTN_M)), delta10)
 		.ENDIF
 		
-		fld UILayerPopupTimer
+		fld UITextPopupTimer
 		fsub deltaTime
-		fstp UILayerPopupTimer
+		fstp UITextPopupTimer
 		
-		mov eax, UILayerPopupTimer
+		mov eax, UITextPopupTimer
 		.IF (eax & FLT_NEG)
-			.IF (UILayerPopup == UI_FADE_OUT)
-				mov UILayerPopup, UI_FADE_NONE
+			.IF (UITextPopup == UI_FADE_OUT)
+				mov UITextPopup, UI_FADE_NONE
 			.ELSE
-				inc UILayerPopup
-				bpMEM32 UILayerPopupTimer, f(2)
+				inc UITextPopup
+				bpMEM32 UITextPopupTimer, f(2)
 			.ENDIF
 		.ENDIF
 	.ENDIF

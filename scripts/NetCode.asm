@@ -10,9 +10,10 @@ Net_Close PROC EXPORT
 		mov NetPlayersCount, 0
 		call Net_PlayersClear
 	.ENDIF
-	.IF (UIState >= UI_STATE_MENU_PAUSE)
-		vinvoke PauseGame, TRUE
-	.ENDIF
+	;.IF (UIState >= UI_STATE_MENU_PAUSE)
+	;	vinvoke PauseGame, TRUE
+	;.ENDIF
+	call MenuInit
 	ret
 Net_Close ENDP
 
@@ -41,17 +42,43 @@ Net_Connect PROC EXPORT lpVoid:LPVOID
 	invoke connect, NetSock, ADDR servAddr, SIZEOF sockaddr_in
 	.IF (pax == SOCKET_ERROR)
 		print "Connecting socket failed.", 13, 10
+		mov UIPopupMenu, UIPP_CONNFAIL
 		ret
 	.ENDIF
 	
 	mov NetHosting, FALSE
-	.IF (UIState >= UI_STATE_MENU_PAUSE)
-		vinvoke PauseGame, FALSE
-	.ENDIF
+	;.IF (UIState >= UI_STATE_MENU_PAUSE)
+	;	vinvoke PauseGame, FALSE
+	;.ENDIF
+	
+	call Net_LobbyInit
 	
 	invoke CreateThread, NULL, 0, OFFSET Net_ProcessLoop, NetSock, 0, NULL
 	ret
 Net_Connect ENDP
+
+Net_FormPlrPopup PROC EXPORT UNamePtr:BPPtr, Connected:BPBool
+	LOCAL strPtr:BPPtr
+	.IF (Connected)
+		bpMPM strPtr, StrMenuJoined
+	.ELSE
+		bpMPM strPtr, StrMenuLeft
+	.ENDIF
+	
+	invoke StrLength, UNamePtr
+	push pax
+	invoke RtlMoveMemory, ADDR NetPlrConnStr, \
+	UNamePtr, pax
+	invoke StrLength, strPtr
+	inc pax
+	pop pcx
+	mov NetPlrConnStr[pcx], 32
+	inc pcx
+	invoke RtlMoveMemory, ADDR NetPlrConnStr[pcx], \
+	strPtr, pax
+	invoke UI_ShowTextPopup, ADDR NetPlrConnStr, UISubDur
+	ret
+Net_FormPlrPopup ENDP
 
 ; Respond to or process received message
 Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
@@ -65,10 +92,16 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 			xor pax, pax
 			.WHILE (pax < SIZEOF NetPlayers)
 				.IF (NetPlayers[pax].PlayerID == -1)
+					push pax
+					inc pcx
+					invoke RtlMoveMemory, ADDR NetPlayers[pax], pcx, \
+					SIZEOF NetPlayer
+					pop pax
+					
 					mov pcx, pax
 					shr pcx, NetPlayerShift
 					
-					; Fill new player struct
+					; Fill new player struct with accurate values
 					mov NetPlayers[pax].PlayerID, ecx
 					mov ecx, Sock
 					mov NetPlayers[pax].SockOnServ, ecx
@@ -76,6 +109,8 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 				.ENDIF
 				add pax, SIZEOF NetPlayer
 			.ENDW
+			
+			invoke Net_FormPlrPopup, ADDR NetPlayers[pax].Username, TRUE
 			
 			invoke Net_FormSend, NET_PLAYERS_RESPONSE, Sock
 		.ENDIF
@@ -132,6 +167,7 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 	mov al, MsgType
 	mov buf[0], al
 	.IF (al == NET_PLAYERS_REQUEST)
+		invoke RtlMoveMemory, ADDR buf[1], ADDR NetPlayers[0], SIZEOF NetPlayer
 	.ELSEIF (al == NET_PLAYERS_RESPONSE)
 		;print "NET_PLAYERS_RESPONSE"
 		; Get first free player slot
@@ -222,19 +258,21 @@ Net_Host PROC EXPORT
 	invoke bind, NetSock, ADDR localAddr, SIZEOF sockaddr_in
 	.IF (pax == SOCKET_ERROR)
 		print "Binding socket failed.", 13, 10
+		mov UIPopupMenu, UIPP_CONNFAIL
 		ret
 	.ENDIF
 	
 	invoke listen, NetSock, 5
 	.IF (pax == SOCKET_ERROR)
 		print "Listening failed.", 13, 10
+		mov UIPopupMenu, UIPP_CONNFAIL
 		ret
 	.ENDIF
 	
 	mov NetHosting, TRUE
-	.IF (UIState >= UI_STATE_MENU_PAUSE)
-		vinvoke PauseGame, FALSE
-	.ENDIF
+	;.IF (UIState >= UI_STATE_MENU_PAUSE)
+	;	vinvoke PauseGame, FALSE
+	;.ENDIF
 	
 	print "Hosted, player socket: "
 	print str$(NetSock), 13, 10
@@ -246,6 +284,8 @@ Net_Host PROC EXPORT
 	inc NetPlayersCount
 	mov NetPlayerID, 0
 	bpMEM32 NetMagic, nRandSeed
+	
+	call Net_LobbyInit
 	
 	.WHILE (NetSock)
 		.IF (NetPlayersCount > NET_MAX_PLAYERS)
@@ -265,6 +305,27 @@ Net_Host PROC EXPORT
 	ret
 Net_Host ENDP
 
+Net_LobbyInit PROC EXPORT
+	mov UITextPopupStr, 0
+	
+	mov GameState, GAME_STATE_LOBBY
+	mov PlrCanControl, TRUE
+	mov MazeCheck, MAZE_CHECK_SAVED
+	
+	mov PlrState, PLAYER_STATE_GAME
+	
+	mov UIFade, UI_FADE_IN
+	mov UIFadeCallback, 0
+	mov UIFadeVal, FLT_1
+
+	invoke Vector3Set, ADDR MazeCheckPos, 0, 0, 0
+	invoke Vector3Set, ADDR MazeDoorPos, f(1), CamHeight, f(5)
+	invoke Plr_Teleport, f(1), f(4)
+	
+	mov PollProc, OFFSET GameInit
+	ret
+Net_LobbyInit ENDP
+
 Net_PlayerRemove PROC EXPORT SockOnServ:DWORD
 	xor pax, pax
 	mov pcx, SockOnServ
@@ -278,6 +339,7 @@ Net_PlayerRemove PROC EXPORT SockOnServ:DWORD
 		.ENDIF
 		add pax, SIZEOF NetPlayer
 	.ENDW
+	invoke Net_FormPlrPopup, ADDR NetPlayers[pax].Username, FALSE
 	dec NetPlayersCount
 	
 	invoke Net_FormSend, NET_PLAYERS_RESPONSE, 0
@@ -360,6 +422,23 @@ Net_Draw PROC EXPORT
 		&& (NetPlayersV[pbx].MazeLayer == ecx)
 			call glPushMatrix
 			invoke glTranslate32Dfv, ADDR NetPlayersVL[pbx].Position
+			
+			call glPushMatrix
+			push bpFontWidth
+			push bpFontHeight
+			bpMEM32 bpFontWidth, 2
+			bpMEM32 bpFontHeight, 1
+			invoke glScalef, f(0.5), f(0.5), f(0.5)
+			invoke glRotatef, CamBillboard.Y, 0, f(1), 0
+			invoke glRotatef, CamBillboard.X, f(1), 0, 0
+			invoke glDisable, GL_CULL_FACE
+			invoke bpRenderText, ADDR NetPlayers[pbx].Username, 0, -24, \
+			BP_ALIGN_CENTER, 0
+			invoke glEnable, GL_CULL_FACE
+			pop bpFontHeight
+			pop bpFontWidth
+			call glPopMatrix
+			
 			invoke glRotatefr, NetPlayersVL[pbx].Rotation.Y, 0, f(1), 0
 			
 			invoke glBindTexture, GL_TEXTURE_2D, TexKoluplyk

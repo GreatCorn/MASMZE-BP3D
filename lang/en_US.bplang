@@ -10,6 +10,7 @@ LOADING SOUNDS...
 FINISHING UP...
 CONTINUE
 NEW GAME
+Are you sure?#This may overwrite#your progress.
 MASMZE-3D IS PAUSED
 RESUME
 MULTIPLAYER
@@ -18,6 +19,10 @@ QUIT
 Really quit?#Game progress#might be saved.
 HOST
 CONNECT
+DISCONNECT
+JOINED
+LEFT
+Connection#failed.
 IP
 PORT
 USERNAME

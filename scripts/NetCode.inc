@@ -66,4 +66,6 @@ NetPlayersVL	NetPlayerVolatile NET_MAX_PLAYERS dup (<>)	; Local interpolated
 NetPlayersCount DWORD 0
 NetPlayerID		DWORD -1
 
+NetPlrConnStr	BYTE 127 DUP (0)
+
 NetVolatileTimer	REAL4 0.0, 0.064	; Send volatile info timer, interval

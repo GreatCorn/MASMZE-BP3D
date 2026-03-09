@@ -10,6 +10,7 @@ SV	StrLoadSounds
 SV	StrLoadFinished
 SV	StrMenuContinue
 SV	StrMenuNewGame
+SV	StrMenuOverwrite
 SV	StrMenuPaused
 SV	StrMenuResume
 SV	StrMenuMultiplayer
@@ -18,6 +19,10 @@ SV	StrMenuQuit
 SV	StrMenuReallyQuit
 SV	StrMenuHost
 SV	StrMenuConnect
+SV	StrMenuDisconnect
+SV	StrMenuJoined
+SV	StrMenuLeft
+SV	StrMenuConnFail
 SV	StrMenuIP
 SV	StrMenuPort
 SV	StrMenuUsername
