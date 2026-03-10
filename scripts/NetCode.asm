@@ -3,16 +3,28 @@
 .CODE
 Net_Close PROC EXPORT
 	.IF (NetSock)
+		.IF (NetHosting)
+			push pbx
+			xor pbx, pbx
+			.WHILE (pbx < SIZEOF NetPlayers)
+				.IF (NetPlayers[pbx].PlayerID != -1)
+					invoke shutdown, NetPlayers[pbx].SockOnServ, SD_SEND
+					invoke closesocket, NetPlayers[pbx].SockOnServ
+				.ENDIF
+				add pbx, SIZEOF NetPlayer
+			.ENDW
+			pop pbx
+		.ENDIF
 		print "Closing socket...", 13, 10
 		invoke closesocket, NetSock
 		mov NetSock, 0
 		mov NetPlayerID, -1
 		mov NetPlayersCount, 0
-		call Net_PlayersClear
 	.ENDIF
 	;.IF (UIState >= UI_STATE_MENU_PAUSE)
 	;	vinvoke PauseGame, TRUE
 	;.ENDIF
+	call Net_PlayersClear
 	call MenuInit
 	ret
 Net_Close ENDP
@@ -231,6 +243,33 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 	ret
 Net_FormSend ENDP
 
+Net_GetClosestPlr PROC EXPORT PosPtr:BPPtr, ExcludeID:DWORD
+	LOCAL closest:BPPtr, dist:REAL4, lastDist:REAL4
+	
+	mov closest, 0
+	mov lastDist, FLT_INF
+	push pbx
+	xor pbx, pbx
+	.WHILE (pbx < SIZEOF NetPlayersVL)
+		mov eax, ExcludeID
+		.IF (NetPlayersV[pbx].PlayerID != eax) \
+		&& (NetPlayersV[pbx].PlayerID != -1)
+			mov dist, \
+			rv(Vector32DDistanceSqr, PosPtr, ADDR NetPlayersV[pbx].Position)
+			fcmp dist, lastDist
+			.IF (Carry?)
+				bpMEM32 lastDist, dist
+				mov closest, pbx
+			.ENDIF
+		.ENDIF
+		add pbx, SIZEOF NetPlayerLocal
+	.ENDW
+	pop pbx
+	mov ecx, lastDist
+	mov pax, closest
+	ret
+Net_GetClosestPlr ENDP
+
 Net_Host PROC EXPORT 
 	LOCAL localAddr:sockaddr_in, fSock:sockaddr_in, fLen:DWORD, msg:SOCKET
 	
@@ -350,6 +389,7 @@ Net_PlayersClear PROC EXPORT
 	xor pax, pax
 	.WHILE (pax < SIZEOF NetPlayers)
 		mov NetPlayers[pax].PlayerID, -1
+		mov NetPlayersV[pax].PlayerID, -1
 		add pax, SIZEOF NetPlayer
 	.ENDW
 	ret
@@ -383,7 +423,6 @@ Net_ProcessLoop PROC EXPORT lpSock:LPVOID
 			.ENDIF
 		.ENDIF
 		
-		;print "Waiting for message...", 13, 10
 		; Receive message		
 		invoke recv, lpSock, ADDR buf, NET_BUFFER_SIZE, 0
 		.IF (pax == SOCKET_ERROR)
@@ -399,6 +438,7 @@ Net_ProcessLoop PROC EXPORT lpSock:LPVOID
 			.ELSE
 				print "Server disconnected.", 13, 10
 				call Net_Close
+				mov UIPopupMenu, UIPP_SERVDISC
 			.ENDIF	
 			.CONTINUE
 		.ENDIF
@@ -439,10 +479,40 @@ Net_Draw PROC EXPORT
 			pop bpFontWidth
 			call glPopMatrix
 			
-			invoke glRotatefr, NetPlayersVL[pbx].Rotation.Y, 0, f(1), 0
+			invoke glEnable, GL_ALPHA_TEST
+			invoke glEnable, GL_STENCIL_TEST
+			invoke glStencilFunc, GL_ALWAYS, 1, 0FFh
+			invoke glStencilMask, 0FFh
+			invoke glClear, GL_STENCIL_BUFFER_BIT
+			call glPushMatrix
+			invoke glTranslatef, 0, CamHeight, 0
+			invoke glScalef, f(0.4), f(0.4), f(0.4)
+			invoke glRotatef, CamBillboard.Y, 0, f(1), 0
+			invoke glRotatef, CamBillboard.X, f(1), 0, 0
+			invoke glBindTexture, GL_TEXTURE_2D, TexPlrHead
+			invoke glCallList, MdlParticle
+			call glPopMatrix
+			invoke glDisable, GL_ALPHA_TEST
 			
-			invoke glBindTexture, GL_TEXTURE_2D, TexKoluplyk
-			invoke bpDrawMesh, ADDR MeshKoluplyk
+			invoke glStencilFunc, GL_NOTEQUAL, 1, 0FFh
+			invoke glStencilMask, 0
+			invoke glRotatefr, NetPlayersVL[pbx].Rotation.Y, 0, f(1), 0
+			invoke glBindTexture, GL_TEXTURE_2D, TexPlrBody
+			invoke glCallList, MdlPlrBody
+			invoke glDisable, GL_STENCIL_TEST
+			
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+			invoke glTranslatef, 0, CamHeight, 0
+			.IF (NetPlayersVL[pbx].BlinkTimer & FLT_NEG)
+				mov eax, TexPlrBlink
+			.ELSE
+				mov eax, NetPlayersVL[pbx].FaceTex
+			.ENDIF
+			invoke glBindTexture, GL_TEXTURE_2D, eax
+			invoke glRotatefr, NetPlayersVL[pbx].Rotation.X, f(1), 0, 0
+			invoke glCallList, MdlPlrAcc
+			invoke glDisable, GL_BLEND
 			
 			call glPopMatrix
 		.ENDIF
@@ -454,6 +524,8 @@ Net_Draw PROC EXPORT
 Net_Draw ENDP
 
 Net_Process PROC EXPORT
+	LOCAL Dot:Vector3, ClPlr:BPPtr
+	
 	fld NetVolatileTimer[0]
 	fsub deltaUnscaled
 	fstp NetVolatileTimer[0]
@@ -481,6 +553,54 @@ Net_Process PROC EXPORT
 			ADDR NetPlayersV[pbx].Position, delta20
 			invoke Vector2LerpAngle, ADDR NetPlayersVL[pbx].Rotation, \
 			ADDR NetPlayersV[pbx].Rotation, delta20
+			mov NetPlayersVL[pbx].Rotation.Y, \
+			rv(flAngle, NetPlayersVL[pbx].Rotation.Y)
+		
+			invoke Net_GetClosestPlr, ADDR NetPlayersV[pbx].Position, \
+			NetPlayersV[pbx].PlayerID
+			mov ClPlr, pax
+			
+			mov Dot.Y, ecx
+			fcmp Dot.Y, f(2)
+			.IF (Carry?)
+				mov pax, ClPlr
+				invoke Vector32DCopy, ADDR Dot, ADDR NetPlayersV[pax].Position
+				invoke Vector32DSub, ADDR Dot, ADDR NetPlayersV[pbx].Position
+				;invoke Vector32DNormalize, ADDR Dot
+				fld NetPlayersV[pbx].Rotation.Y
+				fsincos
+				fmul Dot.X
+				fxch
+				fmul Dot.Z
+				fsub
+				fstp Dot.X
+				print real4$(Dot.X), 13, 10
+				fcmp Dot.X, f(0.3)
+				.IF (!Carry?)
+					bpMEM32 NetPlayersVL[pbx].FaceTex, TexPlrLeft
+				.ELSE
+					fcmp Dot.X, f(-0.3)
+					.IF (Carry?)
+						bpMEM32 NetPlayersVL[pbx].FaceTex, TexPlrRight
+					.ELSE
+						bpMEM32 NetPlayersVL[pbx].FaceTex, TexPlrNeut
+					.ENDIF
+				.ENDIF
+				
+				invoke Collide_Distance, ADDR CamPos, \
+				ADDR NetPlayersV[pbx].Position, f(0.3), Dot.Y
+			.ELSE
+				bpMEM32 NetPlayersVL[pbx].FaceTex, TexPlrNeut
+			.ENDIF
+			
+			
+			fld NetPlayersVL[pbx].BlinkTimer
+			fsub deltaTime
+			fstp NetPlayersVL[pbx].BlinkTimer
+			fcmp NetPlayersVL[pbx].BlinkTimer, f(-0.1)
+			.IF (Carry?)
+				mov NetPlayersVL[pbx].BlinkTimer, rv(flRandRange, f(0.5), f(7))
+			.ENDIF
 		.ENDIF
 		
 		add pbx, SIZEOF NetPlayerVolatile

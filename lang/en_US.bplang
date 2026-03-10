@@ -23,6 +23,7 @@ DISCONNECT
 JOINED
 LEFT
 Connection#failed.
+Server has#disconnected.
 IP
 PORT
 USERNAME
@@ -47,6 +48,7 @@ WINDOWED
 FULLSCREEN
 EXCLUSIVE
 VSYNC
+UI SCALE
 GAMMA SETUP
 GAMMA
 Set the gamma value so that the#image on the right is barely visible.

@@ -23,6 +23,7 @@ SV	StrMenuDisconnect
 SV	StrMenuJoined
 SV	StrMenuLeft
 SV	StrMenuConnFail
+SV	StrMenuServDisc
 SV	StrMenuIP
 SV	StrMenuPort
 SV	StrMenuUsername
@@ -47,6 +48,7 @@ SV	StrMenuWindowed
 SV	StrMenuFullscreen
 SV	StrMenuExclusive
 SV	StrMenuVSync
+SV	StrMenuUIScale
 SV	StrMenuGammaSetup
 SV	StrMenuGamma
 SV	StrMenuGammaDesc

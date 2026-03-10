@@ -63,7 +63,8 @@ ENUM	UIPP_NONE, \
 		UIPP_RESTART, \
 		UIPP_BIND, \
 		UIPP_OVERWRITE, \
-		UIPP_CONNFAIL
+		UIPP_CONNFAIL, \
+		UIPP_SERVDISC
 .CONST
 UISubDur	REAL4 2.0
 
@@ -152,6 +153,10 @@ UIResolutions		BPPtr 0 ; Array of Vector2
 
 .DATA?
 UIResSize			BPPtr ?
+UIMouseScaled		Vector2 <?, ?>
+UIScreenCntAcc		Vector2 <?, ?>
+UIScreenScaled		Vector4 <?, ?, ?, ?>
+UIScaleForMouse		REAL4 ?
 
 .CODE
 UI_DrawRectangle PROTO :DWORD, :DWORD
@@ -666,12 +671,18 @@ UI_EditInput PROC EXPORT Keycode:DWORD
 		CASE 190
 			mov Keycode, '.'
 	ENDSW
+	.IF !(Keys[VK_SHIFT]) && !(CapsLock)
+		.IF (Keycode >= 65) && (Keycode <= 90)
+			add Keycode, 32
+		.ENDIF
+	.ENDIF
 	
 	.IF (Keycode >= 45) && (Keycode <= 57)
 		mov valid, TRUE
 	.ENDIF
 	.IF !(UIEditNumeric)
-		.IF ((Keycode >= 65) && (Keycode <= 90)) || (Keycode == 32)
+		.IF ((Keycode >= 65) && (Keycode <= 90)) || (Keycode == 32) \
+		|| ((Keycode >= 97) && (Keycode <= 122))
 			mov valid, TRUE
 		.ENDIF
 	.ENDIF
@@ -873,7 +884,7 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 				invoke glColor4fv, OFFSET clGray
 				
 				; dark wizardry in these calculations
-				mov eax, bpMouseClient[0]
+				mov eax, UIMouseScaled.X
 				sub eax, xFrom
 				sub eax, UI_SLD_T/2
 				push eax
@@ -1108,7 +1119,7 @@ UI_DrawComboboxMenu PROC EXPORT
 		add eax, UI_MENU_CB_WIDTH - (UI_SLD_T/2 - UI_SLD_H/2)
 		mov ecx, eax
 		add ecx, UI_SLD_T
-		invoke intInRange, bpMouseClient[0], eax, ecx
+		invoke intInRange, UIMouseScaled.X, eax, ecx
 		.IF (al)
 			mov eax, ScreenHalf.Y
 			mov ecx, UIComboboxHeight
@@ -1118,7 +1129,7 @@ UI_DrawComboboxMenu PROC EXPORT
 			mov ecx, eax
 			add ecx, UIComboboxHeight
 			sub ecx, UI_BRD_M*2
-			invoke intInRange, bpMouseClient[4], eax, ecx
+			invoke intInRange, UIMouseScaled.Y, eax, ecx
 			.IF (al)
 				.IF (!UIScrollPressed)
 					invoke glColor4fv, OFFSET clLightGray
@@ -1132,7 +1143,7 @@ UI_DrawComboboxMenu PROC EXPORT
 		.IF (UIScrollPressed)
 			invoke glColor4fv, OFFSET clGray
 			
-			fild bpMouseClient[4]
+			fild UIMouseScaled.Y
 			fisub ScreenHalf.Y
 			push (UI_SLD_T*3)/2 + UI_BRD_M
 			fisub BPPtr PTR [psp]
@@ -1218,6 +1229,9 @@ UI_DrawComboboxMenu ENDP
 UI_DrawFullscreen PROC EXPORT Alpha:REAL4
 	invoke glEnable, GL_BLEND
 	call glPushMatrix
+	.IF (SettingsGraphicsUIScale != FLT_1)
+		call glLoadIdentity
+	.ENDIF
 	invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	invoke glBindTexture, GL_TEXTURE_2D, 0
@@ -1229,6 +1243,8 @@ UI_DrawFullscreen PROC EXPORT Alpha:REAL4
 UI_DrawFullscreen ENDP
 
 UI_DrawMenuMain PROC EXPORT
+	LOCAL pcbBuffer:DWORD 
+	
 	UI_MENU_MAIN_HEIGHT	EQU 16*UI_SCALE + UI_BTN_H*5 + UI_BTN_M*5 + UI_HR_H
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_MAIN_HEIGHT/2
@@ -1279,6 +1295,14 @@ UI_DrawMenuMain PROC EXPORT
 	
 	invoke UI_Button, StrMenuMultiplayer, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
+		mov pcbBuffer, SIZEOF NetPlayer.Username
+		invoke GetUserNameA, ADDR NetPlayers[0].Username, ADDR pcbBuffer
+		
+		invoke GetPrivateProfileString, ADDR SettingsIniMisc, \
+		ADDR SettingsIniUsername, ADDR NetPlayers[0].Username, \
+		ADDR NetPlayers[0].Username, SIZEOF NetPlayer.Username, \
+		ADDR SettingsIniPathAbs
+		
 		mov UIState, UI_STATE_MENU_MULTIPLAYER
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
@@ -1340,6 +1364,7 @@ UI_DrawMenuMultiplayer PROC EXPORT
 	invoke UI_Button, StrMenuHost, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
 		.IF !(rv(StrBlank, ADDR NetPlayers[0].Username))
+			invoke Settings_Save, OFFSET SettingsIniMisc
 			invoke CreateThread, NULL, 0, OFFSET Net_Host, 0, 0, NULL
 		.ENDIF
 	.ENDIF
@@ -1348,6 +1373,7 @@ UI_DrawMenuMultiplayer PROC EXPORT
 	invoke UI_Button, StrMenuConnect, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
 		.IF !(rv(StrBlank, ADDR NetPlayers[0].Username))
+			invoke Settings_Save, OFFSET SettingsIniMisc
 			invoke CreateThread, NULL, 0, OFFSET Net_Connect, 0, 0, NULL
 		.ENDIF
 	.ENDIF
@@ -1717,7 +1743,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	LOCAL dm:DEVMODEAFIX, res:Vector2, resEnum:DWORD, strPtr:BPPtr
 	LOCAL nameStr[32]:BYTE, devNamePtr:BPPtr
 	
-	UI_MENU_GRAPHICS_HEIGHT	EQU UI_BTN_H*8 + UI_BTN_M*5 + UI_HR_H*2
+	UI_MENU_GRAPHICS_HEIGHT	EQU UI_BTN_H*9 + UI_BTN_M*6 + UI_HR_H*2
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_GRAPHICS_HEIGHT/2
@@ -1849,7 +1875,32 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke UI_Checkbox, StrMenuVSync, UIXFrom, ebx, OFFSET SettingsGraphicsVSync
-	add ebx, UI_BTN_H
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke Vector2Set, ADDR UISliderRange, f(0.5), f(4)
+	invoke UI_Slider, StrMenuUIScale, UIXFrom,ebx,OFFSET SettingsGraphicsUIScale
+	.IF (al)
+		invoke Settings_SetOption, OFFSET SettingsGraphicsUIScale
+	.ELSE
+		; 'Snap'
+		mov pcx, 4
+		bpMEM32 res.X, f(0.5)
+		.WHILE (pcx)
+			mov res.Y, rv(flDistance, SettingsGraphicsUIScale, res.X)
+			fcmp res.Y, f(0.05)
+			.IF (Carry?)
+				bpMEM32 SettingsGraphicsUIScale, res.X
+			.ENDIF
+			
+			fld res.X
+			fmul f(2)
+			fstp res.X
+			dec pcx
+		.ENDW
+
+		bpMEM32 UIScaleForMouse, SettingsGraphicsUIScale
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke UI_HR, UIXFrom, ebx
 	add ebx, UI_HR_H
@@ -2280,6 +2331,28 @@ UI_DrawPopupMenu PROC EXPORT
 				call UI_HandleMenuEscape
 			.ENDIF
 			
+		CASE UIPP_SERVDISC
+			mov UIComboboxCount, 1
+			
+			UIPP_SERVDISC_H		EQU UI_TXT_H*2+UI_TXT_M + UI_BTN_H + UI_HR_H
+			
+			mov ebx, ScreenHalf.Y
+			sub ebx, UIPP_RESTART_H/2
+			add ebx, UI_BRD_M
+			
+			invoke UI_Text, StrMenuServDisc, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, 0
+			add ebx, UI_TXT_H*2+UI_TXT_M
+			
+			invoke UI_HR, ScreenHalf.X, ebx
+			add ebx, UI_HR_H
+			
+			invoke UI_Button, StrMenuOK, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER
+			.IF (al)
+				call UI_HandleMenuEscape
+			.ENDIF
+			
 	ENDSW
 	ret
 	
@@ -2385,11 +2458,11 @@ UI_MouseFocus PROC EXPORT X:SDWORD, Y:SDWORD, ID:BYTE
 			.ELSE
 				add eax, UI_BTN_W
 			.ENDIF
-			invoke intInRange, bpMouseClient[0], X, eax
+			invoke intInRange, UIMouseScaled.X, X, eax
 			mov cl, al
 			mov eax, Y
 			add eax, UI_BTN_H
-			invoke intInRange, bpMouseClient[4], Y, eax
+			invoke intInRange, UIMouseScaled.Y, Y, eax
 			and al, cl
 			mov cl, ID
 			.IF (al)
@@ -2421,6 +2494,7 @@ UI_ShowTextPopup ENDP
 
 UI_Create PROC EXPORT 
 	FontSize 4, 8
+	bpMEM32 UIScaleForMouse, SettingsGraphicsUIScale
 	ret
 UI_Create ENDP
 
@@ -2592,6 +2666,11 @@ UI_Draw PROC EXPORT
 	; UI Drawing
 	call glLoadIdentity
 	
+	.IF (SettingsGraphicsUIScale != FLT_1)
+		invoke glTranslatef, UIScreenCntAcc.X, UIScreenCntAcc.Y, 0
+		invoke glScalef, SettingsGraphicsUIScale, SettingsGraphicsUIScale, f(1)
+	.ENDIF
+	
 	FontSize 4, 8
 	
 	.IF (Loading)
@@ -2692,8 +2771,15 @@ UI_Draw PROC EXPORT
 		invoke glColor3fv, OFFSET clWhite
 		
 		mov UIShadow, TRUE
+		.IF (SettingsGraphicsUIScale != FLT_1)
+			call glPushMatrix
+			invoke glTranslatei, UIScreenScaled.X, UIScreenScaled.Y, 0
+		.ENDIF
 		invoke UI_TextInput, StrCCClose, IBMenu, JBMenu, UI_BTN_M, UI_BTN_M, \
 		0, 0
+		.IF (SettingsGraphicsUIScale != FLT_1)
+			call glPopMatrix
+		.ENDIF	
 		mov UIShadow, FALSE
 	.ENDIF
 	
@@ -2727,7 +2813,7 @@ UI_Draw PROC EXPORT
 	mov UIShadow, TRUE
 	; Subtitles
 	.IF (UISubtitlesStr)
-		mov ecx, FMain.ScreenSize.y
+		mov ecx, UIScreenScaled.W
 		sub ecx, UI_BTN_H*2
 		; Input hint subtitles
 		SWITCH UISubtitlesStr
@@ -2747,6 +2833,9 @@ UI_Draw PROC EXPORT
 	.IF ((UITextPopup) || (UIState == UI_STATE_MENU_PAUSE)) && !(MazeNote & 16)\
 	&& (UITextPopupStr)
 		call glPushMatrix
+		.IF (SettingsGraphicsUIScale != FLT_1)
+			invoke glTranslatei, UIScreenScaled.X, UIScreenScaled.Y, 0
+		.ENDIF
 		mov pax, UITextPopupStr
 		.IF (UIState == UI_STATE_MENU_PAUSE) && (pax == StrLayerNumber)
 			mov eax, f(%(UI_BTN_M))
@@ -2762,8 +2851,9 @@ UI_Draw PROC EXPORT
 	; Draw combobox menus
 	.IF (UIComboboxMenu > 0)
 		mov UIID, 128
+		call glPushMatrix
 		call UI_DrawComboboxMenu
-		call glLoadIdentity
+		call glPopMatrix
 	.ENDIF
 	
 	; Draw menus
@@ -2790,7 +2880,6 @@ UI_Draw PROC EXPORT
 	ENDSW
 	; Draw popup menus
 	.IF (UIPopupMenu)
-		call glLoadIdentity
 		mov UIID, 128
 		call UI_DrawPopupMenu
 	.ENDIF
@@ -2829,6 +2918,19 @@ UI_Draw ENDP
 
 UI_Process PROC EXPORT
 	LOCAL flVal:REAL4
+	; Scale mouse
+	
+	fild bpMouseClient[0]
+	fisub ScreenHalf.X
+	fdiv UIScaleForMouse
+	fiadd ScreenHalf.X
+	fistp UIMouseScaled.X
+	fild bpMouseClient[4]
+	fisub ScreenHalf.Y
+	fdiv UIScaleForMouse
+	fiadd ScreenHalf.Y
+	fistp UIMouseScaled.Y	
+	
 	; Do fading
 	.IF (UIFade == UI_FADE_IN)
 		.IF (UIState == UI_STATE_FADING)
@@ -3052,3 +3154,32 @@ UI_Process PROC EXPORT
 		.ENDIF
 		ret
 UI_Process ENDP
+
+UI_Resize PROC EXPORT
+	fld1
+	fsub SettingsGraphicsUIScale
+	fld st
+	fimul ScreenHalf.X
+	fstp UIScreenCntAcc.X
+	fimul ScreenHalf.Y
+	fstp UIScreenCntAcc.Y
+	
+	fld f(0.5)
+	fdiv SettingsGraphicsUIScale
+	fld st
+	
+	fsubr f(0.5)
+	fld st
+	fmul ScreenSizeF.X
+	fistp UIScreenScaled.X
+	fmul ScreenSizeF.Y
+	fistp UIScreenScaled.Y
+
+	fadd f(0.5)
+	fld st
+	fmul ScreenSizeF.X
+	fistp UIScreenScaled.Z
+	fmul ScreenSizeF.Y
+	fistp UIScreenScaled.W
+	ret
+UI_Resize ENDP

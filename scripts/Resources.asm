@@ -71,6 +71,9 @@ MdlPlane			DWORD ?
 MdlPlaneC			DWORD ?
 MdlPlaneR			DWORD ?
 MdlPlanks			DWORD ?
+MdlPlrAcc			DWORD ?
+MdlPlrBody			DWORD ?
+MdlPlrHead			DWORD ?
 MdlRubble			DWORD ?
 MdlRubbleFacade		DWORD ?
 MdlShop				DWORD ?
@@ -167,6 +170,12 @@ TexPaper			DWORD ?
 TexPipe				DWORD ?
 TexPlanks			DWORD ?
 TexPlaster			DWORD ?
+TexPlrBlink			DWORD ?
+TexPlrBody			DWORD ?
+TexPlrHead			DWORD ?
+TexPlrLeft			DWORD ?
+TexPlrRight			DWORD ?
+TexPlrNeut			DWORD ?
 TexRain				DWORD ?
 TexRoof				DWORD ?
 TexRustPanel		DWORD ?
@@ -381,6 +390,8 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlPlaneC,			"assets\models\planeC.bpl"
 		LoadBPL OFFSET MdlPlaneR,			"assets\models\planeR.bpl"
 		LoadBPL OFFSET MdlPlanks,			"assets\models\planks.bpl"
+		LoadBPL OFFSET MdlPlrAcc,			"assets\models\plrAcc.bpl"
+		LoadBPL OFFSET MdlPlrBody,			"assets\models\plrBody.bpl"
 		LoadBPL OFFSET MdlRubble,			"assets\models\rubble.bpl"
 		LoadBPL OFFSET MdlRubbleFacade,		"assets\models\rubbleFacade.bpl"
 		LoadBPL OFFSET MdlShop,				"assets\models\shop.bpl"
@@ -530,7 +541,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexKubaleV[24],	"assets\textures\kubaleV8.bpt"
 		LoadBPT OFFSET TexKubaleV[28],	"assets\textures\kubaleV9.bpt"
 		LoadBPT OFFSET TexLamp,			"assets\textures\lamp.bpt"
+		mov bpTextureFiltering, TRUE
 		LoadBPT OFFSET TexLight,		"assets\textures\light.bpt"
+		mov bpTextureFiltering, FALSE
 		LoadBPT OFFSET TexLogo[0],		"assets\textures\logo1.bpt"
 		LoadBPT OFFSET TexLogo[4],		"assets\textures\logo2.bpt"
 		LoadBPT OFFSET TexMap,			"assets\textures\map.bpt"
@@ -543,6 +556,12 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexPipe,			"assets\textures\pipe.bpt"
 		LoadBPT OFFSET TexPlanks,		"assets\textures\planks.bpt"
 		LoadBPT OFFSET TexPlaster,		"assets\textures\plaster.bpt"
+		LoadBPT OFFSET TexPlrBody,		"assets\textures\sky.bpt"
+		LoadBPT OFFSET TexPlrBlink,		"assets\textures\plrBlink.bpt"
+		LoadBPT OFFSET TexPlrHead,		"assets\textures\plrHead.bpt"
+		LoadBPT OFFSET TexPlrLeft,		"assets\textures\plrLeft.bpt"
+		LoadBPT OFFSET TexPlrRight,		"assets\textures\plrRight.bpt"
+		LoadBPT OFFSET TexPlrNeut,		"assets\textures\plrNeut.bpt"
 		LoadBPT OFFSET TexRain,			"assets\textures\rain.bpt"
 		LoadBPT OFFSET TexRoof,			"assets\textures\roof.bpt"
 		LoadBPT OFFSET TexRustPanel,	"assets\textures\rustPanel.bpt"

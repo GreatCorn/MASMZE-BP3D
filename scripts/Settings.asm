@@ -49,12 +49,14 @@ SettingsIniPixelization		DB "Pixelization", 0
 SettingsIniPosterization	DB "Posterization", 0
 SettingsIniResolutionWidth	DB "Width", 0
 SettingsIniResolutionHeight	DB "Height", 0
+SettingsIniUIScale			DB "UIScale", 0
 SettingsIniVignette			DB "Vignette", 0
 SettingsIniVSync			DB "VSync", 0
 SettingsIniWindowMode		DB "WindowMode", 0
 
 SettingsIniMisc				DB "Misc", 0
 SettingsIniLanguage			DB "Language", 0
+SettingsIniUsername			DB "Username", 0
 
 SettingsIni2f		DB "2.0", 0
 SettingsIni1f		DB "1.0", 0
@@ -99,6 +101,7 @@ SettingsGraphicsParticles		BPBool TRUE
 SettingsGraphicsPixelization	BPBool TRUE
 SettingsGraphicsPosterization	BPBool TRUE
 SettingsGraphicsResolution		DWORD 854, 480
+SettingsGraphicsUIScale			REAL4 1.0
 SettingsGraphicsVignette		BPBool TRUE
 SettingsGraphicsVSync			BPBool TRUE
 SettingsGraphicsWindowMode		BPEnum BP_WINDOW_MODE_WINDOWED
@@ -356,6 +359,13 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 			invoke Settings_SetOption, OFFSET SettingsGraphicsResolution
 		.ENDIF
 		
+		; UI scale
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniUIScale, ADDR SettingsIni1f, ADDR SettingsIniString, \
+		9, ADDR SettingsIniPathAbs
+		invoke StrToFl, ADDR SettingsIniString, ADDR SettingsGraphicsUIScale
+		invoke Settings_SetOption, OFFSET SettingsGraphicsUIScale
+		
 		; Vignette
 		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniVignette, ADDR SettingsIniTrue, ADDR SettingsIniString, \
@@ -389,6 +399,8 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		ADDR SettingsIniLanguage, ADDR SettingsIniEnUS, \
 		ADDR SettingsMiscLanguage, 255, ADDR SettingsIniPathAbs
 		invoke Settings_SetOption, OFFSET SettingsMiscLanguage
+		
+		; Username gets loaded on multiplayer open
 	.ENDIF
 	
 	mov SettingsChanged, FALSE
@@ -607,6 +619,11 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniVSync, pax, ADDR SettingsIniPathAbs
 		
+		; UI scale
+		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniUIScale, real4$(SettingsGraphicsUIScale), \
+		ADDR SettingsIniPathAbs
+		
 		; Maze cull radius
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniMazeCull, str$(SettingsGraphicsMazeCull), \
@@ -675,6 +692,10 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		.ENDIF
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniInterpolation, pax, ADDR SettingsIniPathAbs
+	.ELSEIF (IniSection == OFFSET SettingsIniMisc)
+		invoke WritePrivateProfileStringA, ADDR SettingsIniMisc, \
+		ADDR SettingsIniUsername, ADDR NetPlayers[0].Username, \
+		ADDR SettingsIniPathAbs
 	.ENDIF
 	ret
 Settings_Save ENDP
@@ -865,6 +886,9 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 				ADDR FMain.WindowSize
 			.ENDIF
 		.ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsUIScale)
+		print "graphics/ui scale", 13, 10
+		call UI_Resize
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsVSync)
 		print "graphics/vsync", 13, 10
 		.IF (wglSwapIntervalEXT) && (FMain.GraphicsContext)

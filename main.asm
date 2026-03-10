@@ -355,6 +355,7 @@ InputUIRight			BPPtr FALSE
 InputUIConfirm			BPPtr FALSE
 InputUIConfirmT			BPPtr FALSE
 
+CapsLock		BPBool FALSE
 ClearBuffers	BPBool TRUE
 FogDensity		REAL4 0.5
 
@@ -486,6 +487,8 @@ GameInit PROC EXPORT
 	mov UIState, UI_STATE_GAME
 	mov deltaScale, FLT_1
 	mov UIFadeCallback, 0
+	
+	mov MazeLayer, 1
 	
 	call Plr_Create
 	print "Finished game object initialization.", 13, 10
@@ -972,6 +975,9 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE IBUIConfirm
 					mov InputUIConfirm, TRUE
 					mov InputUIConfirmT, TRUE
+					
+				CASE VK_CAPITAL
+					neg CapsLock
 				
 				CASE VK_F4, VK_F11
 					.IF (Keys[VK_MENU])
@@ -1406,6 +1412,7 @@ OnResize PROC EXPORT
 	mov ScreenHalf.Y, eax
 	
 	call FX_Resize
+	call UI_Resize
 
 	mov FMain.DefaultFlag, FALSE			; We handle resizing ourselves (FX)
 	invoke bpSetScreenCenter, ADDR FMain	; This is default behavior

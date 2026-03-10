@@ -32,6 +32,14 @@ NetPlayer STRUCT
 NetPlayer ENDS
 NetPlayerShift	EQU 5
 
+NetPlayerLocal STRUCT
+	BlinkTimer	REAL4 0.0
+	FaceTex		DWORD 0
+	NetState	DWORD 0
+	Position	Vector3 <>
+	Rotation	Vector2 <>
+NetPlayerLocal ENDS
+
 ; 32-byte struct, shift value is 5
 NetPlayerVolatile STRUCT
 	PlayerID	DWORD -1
@@ -62,7 +70,7 @@ NetHosting		BPBool FALSE
 NetMagic		DWORD 0
 NetPlayers		NetPlayer NET_MAX_PLAYERS dup (<>)
 NetPlayersV		NetPlayerVolatile NET_MAX_PLAYERS dup (<>)
-NetPlayersVL	NetPlayerVolatile NET_MAX_PLAYERS dup (<>)	; Local interpolated
+NetPlayersVL	NetPlayerLocal NET_MAX_PLAYERS dup (<>)	; Local interpolated
 NetPlayersCount DWORD 0
 NetPlayerID		DWORD -1
 
