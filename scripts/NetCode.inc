@@ -7,7 +7,8 @@ ENUML
 	;	Respond with player ID and list
 	;	PlayerID: DWORD
 	;	Magic: DWORD
-	;	Players: NetPlayers[NET_MAX_PLAYERS]
+	;	GameState: DWORD
+	;	Players: NetPlayers[NET_MAX_PLAYERS] (256)
 	E NET_PLAYERS_RESPONSE
 	
 	;	Send player volatile info
@@ -17,6 +18,12 @@ ENUML
 	;	Send all players volatile info
 	;	PlayerVolatile: NetPlayerVolatile[NET_MAX_PLAYERS]
 	E NET_PLAYERS_VOLATILE
+	
+	;	Start game (play beginning animation)
+	E NET_START_GAME
+	
+	;	Start game request (from client to server to all clients)
+	E NET_START_GAME_REQUEST
 	
 NET_BUFFER_SIZE	EQU 320
 NET_MAX_PLAYERS	EQU 8
@@ -34,17 +41,18 @@ NetPlayerShift	EQU 5
 
 NetPlayerLocal STRUCT
 	BlinkTimer	REAL4 0.0
-	FaceTex		DWORD 0
-	NetState	DWORD 0
+	FaceTex		WORD 0
+	Visible		WORD 0
+	BodyRot		REAL4 0.0
 	Position	Vector3 <>
 	Rotation	Vector2 <>
 NetPlayerLocal ENDS
 
 ; 32-byte struct, shift value is 5
 NetPlayerVolatile STRUCT
-	PlayerID	DWORD -1
 	MazeLayer	DWORD 0
 	NetState	DWORD 0
+	BodyRot		REAL4 0.0
 	Position	Vector3 <>
 	Rotation	Vector2 <>
 NetPlayerVolatile ENDS
@@ -60,6 +68,9 @@ Net_PlayersClear PROTO
 Net_PopulateVolatile PROTO :BPPtr
 Net_ProcessLoop PROTO :LPVOID
 
+.CONST
+MeshPlrHeadOff	Vector3 <0.0, 0.2, -0.04>
+
 .DATA
 NetPort			SWORD 5001
 NetPortStr		DB "5001", 0, 0
@@ -74,6 +85,13 @@ NetPlayersVL	NetPlayerLocal NET_MAX_PLAYERS dup (<>)	; Local interpolated
 NetPlayersCount DWORD 0
 NetPlayerID		DWORD -1
 
+NetPlayersAnim	BPAnimPlayer NET_MAX_PLAYERS dup (<>)
+NetPlayersMesh	BPMesh NET_MAX_PLAYERS dup (<>)
+NetPlayersPosP	Vector2 NET_MAX_PLAYERS dup (<>)
+
 NetPlrConnStr	BYTE 127 DUP (0)
 
 NetVolatileTimer	REAL4 0.0, 0.064	; Send volatile info timer, interval
+
+.DATA?
+MeshPlrHeadPtr		BPPtr ?

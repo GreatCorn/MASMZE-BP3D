@@ -61,6 +61,8 @@ ENUML
 	E MAZE_STATE_END
 	E MAZE_STATE_CROA
 	E MAZE_STATE_BORDER
+	E MAZE_STATE_LOBBY_CREAK
+	E MAZE_STATE_LOBBY_FALL
 	
 LayerData STRUCT
 	MazeSeed	DWORD ?
@@ -110,6 +112,8 @@ MazeKeyPos		Vector3 <>		; Key position
 MazeKeyRot		REAL4 0.0, 0.0	; Key rotation + target
 
 MazeLayoutTex	DWORD 0
+
+MazeNoiseTimer	REAL4 10.0, 12.0, 56.0
 
 MazeNote		BPEnum 0
 MazeNotePos		Vector3 <>
@@ -428,14 +432,17 @@ Maze_DrawCheck PROC EXPORT
 	LOCAL v3Val:Vector3
 	
 	call glPushMatrix
-	invoke glTranslate3fv, ADDR MazeCheckPos
-	invoke glBindTexture, GL_TEXTURE_2D, TexRoof
-	invoke glCallList, MdlCheckRoof
-	invoke glBindTexture, GL_TEXTURE_2D, TexWall
-	invoke glCallList, MdlCheckWalls
+	invoke glTranslate32Dfv, ADDR MazeCheckPos
 	invoke glBindTexture, GL_TEXTURE_2D, TexFloor
 	invoke glCallList, MdlCheckFloor
+	invoke glBindTexture, GL_TEXTURE_2D, TexWall
+	invoke glCallList, MdlCheckRails
+	invoke glTranslatef, 0, MazeCheckPos.Y, 0
+	invoke glCallList, MdlCheckWalls
+	invoke glBindTexture, GL_TEXTURE_2D, TexRoof
+	invoke glCallList, MdlCheckRoof
 	
+	call glPushMatrix
 	; Draw exit door
 	invoke glTranslatef, 0, 0, f(6.1)
 	.IF (MazeCheck == MAZE_CHECK_SAVED)
@@ -447,7 +454,7 @@ Maze_DrawCheck PROC EXPORT
 	call glPopMatrix
 	
 	; Draw TONE
-	call glPushMatrix
+	;call glPushMatrix
 	invoke glEnable, GL_BLEND
 	invoke glDisable, GL_FOG
 	invoke glDisable, GL_LIGHTING
@@ -1178,6 +1185,24 @@ Maze_ProcessState PROC EXPORT
 			mov MazeSiren, rv(flLerp, MazeSiren, flVal, delta2)
 			invoke alSourcef, SndSiren, AL_GAIN, MazeSiren
 		.ENDIF
+	.ELSEIF (MazeState == MAZE_STATE_GAME)
+		.IF (Maze)
+			fld MazeNoiseTimer
+			fsub deltaTime
+			fstp MazeNoiseTimer
+			
+			.IF (MazeNoiseTimer & FLT_NEG)
+				mov MazeNoiseTimer, \
+				rv(flRandRange, MazeNoiseTimer[4], MazeNoiseTimer[8])
+				
+				mov v3Val.X, rv(flRandRange, f(-4), f(4))
+				mov v3Val.Z, rv(flRandRange, f(-4), f(4))
+				vinvoke Vector32DAdd, ADDR v3Val, OFFSET CamPos
+				invoke PlayRandomSnd, ADDR SndRand, 6
+				mov ecx, eax
+				invoke SndSetPos, ecx, ADDR v3Val
+			.ENDIF
+		.ENDIF
 	.ELSEIF (MazeState == MAZE_STATE_STOP_SIREN)
 		.IF !(MazeStateTimer)
 			bpMEM32 MazeStateTimer, f(10)
@@ -1281,6 +1306,29 @@ Maze_ProcessState PROC EXPORT
 			
 			invoke alSourcePlay, SndMistake
 		.ENDIF
+	.ELSEIF (MazeState == MAZE_STATE_LOBBY_CREAK)
+		bpMEM32 MazeStateTimer, f(4)
+		mov MazeStateCallback, OFFSET mazeFadeOut
+		invoke alSourcePlay, SndCreak
+		mov MazeState, MAZE_STATE_LOBBY_FALL
+	.ELSEIF (MazeState == MAZE_STATE_LOBBY_FALL)
+		.IF (MazeStateTimer)
+			fcmp MazeStateTimer, f(1)
+			.IF (!Carry?)
+				fld MazeStateTimer
+				fsub f(1)
+				fsubr f(3)
+				fmul f(0.33333333)
+				fmul st, st
+				fmul f(0.1)
+				fstp flVal
+				vinvoke Plr_Shake, flVal
+			.ENDIF
+		.ELSE
+			fld MazeCheckPos.Y
+			fadd delta10
+			fstp MazeCheckPos.Y
+		.ENDIF
 	.ENDIF
 		
 	.IF (MazeStateTimer)
@@ -1367,6 +1415,10 @@ Maze_ProcessState PROC EXPORT
 		.IF (al)
 			invoke alSourcePlay, SndMus[4]
 		.ENDIF
+		ret
+	mazeFadeOut:
+		mov UIFade, UI_FADE_OUT
+		mov UIFadeVal, 0
 		ret
 Maze_ProcessState ENDP
 
@@ -2623,7 +2675,9 @@ Maze_Process PROC EXPORT
 				vinvoke Plr_Shake, flVal
 			.ENDIF
 		.ELSEIF (MazeCheck == MAZE_CHECK_SAVED)
-			bpMEM32 UIWhiteFadeVal, MazeStateTimer
+			.IF !(NetSock)
+				bpMEM32 UIWhiteFadeVal, MazeStateTimer
+			.ENDIF
 			
 			.IF (PlrState == PLAYER_STATE_EXITING)
 				invoke SndFade, SndMus[8], f(0), delta2
@@ -2640,7 +2694,16 @@ Maze_Process PROC EXPORT
 				.IF (Carry?)
 					vinvoke UI_ShowSubtitles, StrCCCheckpoint, f(0.1)
 					.IF (InputConfirm)
-						mov PlrState, PLAYER_STATE_EXIT
+						.IF (NetSock)
+							.IF (NetHosting)
+								invoke Net_FormSend, NET_START_GAME, 0
+							.ELSE
+								invoke Net_FormSend, NET_START_GAME_REQUEST, \
+								NetSock
+							.ENDIF
+						.ELSE
+							mov PlrState, PLAYER_STATE_EXIT
+						.ENDIF
 					.ENDIF
 				.ENDIF
 			.ENDIF

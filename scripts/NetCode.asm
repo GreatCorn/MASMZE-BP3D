@@ -136,6 +136,7 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		.IF (NetPlayerID == -1)
 			bpMEM32 NetPlayerID, DWORD PTR [pcx+1]
 			bpMEM32 NetMagic, DWORD PTR [pcx+5]
+			; GameState DWORD PTR [pcx+9]
 			
 			IFDEF MODE_DEBUG
 			push pcx
@@ -144,7 +145,7 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 			pop pcx
 			ENDIF
 		.ENDIF
-		add pcx, 9
+		add pcx, 13
 		invoke RtlMoveMemory, ADDR NetPlayers, pcx, SIZEOF NetPlayers
 	.ELSEIF (BYTE PTR [pcx] == NET_PLAYER_VOLATILE)
 		;IFDEF MODE_DEBUG
@@ -166,6 +167,10 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		
 		inc pcx
 		invoke RtlMoveMemory, ADDR NetPlayersV, pcx, SIZEOF NetPlayersV
+	.ELSEIF (BYTE PTR [pcx] == NET_START_GAME)
+		mov MazeState, MAZE_STATE_LOBBY_CREAK
+	.ELSEIF (BYTE PTR [pcx] == NET_START_GAME_REQUEST)
+		invoke Net_FormSend, NET_START_GAME, 0
 	.ENDIF
 	ret
 Net_FormRespond ENDP
@@ -194,7 +199,8 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		shr pax, NetPlayerShift
 		mov DWORD PTR buf[1], eax
 		bpMEM32 DWORD PTR buf[5], NetMagic
-		invoke RtlMoveMemory, ADDR buf+9, ADDR NetPlayers, SIZEOF NetPlayers
+		bpMEM32 DWORD PTR buf[9], GameState
+		invoke RtlMoveMemory, ADDR buf+13, ADDR NetPlayers, SIZEOF NetPlayers
 		inc NetPlayersCount
 		
 		mov globalMsg, TRUE
@@ -207,6 +213,10 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		; Populate own NetPlayerVolatile struct and send all
 		invoke Net_PopulateVolatile, OFFSET NetPlayersV[0]
 		invoke RtlMoveMemory, ADDR buf+1, ADDR NetPlayersV, SIZEOF NetPlayersV
+		
+		mov globalMsg, TRUE
+	.ELSEIF (al == NET_START_GAME)
+		mov MazeState, MAZE_STATE_LOBBY_CREAK
 		
 		mov globalMsg, TRUE
 	.ENDIF
@@ -252,8 +262,8 @@ Net_GetClosestPlr PROC EXPORT PosPtr:BPPtr, ExcludeID:DWORD
 	xor pbx, pbx
 	.WHILE (pbx < SIZEOF NetPlayersVL)
 		mov eax, ExcludeID
-		.IF (NetPlayersV[pbx].PlayerID != eax) \
-		&& (NetPlayersV[pbx].PlayerID != -1)
+		.IF (NetPlayers[pbx].PlayerID != eax) \
+		&& (NetPlayers[pbx].PlayerID != -1)
 			mov dist, \
 			rv(Vector32DDistanceSqr, PosPtr, ADDR NetPlayersV[pbx].Position)
 			fcmp dist, lastDist
@@ -373,7 +383,7 @@ Net_PlayerRemove PROC EXPORT SockOnServ:DWORD
 			mov NetPlayers[pax].PlayerID, -1
 			;shr pax, NetPlayerShift
 			;shl pax, NetPlayerVShift
-			mov NetPlayersV[pax].PlayerID, -1
+			;mov NetPlayersV[pax].PlayerID, -1
 			.BREAK
 		.ENDIF
 		add pax, SIZEOF NetPlayer
@@ -389,22 +399,44 @@ Net_PlayersClear PROC EXPORT
 	xor pax, pax
 	.WHILE (pax < SIZEOF NetPlayers)
 		mov NetPlayers[pax].PlayerID, -1
-		mov NetPlayersV[pax].PlayerID, -1
+		;mov NetPlayersV[pax].PlayerID, -1
 		add pax, SIZEOF NetPlayer
 	.ENDW
 	ret
 Net_PlayersClear ENDP
 
 Net_PopulateVolatile PROC EXPORT NPVPtr:BPPtr
+	LOCAL flVal:REAL4
+	
 	mov pcx, NPVPtr
 	ASSUME pcx:PTR NetPlayerVolatile
 
-	bpMEM32 [pcx].PlayerID, NetPlayerID
+	;bpMEM32 [pcx].PlayerID, NetPlayerID
 	bpMEM32 [pcx].MazeLayer, MazeLayer
 	bpMEM32 [pcx].NetState, PlrState
 	invoke RtlMoveMemory, ADDR [pcx].Position, ADDR CamPosL, 12
 	mov pcx, NPVPtr
 	invoke RtlMoveMemory, ADDR [pcx].Rotation, ADDR CamRotL, 8
+	
+	mov pcx, NPVPtr
+	fcmp PlrSpeed, f(0.1)
+	.IF (!Carry?)
+		bpMEM32 [pcx].BodyRot, [pcx].Rotation.Y
+	.ELSE
+		fld [pcx].Rotation.Y
+		fsub [pcx].BodyRot
+		fstp flVal
+		mov flVal, rv(flAngle, flVal)
+		and flVal, not FLT_NEG
+		fcmp flVal, f(0.75)
+		.IF (!Carry?)
+			fld flVal
+			fsub f(0.75)
+			fstp flVal
+			mov [pcx].BodyRot, \
+			rv(flLerpAngle, [pcx].BodyRot, [pcx].Rotation.Y, flVal)
+		.ENDIF
+	.ENDIF
 	
 	ASSUME pcx:nothing
 	ret
@@ -450,6 +482,7 @@ Net_ProcessLoop ENDP
 
 
 Net_Draw PROC EXPORT
+	LOCAL headPos:Vector3
 	; Draw players
 	push pbx
 	xor pbx, pbx
@@ -457,24 +490,25 @@ Net_Draw PROC EXPORT
 	.WHILE (pbx < SIZEOF NetPlayersV)
 		mov eax, NetPlayerID
 		mov ecx, MazeLayer
-		.IF (NetPlayersV[pbx].PlayerID != eax) \
-		&& (NetPlayersV[pbx].PlayerID != -1) \
-		&& (NetPlayersV[pbx].MazeLayer == ecx)
+		.IF (NetPlayers[pbx].PlayerID != eax) \
+		&& (NetPlayers[pbx].PlayerID != -1) \
+		&& (NetPlayersV[pbx].MazeLayer == ecx) \
+		&& (NetPlayersVL[pbx].Visible)
 			call glPushMatrix
 			invoke glTranslate32Dfv, ADDR NetPlayersVL[pbx].Position
 			
 			call glPushMatrix
 			push bpFontWidth
 			push bpFontHeight
-			bpMEM32 bpFontWidth, 2
-			bpMEM32 bpFontHeight, 1
+			bpMEM32 bpFontWidth, f(1)
+			bpMEM32 bpFontHeight, f(2)
 			invoke glScalef, f(0.5), f(0.5), f(0.5)
-			invoke glRotatef, CamBillboard.Y, 0, f(1), 0
-			invoke glRotatef, CamBillboard.X, f(1), 0, 0
-			invoke glDisable, GL_CULL_FACE
-			invoke bpRenderText, ADDR NetPlayers[pbx].Username, 0, -24, \
+			;invoke glRotatef, CamBillboard.Y, 0, f(1), 0
+			;invoke glRotatef, CamBillboard.X, f(1), 0, 0
+			;invoke glDisable, GL_CULL_FACE
+			invoke bpRenderText, ADDR NetPlayers[pbx].Username, 0, -2, \
 			BP_ALIGN_CENTER, 0
-			invoke glEnable, GL_CULL_FACE
+			;invoke glEnable, GL_CULL_FACE
 			pop bpFontHeight
 			pop bpFontWidth
 			call glPopMatrix
@@ -485,29 +519,45 @@ Net_Draw PROC EXPORT
 			invoke glStencilMask, 0FFh
 			invoke glClear, GL_STENCIL_BUFFER_BIT
 			call glPushMatrix
-			invoke glTranslatef, 0, CamHeight, 0
-			invoke glScalef, f(0.4), f(0.4), f(0.4)
+			
+			mov pax, pbx
+			shr pax, NetPlayerShift
+			mov pcx, SIZEOF BPMesh
+			mul pcx
+			push pax
+			mov pax, NetPlayersMesh[pax].Vertices
+			add pax, MeshPlrHeadPtr
+			invoke Vector3Copy, ADDR headPos, pax
+			invoke Vector3Add, ADDR headPos, ADDR MeshPlrHeadOff
+			invoke glTranslate3fv, ADDR headPos
+			
+			invoke glScalef, f(0.33), f(0.33), f(0.33)
 			invoke glRotatef, CamBillboard.Y, 0, f(1), 0
 			invoke glRotatef, CamBillboard.X, f(1), 0, 0
 			invoke glBindTexture, GL_TEXTURE_2D, TexPlrHead
 			invoke glCallList, MdlParticle
 			call glPopMatrix
-			invoke glDisable, GL_ALPHA_TEST
 			
+			call glPushMatrix
 			invoke glStencilFunc, GL_NOTEQUAL, 1, 0FFh
 			invoke glStencilMask, 0
-			invoke glRotatefr, NetPlayersVL[pbx].Rotation.Y, 0, f(1), 0
+			invoke glRotatefr, NetPlayersVL[pbx].BodyRot, 0, f(1), 0
 			invoke glBindTexture, GL_TEXTURE_2D, TexPlrBody
-			invoke glCallList, MdlPlrBody
-			invoke glDisable, GL_STENCIL_TEST
 			
+			pop pax
+			invoke bpDrawMesh, ADDR NetPlayersMesh[pax]
+			invoke glDisable, GL_STENCIL_TEST
+			invoke glDisable, GL_ALPHA_TEST
+			call glPopMatrix
+			
+			invoke glRotatefr, NetPlayersVL[pbx].Rotation.Y, 0, f(1), 0
 			invoke glEnable, GL_BLEND
 			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
-			invoke glTranslatef, 0, CamHeight, 0
+			invoke glTranslate3fv, ADDR headPos
 			.IF (NetPlayersVL[pbx].BlinkTimer & FLT_NEG)
 				mov eax, TexPlrBlink
 			.ELSE
-				mov eax, NetPlayersVL[pbx].FaceTex
+				movzx eax, NetPlayersVL[pbx].FaceTex
 			.ENDIF
 			invoke glBindTexture, GL_TEXTURE_2D, eax
 			invoke glRotatefr, NetPlayersVL[pbx].Rotation.X, f(1), 0, 0
@@ -524,7 +574,7 @@ Net_Draw PROC EXPORT
 Net_Draw ENDP
 
 Net_Process PROC EXPORT
-	LOCAL Dot:Vector3, ClPlr:BPPtr
+	LOCAL Dot:Vector3, ClPlr:BPPtr, Anim:BPPtr
 	
 	fld NetVolatileTimer[0]
 	fsub deltaUnscaled
@@ -537,8 +587,7 @@ Net_Process PROC EXPORT
 		.IF (NetHosting)
 			invoke Net_FormSend, NET_PLAYERS_VOLATILE, 0
 		.ELSE
-			mov ecx, NetSock
-			invoke Net_FormSend, NET_PLAYER_VOLATILE, ecx
+			invoke Net_FormSend, NET_PLAYER_VOLATILE, NetSock
 		.ENDIF
 	.ENDIF
 	
@@ -547,17 +596,94 @@ Net_Process PROC EXPORT
 	ASSUME pbx:PTR NetPlayerVolatile
 	.WHILE (pbx < SIZEOF NetPlayersV)
 		mov eax, NetPlayerID
-		.IF (NetPlayersV[pbx].PlayerID != eax) \
-		&& (NetPlayersV[pbx].PlayerID != -1)
+		.IF (NetPlayers[pbx].PlayerID != eax) \
+		&& (NetPlayers[pbx].PlayerID != -1)
+			mov pax, pbx
+			shr pax, NetPlayerShift
+			mov pcx, SIZEOF BPAnimPlayer
+			mul pcx
+			mov Anim, pax
+			
+			mov pax, pbx
+			shr pax, 2
+			fld NetPlayersPosP[pax].X
+			fsub NetPlayersVL[pbx].Position.X
+			fmul st, st
+			fld NetPlayersPosP[pax].Y
+			fsub NetPlayersVL[pbx].Position.Z
+			fmul st, st
+			fadd	; Got distance
+			fsqrt
+			fdiv deltaTime
+			fstp Dot.Y
+			
+			mov ecx, NetPlayersVL[pbx].Position.X
+			mov NetPlayersPosP[pax].X, ecx
+			mov ecx, NetPlayersVL[pbx].Position.Z
+			mov NetPlayersPosP[pax].Y, ecx
+			
+			fcmp Dot.Y, f(0.1)
+			.IF (!Carry?)
+				fcmp NetPlayersV[pbx].Position.Y, f(1)
+				.IF (Carry?)
+					mov pdx, OFFSET AnimPlrCrouchWalk
+				.ELSE
+					mov pdx, OFFSET AnimPlrWalk
+				.ENDIF
+				mov pax, Anim
+				mov ecx, Dot.Y
+				mov NetPlayersAnim[pax].Speed, ecx
+				.IF (NetPlayersAnim[pax].TrackPtr != pdx)
+					invoke bpAnimPlay, ADDR NetPlayersAnim[pax], pdx
+				.ENDIF
+			.ELSE
+				fcmp NetPlayersV[pbx].Position.Y, f(1)
+				.IF (Carry?)
+					mov pdx, OFFSET AnimPlrCrouch
+				.ELSE
+					mov pdx, OFFSET AnimPlrIdle
+				.ENDIF
+				mov pax, Anim
+				mov NetPlayersAnim[pax].Speed, FLT_1
+				.IF (NetPlayersAnim[pax].TrackPtr != pdx)
+					invoke bpAnimPlay, ADDR NetPlayersAnim[pax], pdx
+				.ENDIF
+			.ENDIF
+			
 			invoke Vector3Lerp, ADDR NetPlayersVL[pbx].Position, \
 			ADDR NetPlayersV[pbx].Position, delta20
 			invoke Vector2LerpAngle, ADDR NetPlayersVL[pbx].Rotation, \
 			ADDR NetPlayersV[pbx].Rotation, delta20
 			mov NetPlayersVL[pbx].Rotation.Y, \
 			rv(flAngle, NetPlayersVL[pbx].Rotation.Y)
+			
+			mov Dot.Y, \
+			rv(Vector32DDistanceSqr, ADDR CamPos,ADDR NetPlayersV[pbx].Position)
+			
+			invoke Collide_Distance, ADDR CamPos, \
+			ADDR NetPlayersV[pbx].Position, f(0.2), Dot.Y
+			
+			mov NetPlayersVL[pbx].Visible, TRUE
+			fcmp Dot.Y, f(2)
+			.IF (!Carry?)
+				mov Dot.Y, rv(Plr_FrustumDot, ADDR NetPlayersVL[pbx].Position)
+				fcmp Dot.Y, f(0.2)
+				.IF (Carry?)
+					mov NetPlayersVL[pbx].Visible, FALSE
+					add pbx, SIZEOF NetPlayerVolatile
+					.CONTINUE
+				.ENDIF
+			.ENDIF
+			
+			invoke flLerpAngle, NetPlayersVL[pbx].BodyRot, \
+			NetPlayersV[pbx].BodyRot, delta10
+			mov NetPlayersVL[pbx].BodyRot, rv(flAngle, eax)
+			
+			mov pax, Anim
+			invoke bpProcessAnimPlayer, ADDR NetPlayersAnim[pax], deltaTime
 		
 			invoke Net_GetClosestPlr, ADDR NetPlayersV[pbx].Position, \
-			NetPlayersV[pbx].PlayerID
+			NetPlayers[pbx].PlayerID
 			mov ClPlr, pax
 			
 			mov Dot.Y, ecx
@@ -574,24 +700,22 @@ Net_Process PROC EXPORT
 				fmul Dot.Z
 				fsub
 				fstp Dot.X
-				print real4$(Dot.X), 13, 10
+				
 				fcmp Dot.X, f(0.3)
 				.IF (!Carry?)
-					bpMEM32 NetPlayersVL[pbx].FaceTex, TexPlrLeft
+					mov eax, TexPlrLeft
 				.ELSE
 					fcmp Dot.X, f(-0.3)
 					.IF (Carry?)
-						bpMEM32 NetPlayersVL[pbx].FaceTex, TexPlrRight
+						mov eax, TexPlrRight
 					.ELSE
-						bpMEM32 NetPlayersVL[pbx].FaceTex, TexPlrNeut
+						mov eax, TexPlrNeut
 					.ENDIF
 				.ENDIF
-				
-				invoke Collide_Distance, ADDR CamPos, \
-				ADDR NetPlayersV[pbx].Position, f(0.3), Dot.Y
 			.ELSE
-				bpMEM32 NetPlayersVL[pbx].FaceTex, TexPlrNeut
+				mov eax, TexPlrNeut
 			.ENDIF
+			mov NetPlayersVL[pbx].FaceTex, ax
 			
 			
 			fld NetPlayersVL[pbx].BlinkTimer

@@ -858,6 +858,12 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		mov MotryaAnimPlr.Interpolation, al
 		mov VebraAnimPlr.Interpolation, al
 		mov WmblykAnimPlr.Interpolation, al
+		
+		xor pcx, pcx
+		.WHILE (pcx < SIZEOF NetPlayersAnim)
+			mov NetPlayersAnim[pcx].Interpolation, al
+			add pcx, SIZEOF BPAnimPlayer
+		.ENDW
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsMSAA)
 		print "graphics/msaa", 13, 10
 		call Settings_SetMSAA

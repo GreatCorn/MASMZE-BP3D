@@ -20,6 +20,10 @@ AnimKoluplykShop	BPAnimTrack <>
 AnimKubaleMove		BPAnimTrack <>	
 AnimMotryaIdle		BPAnimTrack <>	
 AnimMotryaSave		BPAnimTrack <>
+AnimPlrCrouch		BPAnimTrack <>
+AnimPlrCrouchWalk	BPAnimTrack <>
+AnimPlrIdle			BPAnimTrack <>
+AnimPlrWalk			BPAnimTrack <>
 AnimVasFloat		BPAnimTrack <>
 AnimVebraGo			BPAnimTrack <>
 AnimVebraSit		BPAnimTrack <>
@@ -42,6 +46,7 @@ LoadState	DWORD 0
 MdlBorderFloor		DWORD ?
 MdlBorderWall		DWORD ?
 MdlCheckFloor		DWORD ?
+MdlCheckRails		DWORD ?
 MdlCheckRoof		DWORD ?
 MdlCheckWalls		DWORD ?
 MdlCityConcrete		DWORD ?
@@ -72,8 +77,6 @@ MdlPlaneC			DWORD ?
 MdlPlaneR			DWORD ?
 MdlPlanks			DWORD ?
 MdlPlrAcc			DWORD ?
-MdlPlrBody			DWORD ?
-MdlPlrHead			DWORD ?
 MdlRubble			DWORD ?
 MdlRubbleFacade		DWORD ?
 MdlShop				DWORD ?
@@ -123,6 +126,7 @@ MeshHBD				BPMesh?
 MeshKoluplyk		BPMesh?
 MeshKubale			BPMesh?
 MeshMotrya			BPMesh?
+MeshPlr				BPMesh?
 MeshVas				BPMesh?
 MeshVebra			BPMesh?
 MeshWmblyk			BPMesh?
@@ -227,6 +231,7 @@ SndAmb			DWORD ?
 SndAmbT			DWORD ?
 SndAmbW			DWORD ?, ?, ?, ?
 SndCheckpoint	DWORD ?
+SndCreak		DWORD ?
 SndCrumble		DWORD ?
 SndDeath		DWORD ?
 SndDig			DWORD ?
@@ -327,6 +332,15 @@ LoadResources PROC EXPORT
 		mov AnimMotryaIdle.Looping, TRUE
 		LoadBPA OFFSET AnimMotryaSave,		"assets\anim\motryaSave.bpa"
 		
+		LoadBPA OFFSET AnimPlrCrouch,		"assets\anim\plrCrouch.bpa"
+		mov AnimPlrCrouch.Looping, TRUE
+		LoadBPA OFFSET AnimPlrCrouchWalk,	"assets\anim\plrCrouchWalk.bpa"
+		mov AnimPlrCrouchWalk.Looping, TRUE
+		LoadBPA OFFSET AnimPlrIdle,			"assets\anim\plrIdle.bpa"
+		mov AnimPlrIdle.Looping, TRUE
+		LoadBPA OFFSET AnimPlrWalk,			"assets\anim\plrWalk.bpa"
+		mov AnimPlrWalk.Looping, TRUE
+		
 		LoadBPA OFFSET AnimVasFloat,	"assets\anim\vasFloat.bpa"
 		mov AnimVasFloat.Looping, TRUE
 		
@@ -358,6 +372,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlBorderFloor, 		"assets\models\borderFloor.bpl"
 		LoadBPL OFFSET MdlBorderWall, 		"assets\models\borderWall.bpl"
 		LoadBPL OFFSET MdlCheckFloor, 		"assets\models\checkFloor.bpl"
+		LoadBPL OFFSET MdlCheckRails, 		"assets\models\checkRails.bpl"
 		LoadBPL OFFSET MdlCheckRoof, 		"assets\models\checkRoof.bpl"
 		LoadBPL OFFSET MdlCheckWalls, 		"assets\models\checkWalls.bpl"
 		LoadBPL OFFSET MdlCityConcrete, 	"assets\models\cityConcrete.bpl"
@@ -391,7 +406,6 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlPlaneR,			"assets\models\planeR.bpl"
 		LoadBPL OFFSET MdlPlanks,			"assets\models\planks.bpl"
 		LoadBPL OFFSET MdlPlrAcc,			"assets\models\plrAcc.bpl"
-		LoadBPL OFFSET MdlPlrBody,			"assets\models\plrBody.bpl"
 		LoadBPL OFFSET MdlRubble,			"assets\models\rubble.bpl"
 		LoadBPL OFFSET MdlRubbleFacade,		"assets\models\rubbleFacade.bpl"
 		LoadBPL OFFSET MdlShop,				"assets\models\shop.bpl"
@@ -473,9 +487,43 @@ LoadResources PROC EXPORT
 		LoadBPM OFFSET MeshKoluplyk,		"assets\models\koluplyk.bpm"
 		LoadBPM OFFSET MeshKubale,			"assets\models\kubale.bpm"
 		LoadBPM OFFSET MeshMotrya,			"assets\models\motrya.bpm"
+		;LoadBPM OFFSET MeshPlr,				"assets\models\plr.bpm"
 		LoadBPM OFFSET MeshVas,				"assets\models\vas.bpm"
 		LoadBPM OFFSET MeshVebra,			"assets\models\vebra.bpm"
 		LoadBPM OFFSET MeshWmblyk,			"assets\models\wmblyk.bpm"
+		
+		; Load separate player models
+		push pbx
+		xor pbx, pbx
+		.WHILE (pbx < NET_MAX_PLAYERS)
+			mov pax, pbx
+			mov pcx, SIZEOF BPMesh
+			mul pcx
+			lea pax, NetPlayersMesh[pax]
+			push pax
+			LoadBPM pax, "assets\models\plr.bpm"
+			
+			mov pax, pbx
+			mov pcx, SIZEOF BPAnimPlayer
+			mul pcx
+			mov NetPlayersAnim[pax].FrameType, BPA_FRAME_VERTEX
+			pop NetPlayersAnim[pax].Mesh
+			inc pbx
+		.ENDW
+		
+		; Get the vertex offset to which attach the head
+		xor pbx, pbx
+		mov pax, NetPlayersMesh[0].Vertices
+		.WHILE (pbx < NetPlayersMesh[0].V3Size)
+			.IF (REAL4 PTR [pax+pbx+4] == FLT_1) && \
+			((REAL4 PTR [pax+pbx] == 0) || (REAL4 PTR [pax+pbx] == FLT_NEG))
+				mov MeshPlrHeadPtr, pbx
+				print "Found anchor point vertex", 13, 10
+				.BREAK
+			.ENDIF
+			add pbx, SIZEOF Vector3
+		.ENDW
+		pop pbx
 
 		mov ScreenQuad, rv(glGenLists, 1)
 		invoke glNewList, ScreenQuad, GL_COMPILE
@@ -556,7 +604,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexPipe,			"assets\textures\pipe.bpt"
 		LoadBPT OFFSET TexPlanks,		"assets\textures\planks.bpt"
 		LoadBPT OFFSET TexPlaster,		"assets\textures\plaster.bpt"
-		LoadBPT OFFSET TexPlrBody,		"assets\textures\sky.bpt"
+		LoadBPT OFFSET TexPlrBody,		"assets\textures\plrBody.bpt"
 		LoadBPT OFFSET TexPlrBlink,		"assets\textures\plrBlink.bpt"
 		LoadBPT OFFSET TexPlrHead,		"assets\textures\plrHead.bpt"
 		LoadBPT OFFSET TexPlrLeft,		"assets\textures\plrLeft.bpt"
@@ -629,6 +677,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndAmbW[8],		"assets\sounds\ambW3.bps"
 		LoadBPS OFFSET SndAmbW[12],		"assets\sounds\ambW4.bps"
 		LoadBPS OFFSET SndCheckpoint,	"assets\sounds\checkpoint.bps"
+		LoadBPS OFFSET SndCreak,		"assets\sounds\creak.bps"
 		LoadBPS OFFSET SndCrumble,		"assets\sounds\crumble.bps"
 		LoadBPS OFFSET SndDeath,		"assets\sounds\death.bps"
 		LoadBPS OFFSET SndDig,			"assets\sounds\dig.bps"
