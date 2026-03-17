@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-;BP_COMPATIBILITY_W9X		EQU <1>
+BP_COMPATIBILITY_W9X		EQU <1>
 BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
@@ -421,6 +421,7 @@ include scripts\NetCode.asm
 GPadParse PROTO :BPEnum, :BPPtr
 
 CreateScene PROC EXPORT
+	call Plr_Create
 	call Maze_Create
 	ret
 CreateScene ENDP
@@ -490,7 +491,6 @@ GameInit PROC EXPORT
 	
 	mov MazeLayer, 1
 	
-	call Plr_Create
 	print "Finished game object initialization.", 13, 10
 	
 	call CreateScene
@@ -511,7 +511,7 @@ GameStart PROC EXPORT
 	
 	bpMEM32 FogDensity, f(0.5)
 	invoke alSourceStop, SndIntro
-	
+		
 	.IF (MazeCheck)
 		invoke alSourcePlay, SndMus[8]
 		invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
@@ -522,11 +522,11 @@ GameStart PROC EXPORT
 		mov UIFadeCallback, 0
 		
 		mov MazeState, MAZE_STATE_GAME
-	.ELSE
+	.ELSE		
 		invoke Maze_Generate, nRandSeed
 	.ENDIF
 	
-	.IF (MazeLayer == 1)
+	.IF (MazeLayer == 1)		
 		mov PlrState, PLAYER_STATE_ENTER
 	.ELSE
 		mov PlrState, PLAYER_STATE_GAME
@@ -552,6 +552,7 @@ GameStartNew PROC EXPORT
 	call GameInit
 	mov PlrState, PLAYER_STATE_INTRO_DARK
 	mov MazeState, MAZE_STATE_SAFE
+	mov MazeStateTimer, 0
 	mov MazeLayer, 1
 	mov UIFade, UI_FADE_NONE
 	mov UIFadeVal, 0
@@ -746,6 +747,9 @@ InitARBContext ENDP
 
 InitAudio PROC EXPORT
 	call InitAudioSystem
+	print "Using OpenAL version "
+	invoke alGetString, AL_VERSION
+	print pax, 13, 10
 	invoke alListenerf, AL_GAIN, SettingsAudioVolume
 	ret
 InitAudio ENDP
@@ -810,6 +814,7 @@ InitNetwork PROC EXPORT
 InitNetwork ENDP
 
 MenuInit PROC EXPORT
+	mov GameState, GAME_STATE_MENU
 	mov LoadState, LOADING_TEXT
 	call Settings_CheckSave
 	mov HasSave, al
@@ -821,8 +826,7 @@ MenuInit PROC EXPORT
 	
 	mov deltaScale, FLT_1
 	
-	mov GameState, GAME_STATE_MENU
-	
+	mov PlrState, PLAYER_STATE_ETC
 	mov UIState, UI_STATE_MENU_MAIN
 	
 	.IF (UIMenuSplash >= 2)
@@ -830,13 +834,15 @@ MenuInit PROC EXPORT
 			invoke alSourcePlay, SndMus[20]
 		.ENDIF
 		mov UIMenuSplash, 2
-		mov UIFade, UI_FADE_IN
-		mov UIFadeCallback, 0
-		mov UIFadeVal, FLT_1
 	.ENDIF
+	mov UIFade, UI_FADE_IN
+	mov UIFadeCallback, 0
+	mov UIFadeDisp, FLT_1
+	mov UIFadeVal, FLT_1
 	
 	invoke alSourcef, SndMus[20], AL_GAIN, f(1)
 	
+	call Maze_ResetElements
 	call Maze_ResetEntities
 	.IF (Maze)
 		call Maze_Free
@@ -853,7 +859,9 @@ PauseGame PROC EXPORT Paused:BPBool
 		invoke PauseSounds, TRUE
 	.ELSE
 		mov deltaScale, FLT_1
-		invoke PauseSounds, FALSE
+		.IF !(NetSock)
+			invoke PauseSounds, FALSE
+		.ENDIF
 	.ENDIF
 	ret
 PauseGame ENDP

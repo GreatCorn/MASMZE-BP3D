@@ -20,8 +20,6 @@ SV	StrMenuReallyQuit
 SV	StrMenuHost
 SV	StrMenuConnect
 SV	StrMenuDisconnect
-SV	StrMenuJoined
-SV	StrMenuLeft
 SV	StrMenuConnFail
 SV	StrMenuServDisc
 SV	StrMenuIP
@@ -124,5 +122,16 @@ SV	StrNote4
 SV	StrNote5
 SV	StrNote6
 SV	StrNote7
+SV	StrNetJoined
+SV	StrNetLeft
+SV	StrNetFinished
+SV	StrNet1st
+SV	StrNet2nd
+SV	StrNet3rd
+SV	StrNet4th
+SV	StrNet5th
+SV	StrNet6th
+SV	StrNet7th
+SV	StrNet8th
 
 StrSectionEnd		BYTE ?

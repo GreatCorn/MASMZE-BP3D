@@ -12,7 +12,9 @@
 *.ogg
 *.png
 *.png~
+*.RES
 
 release/
 
 main.lib
+MASMZE-3D.lib

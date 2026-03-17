@@ -57,6 +57,10 @@ Particles_Create PROC EXPORT ParSysPtr:BPPtr
 	ASSUME pbx:PTR Particle
 	
 	mov pcx, ParSysPtr
+	.IF ([pcx].Particles)
+		invoke bpFree, bpDefHeap, 0, [pcx].Particles
+		mov pcx, ParSysPtr
+	.ENDIF
 	mov pax, [pcx].Count
 	mov pcx, SIZEOF Particle
 	mul pcx
@@ -72,7 +76,7 @@ Particles_Create PROC EXPORT ParSysPtr:BPPtr
 	push pbx
 	mov pbx, [pcx].Particles
 	.WHILE (pbx < [pcx].EndAddr)
-		call Particle_Init
+		;call Particle_Init
 		mov [pbx].Lifetime, 0
 		add pbx, SIZEOF Particle
 	.ENDW
@@ -101,6 +105,7 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 		fcmp Alpha, f(0.2)
 		.IF (Carry?)
 			add pbx, SIZEOF Particle
+			mov pcx, ParSysPtr
 			.CONTINUE
 		.ENDIF
 		ENDIF
@@ -262,8 +267,7 @@ Particles_Process PROC EXPORT ParSysPtr:BPPtr, Delta:REAL4
 		fsub Delta
 		fstp [pbx].Lifetime
 		
-		fcmp [pbx].Lifetime
-		.IF (Carry?)
+		.IF ([pbx].Lifetime & FLT_NEG)
 			mov [pbx].Lifetime, 0
 		.ENDIF
 		

@@ -23,6 +23,12 @@ ENUML
 	E PLAYER_STATE_STOP
 	E PLAYER_STATE_ETC
 	
+	; Net-related
+	E PLAYER_STATE_SPECTATE
+	E PLAYER_STATE_COMPLETED
+	E PLAYER_STATE_LIMBO	; Everyone dead, game loading or etc
+	E PLAYER_STATE_LEADERBOARD
+	
 .CONST
 CamHeight		REAL4 1.2
 PlrSpeedCrouch	REAL4 2.0
@@ -37,6 +43,7 @@ CamPosP			Vector3 <>	; Previous frame camera position
 CamRot			Vector3 <>
 CamRotL			Vector3 <>
 CamRotSmooth	REAL4 16.0
+CamForward		Vector3 <>
 PlrCanControl	BPBool TRUE
 PlrCrouch		REAL4 0.0
 PlrForward		Vector3 <>
@@ -60,6 +67,7 @@ PlrGlyphRot		REAL4 7 DUP (0.0)
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
 
+PlrCollide		BPBool TRUE
 PlrItems		BPEnum 0
 PlrCompassRot	REAL4 0.0
 PlrCompassVel	REAL4 0.0
@@ -87,37 +95,7 @@ Plr_Control PROC EXPORT
 	fsub InputAxes[8]
 	fstp InputMovement.X
 	
-	; Prepare look from generic axes
-	fld InputAxes[20]
-	fsub InputAxes[16]
-	fmul delta2
-	fmul SettingsControlsJoystickSpeed
-	fadd InputLook.Y
-	fstp InputLook.Y
-	fld InputAxes[28]
-	fsub InputAxes[24]
-	fmul delta2
-	fmul SettingsControlsJoystickSpeed
-	fadd InputLook.X
-	fstp InputLook.X
-	
-	; Look
-	.IF (FMain.MouseMode == BP_MOUSE_MODE_LOCKED)
-		.IF (PlrMouseCool)
-			dec PlrMouseCool
-		.ELSE
-			fld InputLook.Y
-			fadd CamRot.X
-			fstp CamRot.X
-			mov CamRot.X, rv(flClamp, CamRot.X, PIHalfN, PIHalf)
-			
-			fld InputLook.X
-			fsubr CamRot.Y
-			fstp CamRot.Y
-			mov CamRot.Y, rv(flAngle, CamRot.Y)
-			mov CamRotL.Y, rv(flAngle, CamRotL.Y)
-		.ENDIF
-	.ENDIF
+	call Plr_ControlLook
 	
 	; Clamp movement magnitude
 	mov flVal, rv(Vector2LengthSqr, ADDR InputMovement)
@@ -178,32 +156,7 @@ Plr_Control PROC EXPORT
 	; Glyphs
 	.IF (PlrState == PLAYER_STATE_GAME) && (InputGlyph)
 		.IF (PlrGlyphs)
-			invoke alSourcePlay, SndScribble
-			dec PlrGlyphs
-			
-			mov pax, PlrGlyphsInMaze
-			mov pcx, 12
-			mul pcx
-			push pax
-			invoke Vector32DCopy, ADDR PlrGlyphPos[pax], ADDR CamPos
-			pop pax
-			fild PlrGlyphsInMaze
-			fmul f(0.01)
-			fadd f(0.02)
-			fstp PlrGlyphPos[pax].Y
-			
-			mov pcx, PlrGlyphsInMaze
-			shl pcx, 2
-			bpMEM32 PlrGlyphRot[pcx], CamRot.Y
-			
-			inc PlrGlyphsInMaze
-			
-			.IF (PlrGlyphs)
-				invoke IntToStr, StrCCGlyphs, PlrGlyphs, FALSE
-				vinvoke UI_ShowSubtitles, StrCCGlyphs, UISubDur
-			.ELSE
-				invoke alSourcePlay, SndMistake
-			.ENDIF
+			vinvoke Plr_PlaceGlyph, OFFSET CamPos, CamRot.Y
 		.ENDIF
 		.IF !(PlrGlyphs)
 			vinvoke UI_ShowSubtitles, StrCCGlyphsNone, UISubDur
@@ -213,6 +166,41 @@ Plr_Control PROC EXPORT
 	.ENDIF
 	ret
 Plr_Control ENDP
+
+Plr_ControlLook PROC EXPORT
+	; Prepare look from generic axes
+	fld InputAxes[20]
+	fsub InputAxes[16]
+	fmul delta2
+	fmul SettingsControlsJoystickSpeed
+	fadd InputLook.Y
+	fstp InputLook.Y
+	fld InputAxes[28]
+	fsub InputAxes[24]
+	fmul delta2
+	fmul SettingsControlsJoystickSpeed
+	fadd InputLook.X
+	fstp InputLook.X
+	
+	; Look
+	.IF (FMain.MouseMode == BP_MOUSE_MODE_LOCKED)
+		.IF (PlrMouseCool)
+			dec PlrMouseCool
+		.ELSE
+			fld InputLook.Y
+			fadd CamRot.X
+			fstp CamRot.X
+			mov CamRot.X, rv(flClamp, CamRot.X, PIHalfN, PIHalf)
+			
+			fld InputLook.X
+			fsubr CamRot.Y
+			fstp CamRot.Y
+			mov CamRot.Y, rv(flAngle, CamRot.Y)
+			mov CamRotL.Y, rv(flAngle, CamRotL.Y)
+		.ENDIF
+	.ENDIF
+	ret
+Plr_ControlLook ENDP
 
 Plr_DrawCompassMap PROC EXPORT
 	LOCAL flVal:REAL4, v2Val:Vector2
@@ -309,6 +297,9 @@ Plr_DrawGlyphs PROC EXPORT
 	
 	xor pbx, pbx
 	.WHILE (pbx < PlrGlyphsInMaze)
+		.IF (pbx >= 7)
+			.BREAK
+		.ENDIF
 		mov pax, pbx
 		shl pax, 2
 		mov ecx, PlrGlyphRot[pax]
@@ -445,9 +436,46 @@ Plr_LateProcess PROC EXPORT
 	ret
 Plr_LateProcess ENDP
 
+Plr_PlaceGlyph PROC EXPORT PosPtr:BPPtr, Angle:REAL4
+	invoke SndSetPos, SndScribble, PosPtr
+	invoke alSourcePlay, SndScribble
+
+	dec PlrGlyphs
+			
+	mov pax, PlrGlyphsInMaze
+	mov pcx, 12
+	mul pcx
+	push pax
+	invoke Vector32DCopy, ADDR PlrGlyphPos[pax], PosPtr
+	pop pax
+	fild PlrGlyphsInMaze
+	fmul f(0.01)
+	fadd f(0.02)
+	fstp PlrGlyphPos[pax].Y
+	
+	mov pcx, PlrGlyphsInMaze
+	shl pcx, 2
+	bpMEM32 PlrGlyphRot[pcx], Angle
+	
+	inc PlrGlyphsInMaze
+			
+	.IF (PlrGlyphs)
+		invoke IntToStr, StrCCGlyphs, PlrGlyphs, FALSE
+		vinvoke UI_ShowSubtitles, StrCCGlyphs, UISubDur
+	.ELSE
+		invoke alSourcePlay, SndMistake
+	.ENDIF
+	
+	.IF (NetSock)
+		invoke Net_FormSend, NET_MAZE_ELEMENTS, NetSock
+	.ENDIF
+	ret
+Plr_PlaceGlyph ENDP
+
 Plr_ProcessState PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
 	
+	mov PlrCollide, TRUE
 	.IF (PlrState == PLAYER_STATE_ENTER)
 		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamEnter
@@ -489,6 +517,10 @@ Plr_ProcessState PROC EXPORT
 				invoke alSourcef, SndAmb, AL_GAIN, f(1)
 				invoke alSourcePlay, SndAmb
 			.ENDIF
+		.ENDIF
+		
+		.IF (NetSock)
+			call Net_LeaderboardClear
 		.ENDIF
 		ret
 	.ELSEIF (PlrState == PLAYER_STATE_EXIT)
@@ -652,9 +684,14 @@ Plr_ProcessState PROC EXPORT
 			
 			fcmp UIFadeDisp, f(1)
 			.IF (!Carry?)
+				.IF (NetSock)
+					bpMEM32 PlrStateTimer, f(4)
+					mov PlrStateCallback, OFFSET plrDeadSpectate
+				.ELSE
+					vinvoke Settings_EraseSave, TRUE
+				.ENDIF
 				mov PlrState, PLAYER_STATE_DEAD
 				invoke alSourcePlay, SndDeath
-				vinvoke Settings_EraseSave, TRUE
 			.ENDIF
 		.ELSE
 			mov UIFadeVal, FLT_1
@@ -668,6 +705,48 @@ Plr_ProcessState PROC EXPORT
 		.IF (Wmblyk)
 			invoke SndFade, SndWmblykStrM, 0, deltaTime
 			invoke SndFade, SndWmblykB, 0, deltaTime
+		.ENDIF
+	.ELSEIF (PlrState == PLAYER_STATE_SPECTATE)
+		mov PlrCollide, FALSE
+		
+		.IF (InputAction)
+			inc NetSpectateID
+			mov InputAction, 0
+		.ENDIF
+		
+		push pbx
+		mov pbx, NetSpectateID
+		shl pbx, NetPlayerShift
+		mov pcx, pbx
+		
+		; If current choice is unsuitable
+		.WHILE (NetPlayersV[pbx].PlrState == PLAYER_STATE_SPECTATE) \
+		|| (NetPlayers[pbx].PlayerID == -1)
+			add pbx, SIZEOF NetPlayer
+			.IF (pbx >= SIZEOF NetPlayers)
+				xor pbx, pbx	; Loop from the start
+			.ENDIF
+			.IF (pbx == pcx)	; Came back to where we were
+				.IF (NetPlayersV[pbx].PlrState == PLAYER_STATE_SPECTATE) \
+				|| (NetPlayers[pbx].PlayerID == -1)
+					; Everyone dead
+					mov PlrState, PLAYER_STATE_LIMBO
+					mov UIFade, UI_FADE_OUT
+					mov UIFadeCallback, OFFSET plrLeaderboard
+				.ENDIF
+				.BREAK
+			.ENDIF
+		.ENDW
+		
+		call Plr_ControlLook
+		
+		shr pbx, NetPlayerShift
+		mov NetSpectateID, pbx
+		pop pbx
+	.ELSEIF (PlrState == PLAYER_STATE_COMPLETED)
+		.IF !(PlrStateTimer)
+			bpMEM32 PlrStateTimer, f(4)
+			mov PlrStateCallback, OFFSET plrDeadSpectate
 		.ENDIF
 	.ENDIF
 	
@@ -693,13 +772,51 @@ Plr_ProcessState PROC EXPORT
 		mov UIFadeCallback, 0
 		ret
 	plrExitFade:
-		mov PlrState, PLAYER_STATE_ENTER
-		call Maze_Progress
+		.IF (NetSock)
+			invoke StrLength, StrNetFinished
+			push pax
+			invoke RtlMoveMemory, ADDR NetFinishStr, StrNetFinished, pax
+			invoke Net_LeaderboardAppend, NetPlayerID
+			mov flVal, pax
+			shl pax, BPPtrShift
+			add pax, OFFSET StrNet1st
+			push pax
+			invoke StrLength, BPPtr PTR [pax]
+			pop pdx
+			pop pcx
+			add pcx, OFFSET NetFinishStr
+			mov BYTE PTR [pcx], 32
+			inc pcx
+			invoke RtlMoveMemory, pcx, BPPtr PTR [pdx], pax
+			
+			mov pcx, flVal
+			inc pcx	; 1-8
+			mov pax, 2000
+			xor pdx, pdx
+			div pcx
+			invoke Net_ScoreAdd, eax			
+			
+			mov PlrState, PLAYER_STATE_COMPLETED
+		.ELSE
+			mov PlrState, PLAYER_STATE_ENTER
+			call Maze_Progress
+		.ENDIF
 		mov UIFadeCallback, 0
 		ret
 	plrIntroProgress:
 		inc PlrState
-		ret		
+		ret
+	plrDeadSpectate:
+		mov PlrState, PLAYER_STATE_SPECTATE
+		mov UIFade, UI_FADE_IN
+		mov UIFadeCallback, 0
+		mov PlrStateCallback, 0
+		ret
+	plrLeaderboard:
+		mov PlrState, PLAYER_STATE_LEADERBOARD
+		bpMEM32 PlrStateTimer, f(8)
+		mov UIFadeCallback, 0
+		ret
 Plr_ProcessState ENDP
 
 ;   Shake screen (through CamRotL)
@@ -800,6 +917,17 @@ Plr_Process PROC EXPORT
 	fstp PlrRight.X
 	fst PlrForward.X
 	fstp PlrRight.Z
+	
+	fld CamRotL.X
+	fsincos
+	fld st
+	fmul PlrForward.X
+	fstp CamForward.X
+	fmul PlrForward.Z
+	fstp CamForward.Z
+	fchs
+	fstp CamForward.Y
+
 	
 	; Get billboard
 	fld CamRotL.X

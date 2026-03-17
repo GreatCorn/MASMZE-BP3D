@@ -31,6 +31,7 @@ Kubale_Spawn PROC EXPORT State:BPEnum
 	ENDIF
 	.IF (State == KUBALE_NONE)
 		bpMEM32 FogDensity, f(0.5)
+		mov KubaleVision, 0
 		invoke alSourceStop, SndKubale
 		invoke alSourceStop, SndKubaleV
 	.ELSEIF (State == KUBALE_EVENT)

@@ -172,7 +172,7 @@ FX_ScreenTexture PROC EXPORT GLTexturePtr:BPPtr
 	LOCAL endAddr:BPPtr, colorMode:DWORD
 	
 	.IF (SettingsGraphicsPosterization)
-		mov colorMode, GL_UNSIGNED_BYTE_3_3_2
+		mov colorMode, GL_UNSIGNED_SHORT_5_6_5
 	.ELSE
 		mov colorMode, GL_UNSIGNED_BYTE
 	.ENDIF

@@ -22,6 +22,7 @@ AnimMotryaIdle		BPAnimTrack <>
 AnimMotryaSave		BPAnimTrack <>
 AnimPlrCrouch		BPAnimTrack <>
 AnimPlrCrouchWalk	BPAnimTrack <>
+AnimPlrDead			BPAnimTrack <>
 AnimPlrIdle			BPAnimTrack <>
 AnimPlrWalk			BPAnimTrack <>
 AnimVasFloat		BPAnimTrack <>
@@ -77,6 +78,7 @@ MdlPlaneC			DWORD ?
 MdlPlaneR			DWORD ?
 MdlPlanks			DWORD ?
 MdlPlrAcc			DWORD ?
+MdlPlrScarfStatic	DWORD ?
 MdlRubble			DWORD ?
 MdlRubbleFacade		DWORD ?
 MdlShop				DWORD ?
@@ -127,6 +129,7 @@ MeshKoluplyk		BPMesh?
 MeshKubale			BPMesh?
 MeshMotrya			BPMesh?
 MeshPlr				BPMesh?
+MeshPlrScarf		BPMesh?	; Non-volatile
 MeshVas				BPMesh?
 MeshVebra			BPMesh?
 MeshWmblyk			BPMesh?
@@ -157,6 +160,7 @@ TexGamma			DWORD ?
 TexGlyph			DWORD 7 DUP(?)
 TexGlyphs			DWORD ?
 TexHBD				DWORD ?
+TexIcon				DWORD ?
 TexKey				DWORD ?
 TexKoluplyk			DWORD ?
 TexKubale			DWORD ?
@@ -174,12 +178,16 @@ TexPaper			DWORD ?
 TexPipe				DWORD ?
 TexPlanks			DWORD ?
 TexPlaster			DWORD ?
+
 TexPlrBlink			DWORD ?
 TexPlrBody			DWORD ?
+TexPlrDead			DWORD ?
 TexPlrHead			DWORD ?
 TexPlrLeft			DWORD ?
 TexPlrRight			DWORD ?
 TexPlrNeut			DWORD ?
+TexPlrWounded		DWORD ?
+
 TexRain				DWORD ?
 TexRoof				DWORD ?
 TexRustPanel		DWORD ?
@@ -301,6 +309,7 @@ FreeStrings PROC EXPORT
 FreeStrings ENDP
 
 LoadResources PROC EXPORT
+	LOCAL pVal:BPPtr, ici:ICONINFO, icsz:_SIZE
 	mov Loading, TRUE
 	
 	.IF (LoadState == LOADING_TEXT)
@@ -336,6 +345,7 @@ LoadResources PROC EXPORT
 		mov AnimPlrCrouch.Looping, TRUE
 		LoadBPA OFFSET AnimPlrCrouchWalk,	"assets\anim\plrCrouchWalk.bpa"
 		mov AnimPlrCrouchWalk.Looping, TRUE
+		LoadBPA OFFSET AnimPlrDead,			"assets\anim\plrDead.bpa"
 		LoadBPA OFFSET AnimPlrIdle,			"assets\anim\plrIdle.bpa"
 		mov AnimPlrIdle.Looping, TRUE
 		LoadBPA OFFSET AnimPlrWalk,			"assets\anim\plrWalk.bpa"
@@ -406,6 +416,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlPlaneR,			"assets\models\planeR.bpl"
 		LoadBPL OFFSET MdlPlanks,			"assets\models\planks.bpl"
 		LoadBPL OFFSET MdlPlrAcc,			"assets\models\plrAcc.bpl"
+		LoadBPL OFFSET MdlPlrScarfStatic,	"assets\models\plrScarfStatic.bpl"
 		LoadBPL OFFSET MdlRubble,			"assets\models\rubble.bpl"
 		LoadBPL OFFSET MdlRubbleFacade,		"assets\models\rubbleFacade.bpl"
 		LoadBPL OFFSET MdlShop,				"assets\models\shop.bpl"
@@ -487,7 +498,7 @@ LoadResources PROC EXPORT
 		LoadBPM OFFSET MeshKoluplyk,		"assets\models\koluplyk.bpm"
 		LoadBPM OFFSET MeshKubale,			"assets\models\kubale.bpm"
 		LoadBPM OFFSET MeshMotrya,			"assets\models\motrya.bpm"
-		;LoadBPM OFFSET MeshPlr,				"assets\models\plr.bpm"
+		LoadBPM OFFSET MeshPlrScarf,		"assets\models\plrScarf.bpm"
 		LoadBPM OFFSET MeshVas,				"assets\models\vas.bpm"
 		LoadBPM OFFSET MeshVebra,			"assets\models\vebra.bpm"
 		LoadBPM OFFSET MeshWmblyk,			"assets\models\wmblyk.bpm"
@@ -499,6 +510,7 @@ LoadResources PROC EXPORT
 			mov pax, pbx
 			mov pcx, SIZEOF BPMesh
 			mul pcx
+			mov pVal, pax
 			lea pax, NetPlayersMesh[pax]
 			push pax
 			LoadBPM pax, "assets\models\plr.bpm"
@@ -508,6 +520,18 @@ LoadResources PROC EXPORT
 			mul pcx
 			mov NetPlayersAnim[pax].FrameType, BPA_FRAME_VERTEX
 			pop NetPlayersAnim[pax].Mesh
+			
+			invoke bpMalloc, bpDefHeap, 0, MeshPlrScarf.V3Size
+			mov pcx, pbx
+			shl pcx, BPPtrShift
+			push pcx
+			mov NetPlayersScarf[pcx], pax
+			invoke RtlMoveMemory, pax, MeshPlrScarf.Vertices,MeshPlrScarf.V3Size
+			
+			invoke bpMalloc, bpDefHeap, HEAP_ZERO_MEMORY, MeshPlrScarf.V3Size
+			pop pcx
+			mov NetPlayersScVel[pcx], pax
+			
 			inc pbx
 		.ENDW
 		
@@ -575,6 +599,7 @@ LoadResources PROC EXPORT
 		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexGlyphs,		"assets\textures\glyphs.bpt"
 		LoadBPT OFFSET TexHBD,			"assets\textures\hbd.bpt"
+		LoadBPT OFFSET TexIcon,			"assets\textures\icon.bpt"
 		LoadBPT OFFSET TexKey,			"assets\textures\key.bpt"
 		LoadBPT OFFSET TexKoluplyk,		"assets\textures\koluplyk.bpt"
 		LoadBPT OFFSET TexKubale,		"assets\textures\kubale.bpt"
@@ -606,10 +631,12 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexPlaster,		"assets\textures\plaster.bpt"
 		LoadBPT OFFSET TexPlrBody,		"assets\textures\plrBody.bpt"
 		LoadBPT OFFSET TexPlrBlink,		"assets\textures\plrBlink.bpt"
+		LoadBPT OFFSET TexPlrDead,		"assets\textures\plrDead.bpt"
 		LoadBPT OFFSET TexPlrHead,		"assets\textures\plrHead.bpt"
 		LoadBPT OFFSET TexPlrLeft,		"assets\textures\plrLeft.bpt"
 		LoadBPT OFFSET TexPlrRight,		"assets\textures\plrRight.bpt"
 		LoadBPT OFFSET TexPlrNeut,		"assets\textures\plrNeut.bpt"
+		LoadBPT OFFSET TexPlrWounded,	"assets\textures\plrWounded.bpt"
 		LoadBPT OFFSET TexRain,			"assets\textures\rain.bpt"
 		LoadBPT OFFSET TexRoof,			"assets\textures\roof.bpt"
 		LoadBPT OFFSET TexRustPanel,	"assets\textures\rustPanel.bpt"
@@ -662,6 +689,13 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexWmblykWait[0],"assets\textures\wmblykWait1.bpt"
 		LoadBPT OFFSET TexWmblykWait[4],"assets\textures\wmblykWait2.bpt"
 		LoadBPT OFFSET TexWmblykWait[8],"assets\textures\wmblykWait3.bpt"
+		
+		;invoke glGenTextures, 1, ADDR TexIcon
+		;invoke glBindTexture, GL_TEXTURE_2D, TexIcon
+		;invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST
+		;invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST
+		;invoke glTexImage2D, GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, pixelData)
+		
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_SOUNDS)
 		; ----- SOUNDS -----
@@ -792,12 +826,7 @@ LoadResources PROC EXPORT
 		invoke alSourcei, SndWmblykStrM, AL_LOOPING, AL_TRUE
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_FINISHED)
-		; Environment defaults
-		bpMEM32 MazeCurFloor,	TexFloor
-		bpMEM32 MazeCurRoof,	TexRoof
-		bpMEM32 MazeCurWall,	TexWall
-		bpMEM32 MazeCurWallMDL, MdlWall
-		
+		; Environment defaults		
 		mov Loading, FALSE
 		mov LoadState, LOADING_FINISHED
 		ret
@@ -896,6 +925,31 @@ LoadStrings PROC EXPORT FilePath:BPPtr
 	ret
 LoadStrings ENDP
 
+
+ChrIsAlpha PROC EXPORT Chr:BYTE
+	.IF ((Chr >= 65) && (Chr <= 90)) || ((Chr >= 97) && (Chr <= 122))
+		mov pax, TRUE
+		ret
+	.ENDIF
+	xor pax, pax
+	ret
+ChrIsAlpha ENDP
+
+DampedSpring PROC EXPORT Velocity:BPPtr, Val:REAL4, ValTarget:REAL4, \
+Stiffness:REAL4, Damping:REAL4, T:REAL4
+	fld ValTarget
+	fsub Val
+	fmul Stiffness
+	mov pax, Velocity
+	fld REAL4 PTR [pax]
+	fmul Damping
+	fsub
+	fmul T
+	fadd REAL4 PTR [pax]
+	fstp REAL4 PTR [pax]
+	ret
+DampedSpring ENDP
+
 DampedSpringAngle PROC EXPORT Velocity:BPPtr, Val:REAL4, ValTarget:REAL4, \
 Stiffness:REAL4, Damping:REAL4, T:REAL4
 	fld ValTarget
@@ -914,15 +968,6 @@ Stiffness:REAL4, Damping:REAL4, T:REAL4
 	fstp REAL4 PTR [pax]
 	ret
 DampedSpringAngle ENDP
-
-ChrIsAlpha PROC EXPORT Chr:BYTE
-	.IF ((Chr >= 65) && (Chr <= 90)) || ((Chr >= 97) && (Chr <= 122))
-		mov pax, TRUE
-		ret
-	.ENDIF
-	xor pax, pax
-	ret
-ChrIsAlpha ENDP
 
 ;   Non-terminating manual int to string conversion macro (for settings UI)
 IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD, Terminate:BPBool
@@ -976,6 +1021,30 @@ IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD, Terminate:BPBool
 	ret
 IntToStr ENDP
 
+Rotate2DPoint PROC EXPORT PosPtr:BPPtr, Angle:REAL4
+	LOCAL sinCos:Vector2
+	
+	mov pax, PosPtr
+	fld Angle
+	fsincos
+	fstp sinCos.Y	; cos
+	fstp sinCos.X	; sin
+	fld REAL4 PTR [pax]
+	fld st
+	fmul sinCos.Y
+	fld REAL4 PTR [pax+8]
+	fmul sinCos.X
+	fsub
+	fstp REAL4 PTR [pax]
+	;fld REAL4 PTR [pax]	still have it in st
+	fmul sinCos.X
+	fld REAL4 PTR [pax+8]
+	fmul sinCos.Y
+	fadd
+	fstp REAL4 PTR [pax+8]
+	ret
+Rotate2DPoint ENDP
+
 StrBlank PROC EXPORT StrPtr:BPPtr
 	mov pax, StrPtr
 	.WHILE (BYTE PTR [pax])
@@ -1017,3 +1086,16 @@ StrToInt PROC EXPORT StrPtr:BPPtr
 	ENDIF
 	ret
 StrToInt ENDP
+
+Vector32DDampedSpring PROC EXPORT Velocity:BPPtr, Pos:BPPtr, PosTarget:BPPtr,
+Stiffness:REAL4, Damping:REAL4, T:REAL4
+	mov pcx, Pos
+	mov pdx, PosTarget
+	invoke DampedSpring, Velocity, REAL4 PTR [pcx], REAL4 PTR [pdx], \
+	Stiffness, Damping, T
+	add Velocity, 8
+	invoke DampedSpring, Velocity, REAL4 PTR [pcx+8], REAL4 PTR [pdx+8], \
+	Stiffness, Damping, T
+	ret
+Vector32DDampedSpring ENDP
+

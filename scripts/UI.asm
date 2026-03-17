@@ -1269,7 +1269,7 @@ UI_DrawMenuMain PROC EXPORT
 		mov UIState, UI_STATE_FADING
 	.ENDIF
 	mov al, UIFocus
-	.IF (al == UIID)
+	.IF (al == UIID) && (HasSave)
 		mov UITextPopup, UI_FADE_IN
 		bpMEM32 UITextPopupTimer, f(0.1)
 		.IF (UITextPopup == UI_FADE_NONE)
@@ -2499,12 +2499,15 @@ UI_Create PROC EXPORT
 UI_Create ENDP
 
 UI_Draw PROC EXPORT
+	LOCAL flVal:REAL4
+	
 	.IF (SettingsGraphicsMSAA)
 		invoke glDisable, GL_MULTISAMPLE
 	.ENDIF
 	invoke glDepthMask, GL_FALSE
 	invoke glDisable, GL_DEPTH_TEST
 	invoke glDisable, GL_LIGHTING
+	invoke glDisable, GL_FOG
 	
 	; Render downscaled overlay
 	invoke glMatrixMode, GL_PROJECTION
@@ -2808,6 +2811,20 @@ UI_Draw PROC EXPORT
 				invoke UI_Text, UIDeadTipStr, ScreenHalf.X, ebx, \
 				BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			.ENDIF
+		CASE PLAYER_STATE_COMPLETED
+			mov ebx, ScreenHalf.Y
+			sub ebx, (UI_BTN_H + UI_BTN_M)/2
+			invoke UI_Text, StrLayerNumber, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+			add ebx, UI_BTN_H + UI_BTN_M
+			invoke UI_Text, ADDR NetFinishStr, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+		CASE PLAYER_STATE_LEADERBOARD
+			xor ebx, ebx
+			.WHILE (ebx < NetPlayersCount)
+				
+				inc ebx
+			.ENDW
 	ENDSW
 	
 	mov UIShadow, TRUE
@@ -2891,7 +2908,7 @@ UI_Draw PROC EXPORT
 	ENDIF
 	
 	uiFinish:
-		; UI menu splash fucking bruhh
+		; Explicit UI menu splash fucking bruhh
 		.IF (UIState == UI_STATE_MENU_MAIN) && (UIMenuSplash < 3)
 			; Fade
 			.IF (UIFadeDisp)
@@ -2909,6 +2926,7 @@ UI_Draw PROC EXPORT
 		
 		invoke glEnable, GL_LIGHTING
 		invoke glEnable, GL_DEPTH_TEST
+		invoke glEnable, GL_FOG
 		invoke glDepthMask, GL_TRUE
 		.IF (SettingsGraphicsMSAA)
 			invoke glEnable, GL_MULTISAMPLE
@@ -2993,10 +3011,24 @@ UI_Process PROC EXPORT
 				bpMEM32 UITextPopupTimer, f(2)
 			.ENDIF
 		.ENDIF
+	
+		.IF (NetSock)
+			mov pax, NetPlayerID
+			shl pax, NetPlayerShift
+			mov eax, NetPlayersV[pax].Score
+			push pax
+			fild DWORD PTR [psp]
+			fstp REAL4 PTR [psp]
+			pop pax
+			mov NetUIScoreL, rv(flLerp, NetUIScoreL, eax, delta10)
+			fld NetUIScoreL
+			fistp flVal
+			invoke IntToStr, ADDR NetScoreStr, flVal, TRUE
+		.ENDIF
 	.ENDIF
 	
-	
 	; Do menu stuff
+	; Splashes
 	.IF (UIState == UI_STATE_MENU_MAIN) && (UIMenuSplash < 2)
 		.IF !(UIMenuSplashTimer)
 			mov UIFade, UI_FADE_IN

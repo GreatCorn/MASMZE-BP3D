@@ -16,10 +16,7 @@ set _includes=masm
 
 set _quiet=0
 set "_asmArgs="
-
-set _project=%~n1
-set _appName=%_project%.exe
-if /i "%~x1" == ".asm" (set _sourcefile=%1) else (set "_sourcefile=%~1.asm")
+set "_linkArgs="
 
 for %%x in (%*) do (
 	if !_reading!==appName (
@@ -74,26 +71,30 @@ for %%x in (%*) do (
 	set /a _argCnt+=1
 )
 
+if [%_argCnt%] NEQ [0] (
+	set _project=%~n1
+	set _appName=%_project%.exe
+	if /i "%~x1" == ".asm" (set _sourcefile=%1) else (set "_sourcefile=%~1.asm")
+)
+
 :endArgs
 
-if %_argCnt%==0 (
+if %_help%==1 (
 	echo Usage: MAKEIT [sourcepath] ^<options^>
-	if %_help%==0 (
-		echo For more info run MAKEIT /help
-	) else (
-		echo /64		Use x64 compilation if available 
-		echo /b		Build only, without running
-		echo /c		Use ASMC and LINKW to compile and link
-		echo /d		Specify drive when using default include paths
-		echo /D		Compile in debug mode, CONSOLE target, MODE_DEBUG symbol
-		echo /i [path]	Specify custom include path. Must have \lib
-		echo /help		Print this help message
-		echo /j		Use UASM and JWlink to compile and link
-		echo /o [name]	Set executable output name
-		echo /p		Use POASM and POLINK to compile and link
-		echo /q		Quiet compilation and linking
-		echo /w		Use WinInc includes instead of MASM
-	)
+	
+	echo /64		Use x64 compilation if available 
+	echo /b		Build only, without running
+	echo /c		Use ASMC and LINKW to compile and link
+	echo /d [drive]	Specify drive when using default include paths
+	echo /D		Compile in debug mode, CONSOLE target, MODE_DEBUG symbol
+	echo /i [path]	Specify custom include path. Must have \lib
+	echo /help		Print this help message
+	echo /j		Use UASM and JWlink to compile and link
+	echo /o [name]	Set executable output name
+	echo /p		Use POASM and POLINK to compile and link
+	echo /q		Quiet compilation and linking
+	echo /w		Use WinInc includes instead of MASM
+	
 	exit /b
 )
 
@@ -137,6 +138,21 @@ if %_target%==CONSOLE (
 	)
 )
 
+if %_link%==jwlink (
+	set _linkArgs=FILE %_project%.obj
+) else (
+	set _linkArgs=%_project%.obj
+)
+if exist rs.rc (
+	rc /v rs.rc
+	cvtres /machine:ix86 rs.res
+	if %_link%==jwlink (
+		set _linkArgs=%_linkArgs% FILE rs.obj
+	) else (
+		set _linkArgs=%_linkArgs% rs.obj
+	)
+)
+
 if %_asm%==uasm (
 	uasm32 -c -coff -I %_incpath% %_asmArgs% %_sourcefile%
 ) else if %_asm%==masm (
@@ -153,24 +169,24 @@ if %_asm%==uasm (
 
 if %_link%==jwlink (
 	if [%_quiet%] EQU [1] (
-		JWlink RUNTIME %_target% FILE %_project%.obj LIBPATH %_libpath% OP START=_start NAME "%_appName%" OPTION QUIET OPTION NOLARGE
+		JWlink RUNTIME %_target% %_linkArgs% LIBPATH %_libpath% OP START=_start NAME "%_appName%" OPTION QUIET OPTION NOLARGE
 	) else (
-		JWlink RUNTIME %_target% FILE %_project%.obj LIBPATH %_libpath% OP START=_start NAME "%_appName%" OPTION NOLARGE
+		JWlink RUNTIME %_target% %_linkArgs% LIBPATH %_libpath% OP START=_start NAME "%_appName%" OPTION NOLARGE
 	)
 ) else if %_link%==link (
 	if [%_quiet%] EQU [1] (
-		link /subsystem:%_target% %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%" /nologo
+		link /subsystem:%_target% %_linkArgs% /libpath:%_libpath% /entry:start /out:"%_appName%" /nologo
 	) else (
-		link /subsystem:%_target% %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%"
+		link /subsystem:%_target% %_linkArgs% /libpath:%_libpath% /entry:start /out:"%_appName%"
 	)
 ) else if %_link%==linkw (
 	if [%_quiet%] EQU [1] (
-		linkw /subsystem:%_target% /libpath:%_libpath% /entry:_start /out:"%_appName%" /nologo %_project%.obj 
+		linkw /subsystem:%_target% /libpath:%_libpath% /entry:_start /out:"%_appName%" /nologo %_linkArgs%
 	) else (
-		linkw /subsystem:%_target% /libpath:%_libpath% /entry:_start /out:"%_appName%" %_project%.obj 
+		linkw /subsystem:%_target% /libpath:%_libpath% /entry:_start /out:"%_appName%" %_linkArgs%
 	)
 ) else if %_link%==polink (
-	polink /subsystem:%_target% %_project%.obj /libpath:%_libpath% /entry:start /out:"%_appName%"
+	polink /subsystem:%_target% %_linkArgs% /libpath:%_libpath% /entry:start /out:"%_appName%"
 )
 if [%_build%] NEQ [1] (
 	%_project%.exe

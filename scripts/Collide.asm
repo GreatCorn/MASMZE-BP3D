@@ -1,6 +1,11 @@
 Collide_Distance PROC EXPORT Pos:BPPtr, ColliderPos:BPPtr, Radius:REAL4, \
 Distance:REAL4
 	LOCAL dirAngle:REAL4
+	
+	.IF (Pos == OFFSET CamPos) && !(PlrCollide)
+		ret
+	.ENDIF
+	
 	mov pax, Pos	; Pos uses only X and Z, omitting Y
 	mov pcx, ColliderPos
 	
@@ -52,6 +57,9 @@ Collide_Rectangle PROC EXPORT Pos:BPPtr, ColliderPos:BPPtr, \
 ColliderWidth:REAL4, ColliderHeight:REAL4
 	LOCAL inRange:BYTE, localPos:Vector2
 	LOCAL penetration:Vector2, halfSize:Vector2
+	.IF (Pos == OFFSET CamPos) && !(PlrCollide)
+		ret
+	.ENDIF
 	
 	; Get local in-collider position
 	mov pax, Pos
