@@ -25,9 +25,15 @@ ENUML
 	;	Start game request (from client to server to all clients)
 	E NET_START_GAME_REQUEST
 	
+	;	Restart game
+	E NET_RESTART
+	
 	;	Maze lobby state for players just joining
 	;	MazeStateTimer:		REAL4
 	E NET_MAZE_STARTING
+	
+	;	Trigger next maze layer
+	E NET_MAZE_PROGRESS
 	
 	;	Report all volatile maze elements and their volatile attributes (useful
 	; for players joining in the middle of the round which generate the same
@@ -38,6 +44,11 @@ ENUML
 	;	Report all volatile entity states and their state-defining attributes
 	;	See NetMazeEntities struct
 	E NET_MAZE_ENTITIES
+	
+	;	Send current leaderboard of player indexes (upon completion)
+	;	Leaderboard:	BYTE[NET_MAX_PLAYERS] (8)
+	;	PlayersAlive:	DWORD
+	E NET_LEADERBOARD
 	
 NetMazeElements STRUCT
 	NetMsgType		BYTE ?
@@ -57,6 +68,12 @@ NetMazeEntities STRUCT
 	NetMsgType		BYTE ?
 	
 	Kubale			BYTE ?
+	Vebra			BYTE ?
+	Wmblyk			BYTE ?
+	WmblykPos		Vector3 <?,?,?>
+	WmblykRot		REAL4 ?
+	WmblykStateVal	REAL4 ?
+	WmblykStrPlr	DWORD ?
 NetMazeEntities ENDS
 	
 NPS_WOUNDED EQU 1
@@ -102,14 +119,17 @@ Net_Close PROTO
 Net_Connect PROTO :LPVOID
 Net_FormRespond PROTO :SOCKET, :BPPtr
 Net_FormSend PROTO :BYTE, :SOCKET
+Net_GetClosestPlr PROTO :BPPtr, :DWORD
 Net_Host PROTO
-Net_LeaderboardClear PROTO
 Net_LeaderboardAppend PROTO :DWORD
+Net_LeaderboardClear PROTO
+Net_LeaderboardCheck PROTO :DWORD
 Net_PlayerRemove PROTO :DWORD
 Net_PlayersClear PROTO
 Net_PopulateVolatile PROTO :BPPtr
 Net_ProcessLoop PROTO :LPVOID
 Net_ScoreAdd PROTO :SDWORD
+Net_SetColorByID PROTO :DWORD, :REAL4
 
 .CONST
 MeshPlrHeadOff	Vector3 <0.0, 0.2, -0.04>
@@ -120,6 +140,7 @@ NetPortStr		DB "5001", 0, 0
 NetServerAddr	DB "127.0.0.1", 7 dup (0)
 NetSock			SOCKET 0
 NetHosting		BPBool FALSE
+NetNotify		BPBool TRUE
 
 NetMagic		DWORD 0
 NetPlayers		NetPlayer NET_MAX_PLAYERS dup (<>)
@@ -141,6 +162,7 @@ NetPlrConnStr	BYTE 128 DUP (0)
 NetFinishStr	BYTE 128 DUP (0)
 NetScoreStr		BYTE 64 DUP (0)
 
+NetScore	DWORD 0
 NetUIScoreL	REAL4 0.0
 
 NetVolatileTimer	REAL4 0.0, 0.064	; Send volatile info timer, interval

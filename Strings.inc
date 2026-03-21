@@ -25,6 +25,7 @@ SV	StrMenuServDisc
 SV	StrMenuIP
 SV	StrMenuPort
 SV	StrMenuUsername
+SV	StrMenuScore
 SV	StrMenuYes
 SV	StrMenuNo
 SV	StrMenuOK
@@ -133,5 +134,7 @@ SV	StrNet5th
 SV	StrNet6th
 SV	StrNet7th
 SV	StrNet8th
+SV	StrNetDead
+SV	StrNetCCSwitch
 
 StrSectionEnd		BYTE ?

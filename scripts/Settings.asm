@@ -104,7 +104,7 @@ SettingsGraphicsResolution		DWORD 854, 480
 SettingsGraphicsUIScale			REAL4 1.0
 SettingsGraphicsVignette		BPBool TRUE
 SettingsGraphicsVSync			BPBool TRUE
-SettingsGraphicsWindowMode		BPEnum BP_WINDOW_MODE_WINDOWED
+SettingsGraphicsWindowMode		BPEnum BP_WINDOW_MODE_FULLSCREEN
 
 SettingsMiscLanguage			DB 256 DUP (0)
 SettingsMiscMultithreading		BPBool TRUE
@@ -151,6 +151,7 @@ Settings_CheckSave PROC EXPORT
 		invoke IntToStr, StrLayerNumPtr, pcbVal, TRUE
 	.ENDIF
 	
+	invoke RegCloseKey, SettingsRegistry
 	mov pax, 1
 	ENDIF
 	ret
@@ -386,8 +387,9 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		.ENDIF
 		
 		; Window mode
+		movzx eax, SettingsGraphicsWindowMode
 		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-		ADDR SettingsIniWindowMode, 0, ADDR SettingsIniPathAbs
+		ADDR SettingsIniWindowMode, eax, ADDR SettingsIniPathAbs
 		.IF (al != SettingsGraphicsWindowMode)
 			mov SettingsGraphicsWindowMode, al
 			invoke Settings_SetOption, OFFSET SettingsGraphicsWindowMode

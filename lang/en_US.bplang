@@ -25,6 +25,7 @@ Server has#disconnected.
 IP
 PORT
 USERNAME
+SCORE
 YES
 NO
 OK
@@ -133,3 +134,5 @@ FINISHED
 6TH
 7TH
 8TH
+DEAD
+_  - SWITCH PLAYER

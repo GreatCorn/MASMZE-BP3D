@@ -23,10 +23,11 @@ ENUML
 	E PLAYER_STATE_STOP
 	E PLAYER_STATE_ETC
 	
-	; Net-related
+	; Net-related (>=17)
 	E PLAYER_STATE_SPECTATE
 	E PLAYER_STATE_COMPLETED
 	E PLAYER_STATE_LIMBO	; Everyone dead, game loading or etc
+	E PLAYER_STATE_LEADERBOARD_PREPARE
 	E PLAYER_STATE_LEADERBOARD
 	
 .CONST
@@ -154,9 +155,10 @@ Plr_Control PROC EXPORT
 	fstp CamRot.Z
 	
 	; Glyphs
-	.IF (PlrState == PLAYER_STATE_GAME) && (InputGlyph)
+	.IF (PlrState == PLAYER_STATE_GAME) && (InputGlyph) \
+	&& (GameState == GAME_STATE_GAME)
 		.IF (PlrGlyphs)
-			vinvoke Plr_PlaceGlyph, OFFSET CamPos, CamRot.Y
+			vinvoke Plr_PlaceGlyph, OFFSET CamPos, CamRot.Y, NetSock
 		.ENDIF
 		.IF !(PlrGlyphs)
 			vinvoke UI_ShowSubtitles, StrCCGlyphsNone, UISubDur
@@ -436,7 +438,7 @@ Plr_LateProcess PROC EXPORT
 	ret
 Plr_LateProcess ENDP
 
-Plr_PlaceGlyph PROC EXPORT PosPtr:BPPtr, Angle:REAL4
+Plr_PlaceGlyph PROC EXPORT PosPtr:BPPtr, Angle:REAL4, Sock:DWORD
 	invoke SndSetPos, SndScribble, PosPtr
 	invoke alSourcePlay, SndScribble
 
@@ -466,8 +468,8 @@ Plr_PlaceGlyph PROC EXPORT PosPtr:BPPtr, Angle:REAL4
 		invoke alSourcePlay, SndMistake
 	.ENDIF
 	
-	.IF (NetSock)
-		invoke Net_FormSend, NET_MAZE_ELEMENTS, NetSock
+	.IF (NetSock) && (Sock)
+		invoke Net_FormSend, NET_MAZE_ELEMENTS, Sock
 	.ENDIF
 	ret
 Plr_PlaceGlyph ENDP
@@ -482,14 +484,31 @@ Plr_ProcessState PROC EXPORT
 		invoke bpProcessAnimPlayer, ADDR CamAnimPlr, 0
 		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
 		
+		.IF (NetSock)
+			call Net_LeaderboardClear
+			
+			fild MazeEntranceCell
+			fmul f(2)
+			fadd f(0.3)
+			fst v3Val.X
+			fadd f(1.4)
+			fstp v3Val.Y
+			
+			mov v3Val.X, rv(flRandRange, v3Val.X, v3Val.Y)
+			mov v3Val.Z, rv(flRandRange, f(0.3), f(1.7))
+			vinvoke Plr_Teleport, v3Val.X, v3Val.Z
+		.ELSE
+			fild MazeEntranceCell
+			fmul f(2)
+			fadd f(1)
+			fstp CamPos.X
+		.ENDIF
+		
 		invoke Vector3Set, ADDR CamRot, 0, 0, 0
 		invoke Vector3Copy, ADDR v3Val, ADDR CamRotA
 		invoke Vector3Add, ADDR v3Val, ADDR CamRot
 		invoke Vector3Copy, ADDR CamRotL, ADDR v3Val
-		fild MazeEntranceCell
-		fmul f(2)
-		fadd f(1)
-		fstp CamPos.X
+		
 		invoke Vector2Set, ADDR CamPos.Y, CamHeight, f(1)
 		invoke Vector3Copy, ADDR v3Val, ADDR CamPosA
 		invoke Vector3Add, ADDR v3Val, ADDR CamPos
@@ -504,6 +523,7 @@ Plr_ProcessState PROC EXPORT
 		bpMEM32 UIFadeVal, f(1)
 		
 		mov PlrState, PLAYER_STATE_ETC
+		mov PlrStateCallback, 0
 		
 		; Random flavor text subtitles
 		invoke nRand, 20
@@ -518,10 +538,6 @@ Plr_ProcessState PROC EXPORT
 				invoke alSourcePlay, SndAmb
 			.ENDIF
 		.ENDIF
-		
-		.IF (NetSock)
-			call Net_LeaderboardClear
-		.ENDIF
 		ret
 	.ELSEIF (PlrState == PLAYER_STATE_EXIT)
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamExit
@@ -531,6 +547,7 @@ Plr_ProcessState PROC EXPORT
 		mov UIFade, UI_FADE_NONE
 		
 		mov PlrState, PLAYER_STATE_EXITING
+		mov PlrStateCallback, 0
 		
 		invoke alSourcePlay, SndExit
 		ret
@@ -657,7 +674,7 @@ Plr_ProcessState PROC EXPORT
 		fstp PlrHealth
 		
 		
-		invoke Plr_Shake, f(0.01)
+		invoke Plr_Shake, f(0.003)
 		
 		vinvoke UI_ShowSubtitles, StrCCFightBack, f(0.1)
 	.ELSEIF (PlrState == PLAYER_STATE_GETUP)
@@ -720,14 +737,14 @@ Plr_ProcessState PROC EXPORT
 		mov pcx, pbx
 		
 		; If current choice is unsuitable
-		.WHILE (NetPlayersV[pbx].PlrState == PLAYER_STATE_SPECTATE) \
+		.WHILE (NetPlayersV[pbx].PlrState >= PLAYER_STATE_SPECTATE) \
 		|| (NetPlayers[pbx].PlayerID == -1)
 			add pbx, SIZEOF NetPlayer
 			.IF (pbx >= SIZEOF NetPlayers)
 				xor pbx, pbx	; Loop from the start
 			.ENDIF
 			.IF (pbx == pcx)	; Came back to where we were
-				.IF (NetPlayersV[pbx].PlrState == PLAYER_STATE_SPECTATE) \
+				.IF (NetPlayersV[pbx].PlrState >= PLAYER_STATE_SPECTATE) \
 				|| (NetPlayers[pbx].PlayerID == -1)
 					; Everyone dead
 					mov PlrState, PLAYER_STATE_LIMBO
@@ -738,6 +755,10 @@ Plr_ProcessState PROC EXPORT
 			.ENDIF
 		.ENDW
 		
+		.IF !(UISubtitlesStr)
+			vinvoke UI_ShowSubtitles, StrNetCCSwitch, f(0.1)
+		.ENDIF
+		
 		call Plr_ControlLook
 		
 		shr pbx, NetPlayerShift
@@ -745,8 +766,45 @@ Plr_ProcessState PROC EXPORT
 		pop pbx
 	.ELSEIF (PlrState == PLAYER_STATE_COMPLETED)
 		.IF !(PlrStateTimer)
+			mov MazeDoorRot, 0
 			bpMEM32 PlrStateTimer, f(4)
 			mov PlrStateCallback, OFFSET plrDeadSpectate
+		.ENDIF
+	.ELSEIF (PlrState == PLAYER_STATE_LEADERBOARD_PREPARE)
+		; Round over
+		bpMEM32 PlrStateTimer, f(6)
+		mov PlrStateCallback, OFFSET plrLeaderboardEnd
+		
+		mov PlrState, PLAYER_STATE_LEADERBOARD
+		
+		.IF (NetHosting)
+			; Set leaderboard alive player count
+			xor pax, pax
+			.WHILE (pax < SIZEOF NetLeaderboard)
+				.IF (NetLeaderboard[pax] == -1)
+					.BREAK
+				.ENDIF
+				inc pax
+			.ENDW
+			mov NetPlayersAlive, eax
+			print str$(eax)
+			print " alive players", 13, 10
+			
+			; Add remaining dead players to the leaderboard
+			push pbx
+			xor pbx, pbx
+			.WHILE (pbx < NET_MAX_PLAYERS)
+				mov pdx, pbx
+				shl pdx, NetPlayerShift
+				.IF (rv(Net_LeaderboardCheck, pbx) == -1) \
+				&& (NetPlayers[pdx].PlayerID != -1)
+					invoke Net_LeaderboardAppend, NetPlayers[pdx].PlayerID
+				.ENDIF
+				inc pbx
+			.ENDW
+			pop pbx
+			
+			invoke Net_FormSend, NET_LEADERBOARD, NetSock
 		.ENDIF
 	.ENDIF
 	
@@ -796,7 +854,24 @@ Plr_ProcessState PROC EXPORT
 			div pcx
 			invoke Net_ScoreAdd, eax			
 			
-			mov PlrState, PLAYER_STATE_COMPLETED
+			; Check for alive players
+			mov PlrState, PLAYER_STATE_LEADERBOARD_PREPARE
+			mov pax, NetPlayerID
+			shl pax, NetPlayerShift
+			mov NetPlayersV[pax].PlrState, PLAYER_STATE_LEADERBOARD_PREPARE
+			xor pax, pax
+			.WHILE (pax < SIZEOF NetPlayers)
+				.IF (NetPlayers[pax].PlayerID != -1) \
+				&& (NetPlayersV[pax].PlrState < PLAYER_STATE_SPECTATE)
+					; Alive player found, don't end round yet
+					mov PlrState, PLAYER_STATE_COMPLETED
+					.BREAK
+				.ENDIF
+				add pax, SIZEOF NetPlayer
+			.ENDW
+			mov PlrStateTimer, 0
+			
+			invoke Net_FormSend, NET_LEADERBOARD, NetSock
 		.ELSE
 			mov PlrState, PLAYER_STATE_ENTER
 			call Maze_Progress
@@ -811,13 +886,40 @@ Plr_ProcessState PROC EXPORT
 		mov UIFade, UI_FADE_IN
 		mov UIFadeCallback, 0
 		mov PlrStateCallback, 0
+		
+		mov CamAnimPlr.TrackPtr, 0
+		invoke Vector3Copy, ADDR CamPosA, ADDR Vector3Zero
+		invoke Vector3Copy, ADDR CamRotA, ADDR Vector3Zero
 		ret
 	plrLeaderboard:
-		mov PlrState, PLAYER_STATE_LEADERBOARD
-		bpMEM32 PlrStateTimer, f(8)
+		.IF (NetPlayersAlive)
+			invoke alSourcePlay, SndSurvive
+		.ELSE
+			invoke alSourcePlay, SndOver
+		.ENDIF
+		mov PlrState, PLAYER_STATE_LEADERBOARD_PREPARE
+		mov PlrStateTimer, 0
 		mov UIFadeCallback, 0
 		ret
+	plrLeaderboardEnd:
+		.IF (NetHosting)
+			.IF (NetPlayersAlive)
+				invoke Net_FormSend, NET_MAZE_PROGRESS, 0
+				
+				call Plr_Progress
+			.ELSE
+				invoke Net_FormSend, NET_RESTART, 0
+			.ENDIF
+		.ENDIF
+		mov PlrStateCallback, 0
+		ret
 Plr_ProcessState ENDP
+
+Plr_Progress PROC EXPORT
+	mov PlrState, PLAYER_STATE_ENTER
+	call Maze_Progress
+	ret
+Plr_Progress ENDP
 
 ;   Shake screen (through CamRotL)
 Plr_Shake PROC Amplitude:REAL4

@@ -21,6 +21,9 @@ WmblykStateVal	REAL4 0.0
 WmblykSpeed		REAL4 3.8
 
 .DATA?
+WmblykStrPlr	DWORD ?
+
+.DATA?
 
 .CODE
 Wmblyk_Spawn PROC EXPORT State:BPEnum
@@ -55,11 +58,12 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		fmul PIHalf
 		fstp WmblykStateVal
 		
-		mov WmblykAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init animator
-		mov WmblykAnimPlr.Mesh, OFFSET MeshWmblyk
-		mov WmblykAnimPlr.MeshUseNormals, FALSE
+		mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 		invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
-		bpMEM32 WmblykAnimPlr.Speed, f(1)
+		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, 0
+		.IF (SettingsGraphicsInterpolation)
+			mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
+		.ENDIF
 		
 		invoke alSourcePlay, SndWmblykB
 		
@@ -70,6 +74,13 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 	ret
 Wmblyk_Spawn ENDP
 
+
+Wmblyk_Create PROC EXPORT
+	mov WmblykAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init animator
+	mov WmblykAnimPlr.Mesh, OFFSET MeshWmblyk
+	mov WmblykAnimPlr.MeshUseNormals, FALSE
+	ret
+Wmblyk_Create ENDP
 
 Wmblyk_Draw PROC EXPORT
 	LOCAL flVal:REAL4
@@ -139,16 +150,18 @@ Wmblyk_Draw ENDP
 Wmblyk_Process PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3, ways:BYTE
 	LOCAL cellFwd:BPPtr, cellLeft:BPPtr, cellRight:BPPtr
+	LOCAL plrPosPtr:BPPtr
 	wmblykRotateHead MACRO
-		mov flVal, rv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET WmblykPos)
+		mov flVal, rv(Vector32DDistanceSqr, plrPosPtr, OFFSET WmblykPos)
 		
 		fld flVal
 		fadd f(2)
 		fdivr f(1)
 		fmul PIHalfN
 		
+		mov pax, plrPosPtr
 		fld CamHeight
-		fsub CamPosL.Y
+		fsub REAL4 PTR [pax+4]
 		fmul f(0.6)
 		fsubr
 		fstp WmblykHeadRot.X
@@ -163,11 +176,19 @@ Wmblyk_Process PROC EXPORT
 		invoke Vector32DAdd, ADDR WmblykPos, ADDR CamPos
 	ENDM
 		
-	
+	mov flVal, 0
 	.IF (Wmblyk == WMBLYK_STILL) || (Wmblyk == WMBLYK_STILL_SCARE)
 		; StateVal is blink timer (< 0 - blink)
 		; WmblykCellPos is waiting boredom timer
-		invoke Vector32DAngle, ADDR WmblykPos, ADDR CamPosL
+		.IF (NetSock)
+			invoke Net_GetClosestPlr, ADDR WmblykPos, -1
+			lea pax, NetPlayersVL[pax].Position
+			mov plrPosPtr, pax
+		.ELSE
+			mov plrPosPtr, OFFSET CamPosL
+		.ENDIF
+		
+		invoke Vector32DAngle, ADDR WmblykPos, plrPosPtr
 		mov WmblykHeadRot.Y, eax
 		.IF (Wmblyk == WMBLYK_STILL)
 			mov ecx, delta2
@@ -176,6 +197,8 @@ Wmblyk_Process PROC EXPORT
 		.ENDIF
 		mov WmblykRot, rv(flLerpAngle, WmblykRot, eax, ecx)
 		
+		; Tired of waiting
+		.IF !(NetSock)
 		fld WmblykStateVal
 		fsub deltaTime
 		fstp WmblykStateVal
@@ -184,12 +207,6 @@ Wmblyk_Process PROC EXPORT
 			.IF (WmblykCellPos.X & FLT_NEG)
 				fcmp WmblykCellPos.X, f(-10.0)
 				.IF (Carry?)
-					mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
-					invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
-					invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, 0
-					.IF (SettingsGraphicsInterpolation)
-						mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
-					.ENDIF
 					Vector32DPush WmblykPos
 					invoke Wmblyk_Spawn, WMBLYK_WALK
 					Vector32DPop WmblykPos
@@ -219,14 +236,30 @@ Wmblyk_Process PROC EXPORT
 			.ENDIF
 			mov WmblykCellPos.X, rv(flRandRange, f(10), f(20))
 		.ENDIF
+		.ENDIF
 		
 		wmblykRotateHead
 				
-		fcmp flVal, f(0.2)
+		fcmp flVal, f(0.1)
 		.IF (Carry?)
-			mov Wmblyk, WMBLYK_JUMPSCARE
-			mov WmblykStateVal, FLT_1
+			; Set based on distance
+			mov flVal, rv(Vector32DDistanceSqr, OFFSET CamPosL,OFFSET WmblykPos)
+			fld flVal
+			fsub f(0.1)
+			fsubr f(1)
+			fstp flVal
+			mov flVal, rv(flClamp, flVal, 0, f(1))
+			mov WmblykStateVal, eax
+			invoke alSourcef, SndWmblyk, AL_GAIN, eax
+			print real4$(flVal), 13, 10
 			invoke alSourcePlay, SndWmblyk
+			fld flVal
+			fmul f(0.5)
+			fsubr f(1)
+			fmul PlrHealth
+			fstp PlrHealth
+			
+			mov Wmblyk, WMBLYK_JUMPSCARE
 		.ELSE
 			fcmp flVal, f(0.65)
 			.IF (Carry?)
@@ -235,7 +268,7 @@ Wmblyk_Process PROC EXPORT
 				fmul f(6)
 				fstp flVal
 				
-				invoke Vector32DMove, ADDR WmblykPos, ADDR CamPos, flVal
+				invoke Vector32DMove, ADDR WmblykPos, plrPosPtr, flVal
 			.ELSE
 				mov Wmblyk, WMBLYK_STILL
 			.ENDIF
@@ -283,6 +316,8 @@ Wmblyk_Process PROC EXPORT
 		mov WmblykRot, rv(Vector32DAngle, OFFSET WmblykPos, OFFSET CamPosL)
 		mov WmblykHeadRot.Y, eax
 		
+		mov plrPosPtr, OFFSET CamPosL
+		
 		wmblykRotateHead
 		
 		.IF (WmblykStateVal == FLT_1)
@@ -316,6 +351,8 @@ Wmblyk_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 	.ELSEIF (Wmblyk == WMBLYK_WALK)
+		bpMEM32 WmblykFace, TexWmblykNeutral
+		
 		; StateVal is functional rotation
 		mov WmblykStateVal, rv(flAngle, WmblykStateVal)
 		mov WmblykRot, rv(flLerpAngle, WmblykRot, WmblykStateVal, delta10)
@@ -352,6 +389,8 @@ Wmblyk_Process PROC EXPORT
 					vinvoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
 				.ENDIF
 			.ENDIF
+		.ELSEIF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykWalk)
+			vinvoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
 		.ENDIF
 			
 		invoke Maze_GetCellOffsetF, WmblykPos.X, WmblykPos.Z
@@ -364,9 +403,9 @@ Wmblyk_Process PROC EXPORT
 		mov WmblykCellPos.Z, edx
 		invoke Vector32DF, ADDR WmblykCellPos
 		; Line him up with the center of the cell
-		.IF (DWORD PTR v3Val.X)	; Horizontal movement
+		.IF (DWORD PTR v3Val.X)	; upon horizontal movement
 			mov WmblykPos.Z, rv(flMove, WmblykPos.Z, WmblykCellPos.Z, v3Val.Y)
-		.ELSE	; Vertical movement
+		.ELSE	; upon vertical movement
 			mov WmblykPos.X, rv(flMove, WmblykPos.X, WmblykCellPos.X, v3Val.Y)
 		.ENDIF
 		pop pax
@@ -534,8 +573,6 @@ Wmblyk_Process PROC EXPORT
 		(WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykCrawl)
 			mov PlrState, PLAYER_STATE_STRANGLE
 			mov Wmblyk, WMBLYK_STRANGLE
-			mov WmblykStateVal, 0
-			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykStrangle
 			bpMEM32 WmblykAnimPlr.Timer, f(10)
 					
 			bpMPM UIDeadTipStr, StrTipWmblyk
@@ -543,22 +580,40 @@ Wmblyk_Process PROC EXPORT
 			invoke alSourcePlay, SndWmblykStr
 			invoke alSourcef, SndWmblykStrM, AL_GAIN, 0
 			invoke alSourcePlay, SndWmblykStrM
+			
+			bpMEM32 WmblykStrPlr, NetPlayerID
+			.IF (NetSock)
+				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+			.ENDIF
 		.ENDIF
 		
+		mov WmblykAnimPlr.Speed, FLT_1
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 	.ELSEIF (Wmblyk == WMBLYK_STRANGLE)
 		; StateVal is strangling state (-1.0 -- 1.0)
 		; WmblykHeadRot is cooldown timer for StateVal to prevent anim stutter
-		mov WmblykRot, rv(Vector32DAngle, OFFSET WmblykPos, OFFSET CamPos)
-		fld WmblykRot
-		fsincos
-		fsubr CamPos.Z
-		fstp WmblykPos.Z
-		fsubr CamPos.X
-		fstp WmblykPos.X
+		mov eax, NetPlayerID
+		.IF (WmblykStrPlr == eax)
+			mov plrPosPtr, OFFSET CamPos
+		.ELSE
+			mov eax, WmblykStrPlr
+			shl pax, NetPlayerShift
+			lea pax, NetPlayersVL[pax].Position
+			mov plrPosPtr, pax
+			
+			; Collide
+			invoke Collide_Distance, ADDR CamPos, ADDR WmblykPos, f(0.7), 0
+		.ENDIF
+		
+		.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykStrangle) \
+		&& (WmblykAnimPlr.TrackPtr)
+			mov WmblykStateVal, 0
+			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykStrangle
+			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+		.ENDIF
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
-		
+	
 		mov eax, WmblykHeadRot.X
 		.IF (eax & FLT_NEG)
 			fld deltaTime
@@ -576,7 +631,18 @@ Wmblyk_Process PROC EXPORT
 			fstp WmblykHeadRot.X
 		.ENDIF
 		
+		mov pax, WmblykStrPlr
+		shl pax, NetPlayerShift
 		.IF (PlrState == PLAYER_STATE_STRANGLE)
+			mov WmblykRot, rv(Vector32DAngle, OFFSET WmblykPos, plrPosPtr)
+			mov pax, plrPosPtr
+			fld WmblykRot
+			fsincos
+			fsubr REAL4 PTR [pax+8]
+			fstp WmblykPos.Z
+			fsubr REAL4 PTR [pax]
+			fstp WmblykPos.X
+			
 			.IF (InputAction)
 				fild MazeLayer
 				fsubr f(75)
@@ -585,28 +651,53 @@ Wmblyk_Process PROC EXPORT
 				fstp WmblykStateVal
 				mov InputAction, 0
 				bpMEM32 WmblykHeadRot.X, f(0.1)
+				
+				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 			.ENDIF
 			
 			invoke SndFade, SndWmblykStrM, f(1), deltaTime
 		
-			fcmp WmblykStateVal, f(1)
-			.IF (!Carry?)
-				mov PlrState, PLAYER_STATE_GETUP
-				mov Wmblyk, WMBLYK_DEAD
-				invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykDead
-				bpMEM32 WmblykAnimPlr.Speed, f(1)
-				invoke Vector32DCopy, ADDR CamPos, ADDR CamPosL
-				
-				invoke alSourceStop, SndWmblykB
+			fcmp WmblykStateVal, f(-1)
+			.IF (Carry?)
+				mov PlrState, PLAYER_STATE_DYING
+				bpMEM32 WmblykStateVal, f(-1)
 			.ELSE
-				fcmp WmblykStateVal, f(-1)
-				.IF (Carry?)
-					mov PlrState, PLAYER_STATE_DYING
-					bpMEM32 WmblykStateVal, f(-1)
+				fcmp WmblykStateVal, f(1)
+				.IF (!Carry?)
+					mov PlrState, PLAYER_STATE_GETUP
+					mov Wmblyk, WMBLYK_DEAD
+					bpMEM32 WmblykStateVal, f(2)
+					invoke Vector32DCopy, ADDR CamPos, ADDR CamPosL
+					
+					invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 				.ENDIF
 			.ENDIF
+		.ELSEIF (NetPlayersV[pax].PlrState == PLAYER_STATE_DEAD) && (NetSock) \
+		&& (NetHosting)
+			Vector32DPush WmblykPos
+			invoke Wmblyk_Spawn, WMBLYK_WALK
+			Vector32DPop WmblykPos
+			
+			;mov pax, plrPosPtr
+			;invoke fpuSetRounding, FPU_ROUND_TRUNC
+			;fld REAL4 PTR [pax]
+			;fmul f(0.5)
+			;frndint
+			;fmul f(2)
+			;fadd f(1)
+			;fstp WmblykPos.X
+			;fld REAL4 PTR [pax+8]
+			;fmul f(0.5)
+			;frndint
+			;fmul f(2)
+			;fadd f(1)
+			;fstp WmblykPos.Z
+			;invoke fpuSetRounding, FPU_ROUND_ROUND
+			
+			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+			ret
 		.ENDIF
-		
+					
 		fld WmblykStateVal
 		fadd f(0.9)
 		fmul f(3.2)
@@ -614,14 +705,29 @@ Wmblyk_Process PROC EXPORT
 		invoke intClamp, flVal, 0, (SIZEOF TexWmblykStr)/4-2
 		bpMEM32 WmblykFace, TexWmblykStr[pax*4]
 	.ELSEIF (Wmblyk == WMBLYK_DEAD)
+		.IF (NetSock)
+			invoke Net_GetClosestPlr, ADDR WmblykPos, -1
+			lea pax, NetPlayersVL[pax].Position
+			mov plrPosPtr, pax
+		.ELSE
+			mov plrPosPtr, OFFSET CamPosL
+		.ENDIF
+		
+		.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykDead)
+			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykDead
+			mov WmblykAnimPlr.Speed, FLT_1
+			invoke alSourceStop, SndWmblykB
+		.ENDIF
+		
 		invoke SndFade, SndWmblykStrM, 0, delta2
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 		
-		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET CamPos)
+		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, plrPosPtr)
 		fcmp flVal, f(32)
 		.IF (!Carry?)
 			mov Wmblyk, WMBLYK_NONE
+			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 		.ENDIF
 	.ENDIF
 	ret

@@ -22,6 +22,7 @@ Compilation prerequisites are:
 - Windows include and lib files: MASMZE-BP3D, like BoilPlate3D, is configured to compile with both MASM32 and <a href="https://www.terraspace.co.uk/uasm.html#p7">WinInc</a> headers (though MASM won't like them)
 - BoilPlate3D source at ..\BoilPlate3D\src\ relative to main.asm. MASMZE-BP3D is configured to use the framework from source
 - The required headers for OpenAL and stb_vorbis are included (the project is configured for OpenAL Soft specifically via symbolic soft_oal links), so not necessary for compilation, but for running the built project there must be soft_oal.dll (<a href="https://openal-soft.org/openal-binaries/">listing of binaries</a>, I recommend version 13.0, as it removed the popping issue and is the last version supported by Win2k) and stb_vorbis.dll withing the same directory as the executable
+- To target Windows 2000 and earlier, uncomment BP_COMPATIBILITY_W9X preprocessor definition (main.asm:5). This will lose raw input support and DPI awareness
 
 To compile the project, either run makeit.bat or compile and link manually with any of the supported tools. Note that makeit.bat expects the chosen tools to be in the PATH variable or otherwise accessible by name. It also expects the include and lib files to be in C:\masm32\ for MASM32 or C:\WinInc\ for WinInc (the drive letter can be changed with the /d [drive] argument).
 

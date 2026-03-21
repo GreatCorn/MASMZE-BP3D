@@ -262,6 +262,7 @@ SndKubaleAppear	DWORD ?
 SndKubaleV		DWORD ?
 SndMistake		DWORD ?
 SndMus			DWORD ?, ?, ?, ?, ?, ?
+SndOver			DWORD ?
 SndRand			DWORD ?, ?, ?, ?, ?, ?
 SndSave			DWORD ?
 SndScribble		DWORD ?
@@ -269,6 +270,7 @@ SndSiren		DWORD ?
 SndSlam			DWORD ?
 SndSplash		DWORD ?
 SndStep			DWORD ?, ?, ?, ?
+SndSurvive		DWORD ?
 SndTram			DWORD ?
 SndTramAnn		DWORD ?, ?, ?
 SndTramClose	DWORD ?
@@ -309,7 +311,7 @@ FreeStrings PROC EXPORT
 FreeStrings ENDP
 
 LoadResources PROC EXPORT
-	LOCAL pVal:BPPtr, ici:ICONINFO, icsz:_SIZE
+	LOCAL pVal:BPPtr
 	mov Loading, TRUE
 	
 	.IF (LoadState == LOADING_TEXT)
@@ -762,6 +764,7 @@ LoadResources PROC EXPORT
 		invoke alSourcef, SndMus[16], AL_GAIN, f(0.5)
 		LoadBPS OFFSET SndMus[20],		"assets\sounds\mus6.bps"
 		invoke alSourcef, SndMus[20], AL_GAIN, f(0.5)
+		LoadBPS OFFSET SndOver,			"assets\sounds\over.bps"
 		LoadBPS OFFSET SndRand[0],		"assets\sounds\rand1.bps"
 		LoadBPS OFFSET SndRand[4],		"assets\sounds\rand2.bps"
 		LoadBPS OFFSET SndRand[8],		"assets\sounds\rand3.bps"
@@ -779,6 +782,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndStep[4],		"assets\sounds\step2.bps"
 		LoadBPS OFFSET SndStep[8],		"assets\sounds\step3.bps"
 		LoadBPS OFFSET SndStep[12],		"assets\sounds\step4.bps"
+		LoadBPS OFFSET SndSurvive,		"assets\sounds\survive.bps"
 		LoadBPS OFFSET SndTram,			"assets\sounds\tram.bps"
 		invoke alSourcei, SndTram, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndTram, AL_ROLLOFF_FACTOR, f(1.5)
@@ -968,6 +972,14 @@ Stiffness:REAL4, Damping:REAL4, T:REAL4
 	fstp REAL4 PTR [pax]
 	ret
 DampedSpringAngle ENDP
+
+IntRandRLocal PROC EXPORT Min:SDWORD, Max:SDWORD, Seed:BPPtr
+	mov eax, Max
+	sub eax, Min
+	invoke nRandLocal, eax, Seed
+	add eax, Min
+	ret
+IntRandRLocal ENDP
 
 ;   Non-terminating manual int to string conversion macro (for settings UI)
 IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD, Terminate:BPBool

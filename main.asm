@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-BP_COMPATIBILITY_W9X		EQU <1>
+;BP_COMPATIBILITY_W9X		EQU <1>
 BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
@@ -243,7 +243,8 @@ ENUM	BIND_NONE, \
 AppName DB "MASMZE-3D", 0	; App name & caption
 AsmTime	DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), 13, 10, 0
 
-clSky	REAL4 0.24, 0.24, 0.22, 1.0
+clAmbient	REAL4 0.2, 0.2, 0.2, 1.0
+clSky		REAL4 0.24, 0.24, 0.22, 1.0
 
 .DATA
 ; ----- Forms, form creation -----
@@ -301,6 +302,8 @@ IBUILeft	BPPtr VK_LEFT
 IBUIRight	BPPtr VK_RIGHT
 IBUIConfirm	BPPtr VK_RETURN
 
+IBPlayers	BPPtr VK_TAB
+
 ; Gamepad axes
 GAMEPAD_NEG		EQU 128
 GAMEPAD_LS_H	EQU 64
@@ -354,6 +357,8 @@ InputUILeft				BPPtr FALSE
 InputUIRight			BPPtr FALSE
 InputUIConfirm			BPPtr FALSE
 InputUIConfirmT			BPPtr FALSE
+
+InputPlayers			BPPtr FALSE
 
 CapsLock		BPBool FALSE
 ClearBuffers	BPBool TRUE
@@ -423,6 +428,7 @@ GPadParse PROTO :BPEnum, :BPPtr
 CreateScene PROC EXPORT
 	call Plr_Create
 	call Maze_Create
+	call Wmblyk_Create
 	ret
 CreateScene ENDP
 
@@ -446,10 +452,10 @@ DrawScene PROC EXPORT
 	.IF (Wmblyk)
 		call Wmblyk_Draw
 	.ENDIF
-	call Plr_Draw
 	.IF (NetSock)
 		call Net_Draw
 	.ENDIF
+	call Plr_Draw
 	
 	.IF (GameState == GAME_STATE_MENU) && (UIMenuSplash >= 2)
 		invoke glBindTexture, GL_TEXTURE_2D, 0
@@ -489,15 +495,18 @@ GameInit PROC EXPORT
 	mov deltaScale, FLT_1
 	mov UIFadeCallback, 0
 	
-	mov MazeLayer, 1
-	
 	print "Finished game object initialization.", 13, 10
 	
 	call CreateScene
 	
 	bpMEM32 ListParticle, MdlParticle
 	
-	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+	mov PollProc, OFFSET LockMouse
+	
+	.IF (NetSock)
+		mov NetScore, 0
+		mov NetUIScoreL, 0
+	.ENDIF
 	ret
 GameInit ENDP
 
@@ -798,7 +807,6 @@ InitGraphics PROC EXPORT
 	
 	invoke glMaterialf, GL_FRONT, GL_SHININESS, f(64)
 	invoke glMaterialfv, GL_FRONT, GL_SPECULAR, OFFSET clWhite
-	
 	ret
 InitGraphics ENDP
 
@@ -812,6 +820,11 @@ InitNetwork PROC EXPORT
 	
 	ret
 InitNetwork ENDP
+
+LockMouse PROC EXPORT
+	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_LOCKED
+	ret
+LockMouse ENDP
 
 MenuInit PROC EXPORT
 	mov GameState, GAME_STATE_MENU
@@ -840,14 +853,12 @@ MenuInit PROC EXPORT
 	mov UIFadeDisp, FLT_1
 	mov UIFadeVal, FLT_1
 	
+	mov UIWhiteFadeVal, 0
+	
 	invoke alSourcef, SndMus[20], AL_GAIN, f(1)
 	
-	call Maze_ResetElements
-	call Maze_ResetEntities
-	.IF (Maze)
-		call Maze_Free
-	.ENDIF
-	mov MazeCheck, 0
+	call Maze_Exit
+	mov NetUnformed, TRUE
 	
 	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_VISIBLE
 	ret
@@ -1042,24 +1053,6 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'M'
 					call Maze_GenerateLayoutTex
 					xor PlrItems, MAZE_ITEM_MAP
-				CASE 'N'
-					.IF (Keys[VK_SHIFT])
-						invoke CreateThread, NULL, 0, OFFSET Net_Host, 0, 0, NULL
-					.ELSE
-						invoke CreateThread, NULL, 0, OFFSET Net_Connect, 0, 0, NULL
-					.ENDIF
-				CASE 'P'
-					print "Players:", 13, 10
-					xor pax, pax
-					.WHILE (pax < SIZEOF NetPlayers)
-						.IF (NetPlayers[pax].PlayerID != -1)
-							pushad
-							shr pax, NetPlayerShift
-							print str$(pax), 13, 10
-							popad
-						.ENDIF
-						add pax, SIZEOF NetPlayer
-					.ENDW
 				CASE 'B'
 					.IF (Keys[VK_SHIFT])
 						invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
@@ -1135,6 +1128,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputAction, 1
 				CASE IBConfirm
 					mov InputConfirm, 1
+				CASE IBPlayers
+					mov InputPlayers, 1
 			ENDSW
 		.ELSE
 			SWITCH [pbx].Keycode
@@ -1187,6 +1182,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputAction, 0
 				CASE IBConfirm
 					mov InputConfirm, 0
+				CASE IBPlayers
+					mov InputPlayers, 0
 			ENDSW
 		.ENDIF
 	.ELSEIF (BPInType == BP_INPUT_JOY_AXIS) || (BPInType == BP_INPUT_JOY_BUTTON)		

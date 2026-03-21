@@ -1,6 +1,7 @@
 ENUM	VEBRA_NONE, \
 		VEBRA_SIT, \
-		VEBRA_GO
+		VEBRA_GO, \
+		VEBRA_GOING
 
 .DATA
 Vebra			BPEnum VEBRA_NONE
@@ -17,6 +18,7 @@ Vebra_Spawn PROC EXPORT
 	invoke bpAnimPlay, ADDR VebraAnimPlr, ADDR AnimVebraSit
 	ret
 Vebra_Spawn ENDP
+
 
 Vebra_Draw PROC EXPORT
 	call glPushMatrix
@@ -41,22 +43,33 @@ Vebra_Process PROC EXPORT
 			invoke bpAnimPlay, ADDR VebraAnimPlr, ADDR AnimVebraSit
 		.ENDIF
 		
+		.IF !(PlrCanControl)
+			; For some fucking reason
+			ret
+		.ENDIF
+		
 		mov flVal, rv(Vector32DDistanceSqr, OFFSET MazeDoorPos, OFFSET CamPos)
 		fcmp flVal, f(12)
 		.IF (Carry?)
 			mov Vebra, VEBRA_GO
-			invoke bpAnimPlay, ADDR VebraAnimPlr, ADDR AnimVebraGo
 		.ELSE
 			.IF !(rv(Maze_Raycast, OFFSET MazeDoorPos, OFFSET CamPos))
-				mov flVal, rv(Vector32DDistanceSqr, OFFSET MazeDoorPos, OFFSET CamPos)
+				mov flVal, \
+				rv(Vector32DDistanceSqr, OFFSET MazeDoorPos, OFFSET CamPos)
 				fcmp flVal, f(48)
 				.IF (Carry?)
 					mov Vebra, VEBRA_GO
-					invoke bpAnimPlay, ADDR VebraAnimPlr, ADDR AnimVebraGo
 				.ENDIF
 			.ENDIF
 		.ENDIF
-	.ELSE
+	.ELSEIF (Vebra == VEBRA_GO)
+		print "Vebra went", 13, 10
+		invoke bpAnimPlay, ADDR VebraAnimPlr, ADDR AnimVebraGo
+		mov Vebra, VEBRA_GOING
+		.IF (NetSock)
+			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+		.ENDIF
+	.ELSEIF (Vebra == VEBRA_GOING)
 		fcmp VebraAnimPlr.Timer, f(26)
 		.IF (!Carry?)
 			mov MazeDoorRot, rv(flLerp, MazeDoorRot, 0, delta10)

@@ -141,6 +141,7 @@ UISubLastRandom		BPPtr 0
 UISTTPos			SDWORD 0
 UISTTDir 			BPBool FALSE
 
+UIWhiteFade			BPEnum UI_FADE_NONE
 UIWhiteFadeVal		REAL4 0.0
 
 UIInteractPrompt	BPPtr 0
@@ -193,6 +194,7 @@ UI_DrawDebug PROC EXPORT
 	RenderText real4$(PlrSpeed), 16, 56
 	RenderText real4$(PlrSpeedScaled), 112, 56
 	RenderText real4$(PlrHealth), 16, 80
+	RenderText str$(PlrState), 112, 80
 	
 	RenderText str$(FXAfterimageNow), 16, 104
 	RenderText " AFTERIMAGE FRAMES", 32, 104
@@ -1239,8 +1241,105 @@ UI_DrawFullscreen PROC EXPORT Alpha:REAL4
 	invoke glCallList, ScreenQuad
 	call glPopMatrix
 	invoke glDisable, GL_BLEND
+	invoke glColor4fv, ADDR clWhite
 	ret
 UI_DrawFullscreen ENDP
+
+UI_DrawLeaderboard PROC EXPORT
+	LOCAL xLeft:DWORD, xFace:DWORD, xRight:DWORD, yFrom:DWORD, alpha[2]:REAL4
+	
+	mov eax, ScreenHalf.X
+	shr eax, 1	; /2
+	mov xFace, eax
+	add eax, UI_BTN_H
+	mov xLeft, eax
+	mov ecx, ScreenHalf.X
+	add ecx, eax
+	mov xRight, ecx
+	
+	mov eax, NetPlayersCount
+	mov ecx, UI_BTN_H + UI_BTN_M
+	mul ecx
+	sub eax, UI_BTN_M
+	add eax, UI_BTN_H + UI_HR_H
+	shr eax, 1	; /2
+	mov ecx, ScreenHalf.Y
+	sub ecx, eax
+	mov yFrom, ecx
+	
+	invoke UI_Text, StrLayerNumber, ScreenHalf.X, yFrom, BP_ALIGN_CENTER, 0
+	add yFrom, UI_BTN_H
+	
+	invoke UI_HR, ScreenHalf.X, yFrom
+	add yFrom, UI_HR_H
+	
+	invoke glEnable, GL_BLEND
+	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+	fld f(6)
+	fsub PlrStateTimer
+	fstp alpha[0]
+	xor pbx, pbx
+	.WHILE (pbx < NET_MAX_PLAYERS)
+		.IF (NetLeaderboard[pbx] == -1)
+			.BREAK
+		.ENDIF
+		
+		mov alpha[4], rv(flClamp, alpha[0], 0, f(1))
+		
+		call glPushMatrix
+		fld alpha[4]
+		fmul st, st
+		fsubr f(1)
+		fmul f(%(-UI_BTN_H))
+		sub psp, SIZEOF BPPtr
+		fstp REAL4 PTR [psp]
+		pop pax
+		invoke glTranslatef, 0, pax, 0
+		
+		call glPushMatrix
+		invoke glTranslatei, xFace, yFrom, 1
+		invoke glScalei, UI_TXT_H, UI_TXT_H, 1
+		invoke glEnable, GL_ALPHA_TEST
+		invoke glBindTexture, GL_TEXTURE_2D, TexPlrHead
+		
+		movzx eax, NetLeaderboard[pbx]
+		invoke Net_SetColorByID, eax, alpha[4]
+
+		invoke glCallList, ScreenQuad
+		invoke glDisable, GL_ALPHA_TEST
+		call glPopMatrix
+		
+		invoke Net_SetColorByID, 0, alpha[4]
+		movzx pax, NetLeaderboard[pbx]
+		shl pax, NetPlayerShift
+		push pax
+		invoke UI_Text, ADDR NetPlayers[pax].Username, xLeft, yFrom, \
+		BP_ALIGN_LEFT, 0
+		pop pax
+		invoke UI_Text, str$(NetPlayersV[pax].Score), xRight, yFrom, \
+		BP_ALIGN_RIGHT, 0
+		
+		.IF (pbx >= NetPlayersAlive)
+			mov pax, StrNetDead
+		.ELSE
+			mov pax, pbx
+			shl pax, BPPtrShift
+			add pax, OFFSET StrNet1st
+			mov pax, BPPtr PTR [pax]
+		.ENDIF
+		invoke UI_Text, pax, ScreenHalf.X, yFrom, BP_ALIGN_CENTER, 0
+			
+		call glPopMatrix
+		
+		add yFrom, UI_BTN_H + UI_BTN_M
+		fld alpha[0]
+		fsub f(0.2)
+		fstp alpha[0]
+		inc pbx
+	.ENDW
+	invoke glDisable, GL_BLEND
+	ret
+UI_DrawLeaderboard ENDP
 
 UI_DrawMenuMain PROC EXPORT
 	LOCAL pcbBuffer:DWORD 
@@ -2364,6 +2463,64 @@ UI_DrawPopupMenu PROC EXPORT
 	ret
 UI_DrawPopupMenu ENDP
 
+UI_DrawPlayers PROC EXPORT
+	LOCAL xLeft:DWORD, xFace:DWORD, xRight:DWORD, yFrom:DWORD
+	
+	invoke UI_DrawFullscreen, f(0.5)
+	
+	mov eax, ScreenHalf.X
+	shr eax, 1	; /2
+	mov xFace, eax
+	add eax, UI_BTN_H
+	mov xLeft, eax
+	mov ecx, ScreenHalf.X
+	add ecx, eax
+	mov xRight, ecx
+	
+	mov eax, NetPlayersCount
+	mov ecx, UI_BTN_H + UI_BTN_M
+	mul ecx
+	sub eax, UI_BTN_M
+	add eax, UI_BTN_H + UI_HR_H
+	shr eax, 1	; /2
+	mov ebx, ScreenHalf.Y
+	sub ebx, eax
+	
+	invoke UI_Text, StrMenuUsername, xFace, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_Text, StrMenuScore, xRight, ebx, BP_ALIGN_RIGHT, 0
+	add ebx, UI_BTN_H
+	
+	invoke UI_HR, ScreenHalf.X, ebx
+	add ebx, UI_HR_H
+	
+	mov yFrom, ebx
+	xor pbx, pbx
+	.WHILE (pbx < SIZEOF NetPlayers)
+		.IF (NetPlayers[pbx].PlayerID != -1)
+			invoke Net_SetColorByID, NetPlayers[pbx].PlayerID, FLT_1
+			
+			call glPushMatrix
+			invoke glTranslatei, xFace, yFrom, 1
+			invoke glScalei, UI_TXT_H, UI_TXT_H, 1
+			invoke glEnable, GL_ALPHA_TEST
+			invoke glBindTexture, GL_TEXTURE_2D, TexPlrHead
+			invoke glCallList, ScreenQuad
+			invoke glDisable, GL_ALPHA_TEST
+			call glPopMatrix
+			
+			invoke Net_SetColorByID, 0, FLT_1
+			invoke UI_Text, ADDR NetPlayers[pbx].Username, xLeft, yFrom, \
+			BP_ALIGN_LEFT, 0
+			invoke UI_Text, str$(NetPlayersV[pbx].Score), xRight, yFrom, \
+			BP_ALIGN_RIGHT, 0
+			
+			add yFrom, UI_BTN_H + UI_BTN_M
+		.ENDIF
+		add pbx, SIZEOF NetPlayer
+	.ENDW
+	ret
+UI_DrawPlayers ENDP
+
 UI_DrawRectangle PROC EXPORT RectWidth:DWORD, RectHeight:DWORD
 	call glPushMatrix
 	invoke glScalei, RectWidth, RectHeight, 1
@@ -2786,6 +2943,9 @@ UI_Draw PROC EXPORT
 		mov UIShadow, FALSE
 	.ENDIF
 	
+	.IF (InputPlayers) && (NetSock)
+		call UI_DrawPlayers
+	.ENDIF
 	
 	; Player state-based
 	SWITCH PlrState
@@ -2820,11 +2980,7 @@ UI_Draw PROC EXPORT
 			invoke UI_Text, ADDR NetFinishStr, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, BP_ALIGN_CENTER
 		CASE PLAYER_STATE_LEADERBOARD
-			xor ebx, ebx
-			.WHILE (ebx < NetPlayersCount)
-				
-				inc ebx
-			.ENDW
+			call UI_DrawLeaderboard
 	ENDSW
 	
 	mov UIShadow, TRUE
@@ -2837,9 +2993,9 @@ UI_Draw PROC EXPORT
 			CASE StrCCCheckpoint, StrCCSaveErase, StrCCShop
 				invoke UI_TextInput, UISubtitlesStr, IBConfirm, JBConfirm, \
 				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
-			CASE StrCCFightBack
+			CASE StrCCFightBack, StrNetCCSwitch
 				invoke UI_TextInput, UISubtitlesStr, IBAction, JBAction, \
-				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
+				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER				
 			DEFAULT
 				invoke UI_Text, UISubtitlesStr, ScreenHalf.X, ecx, \
 				BP_ALIGN_CENTER, BP_ALIGN_CENTER
@@ -2990,6 +3146,13 @@ UI_Process PROC EXPORT
 	fsubr f(1)
 	fstp UIFadeDisp
 	
+	.IF (UIWhiteFade == UI_FADE_IN)
+		mov UIWhiteFadeVal, rv(flMove, UIWhiteFadeVal, 0, deltaTime)
+		.IF (UIWhiteFadeVal == 0)
+			mov UIWhiteFadeVal, UI_FADE_NONE
+		.ENDIF
+	.ENDIF
+	
 	; Layer popup (at the start of layer)
 	.IF (UITextPopup)
 		.IF (UITextPopup == UI_FADE_IN)
@@ -3013,11 +3176,8 @@ UI_Process PROC EXPORT
 		.ENDIF
 	
 		.IF (NetSock)
-			mov pax, NetPlayerID
-			shl pax, NetPlayerShift
-			mov eax, NetPlayersV[pax].Score
-			push pax
-			fild DWORD PTR [psp]
+			fild NetScore
+			sub psp, SIZEOF BPPtr
 			fstp REAL4 PTR [psp]
 			pop pax
 			mov NetUIScoreL, rv(flLerp, NetUIScoreL, eax, delta10)
