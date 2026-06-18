@@ -2,7 +2,7 @@
 .model flat,stdcall
 option casemap:none
 
-;BP_COMPATIBILITY_W9X		EQU <1>
+BP_COMPATIBILITY_W9X		EQU <1>
 BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
@@ -67,11 +67,15 @@ ENUM MACRO vargs:VARARG
 ENDM
 ;   MASM32 treats macro arguments as a single 255-char string. This is a split
 ; ENUM macro to accommodate for that bullshit.
-ENUML MACRO
+ENUML MACRO start
 	IFNDEF enumlval_
 		PUBLIC enumlval_
 	ENDIF
-	enumlval_ = 0
+	IFB <start>
+		enumlval_ = 0
+	ELSE
+		enumlval_ = start
+	ENDIF
 ENDM
 
 E MACRO earg:REQ
@@ -860,7 +864,7 @@ MenuInit PROC EXPORT
 	call Maze_Exit
 	mov NetUnformed, TRUE
 	
-	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_VISIBLE
+	mov PollProc, OFFSET UnlockMouse
 	ret
 MenuInit ENDP
 
@@ -899,6 +903,10 @@ ProcessScene PROC EXPORT
 	ret
 ProcessScene ENDP
 
+UnlockMouse PROC EXPORT
+	invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_VISIBLE
+	ret
+UnlockMouse ENDP
 
 ;   FMain bindings
 OnCreate PROC EXPORT
@@ -1036,6 +1044,9 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov MazeState, MAZE_STATE_WAIT_IMPACT
 					mov MazeStateTimer, 0
 					invoke alSourceStop, SndSiren
+				CASE 'L'
+					mov UIMenuSplash, 0
+					mov UIMenuSplashTimer, 0
 				CASE 'R'
 					.IF (Maze)
 						call Maze_Free

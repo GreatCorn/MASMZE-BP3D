@@ -1,5 +1,5 @@
-; Barebones debug procedure rdtsc tracer through custom prologue & epilogue
-; Specify files to trace their procedures, or define PROC_TRACE_ALL
+;   Barebones debug procedure rdtsc tracer through custom prologue & epilogue
+;   Specify files to trace their procedures, or define PROC_TRACE_ALL
 ;TraceFiles TEXTEQU <!<\
 ;						main.asm,\
 ;					!>>

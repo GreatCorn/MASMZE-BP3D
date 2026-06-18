@@ -1,5 +1,7 @@
 # MASMZE-BP3D
 
+### Warning! This is a very buggy unfinished early development stage project that uses another very buggy unfinished early development stage framework.
+
 MASMZE-BP3D is a recreation of the earlier game project <a href="https://github.com/GreatCorn/MASMZE-3D">MASMZE-3D</a>, using the <a href="https://github.com/GreatCorn/BoilPlate3D">BoilPlate3D</a> framework to optimize code structuring, improve compatibility, and enhance flexibility.
 
 A recreation here means a complete rewrite from scratch in accordance with the new core framework. It focuses on stabilizing the existing game elements, properly structuring the code for readability (though I still have failed in this regard), and adding some small new features along the way to try and make more of a game out of the "tech"-"demo" that was MASMZE-3D.

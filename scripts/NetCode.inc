@@ -1,5 +1,5 @@
 ; Net message codes (1-byte header)
-ENUML
+ENUML 127
 	;	Request player ID and list
 	;	Player:	NetPlayer (without PlayerID and SockOnServ)
 	E NET_PLAYERS_REQUEST
@@ -68,6 +68,8 @@ NetMazeEntities STRUCT
 	NetMsgType		BYTE ?
 	
 	Kubale			BYTE ?
+	KubalePos		Vector3 <?,?,?>
+	KubaleRot		REAL4 ?
 	Vebra			BYTE ?
 	Wmblyk			BYTE ?
 	WmblykPos		Vector3 <?,?,?>

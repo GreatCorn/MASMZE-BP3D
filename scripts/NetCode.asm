@@ -308,8 +308,6 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		mbm MazeSlam, [pbx].MazeSlam
 		mbm MazeTeleport, [pbx].MazeTeleport
 		
-		print "Received all elements", 13, 10
-		
 		ASSUME pbx:nothing
 		
 		.IF (NetHosting)
@@ -987,6 +985,11 @@ Net_Process PROC EXPORT
 			.ENDIF
 		.ELSE
 			invoke Net_FormSend, NET_PLAYER_VOLATILE, NetSock
+		.ENDIF
+		
+		mov eax, NetPlayerID
+		.IF (Wmblyk == WMBLYK_STRANGLE) && (WmblykStrPlr == eax)
+			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 		.ENDIF
 	.ENDIF
 	
