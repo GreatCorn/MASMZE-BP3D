@@ -44,6 +44,7 @@ UI_TXT_M	EQU 4*UI_SCALE				; Text margin
 ENUM	UI_NONE, \
 		UI_BUTTON, \
 		UI_BUTTON_SMALL, \
+		UI_CLICKER, \
 		UI_SLIDER, \
 		UI_COMBOBOX, \
 		UI_CHECKBOX, \
@@ -269,7 +270,7 @@ UI_Button PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ButtonAlign:BPEnum
 	.IF !(UIDisabled)
 		mov al, UIID
 		.IF (UIFocus == al)
-			.IF (UISmallButtons)
+			.IF (UISmallButtons) && (UIButtonType == UI_BUTTON)
 				mov UIFocusType, UI_BUTTON_SMALL
 			.ELSE
 				mbm UIFocusType, UIButtonType
@@ -1303,13 +1304,16 @@ UI_DrawLeaderboard PROC EXPORT
 		invoke glBindTexture, GL_TEXTURE_2D, TexPlrHead
 		
 		movzx eax, NetLeaderboard[pbx]
-		invoke Net_SetColorByID, eax, alpha[4]
+		invoke Net_FindPlrByID, eax
+		invoke Net_SetColorBySkin, NetPlayers[pax].Skin, alpha[4]
 
 		invoke glCallList, ScreenQuad
 		invoke glDisable, GL_ALPHA_TEST
 		call glPopMatrix
 		
-		invoke Net_SetColorByID, 0, alpha[4]
+		;invoke Net_SetColorBySkin, 0, alpha[4]
+		invoke glColor4f, FLT_1, FLT_1, FLT_1, alpha[4]
+		
 		movzx pax, NetLeaderboard[pbx]
 		shl pax, NetPlayerShift
 		push pax
@@ -1402,6 +1406,14 @@ UI_DrawMenuMain PROC EXPORT
 		ADDR NetPlayers[0].Username, SIZEOF NetPlayer.Username, \
 		ADDR SettingsIniPathAbs
 		
+		invoke GetPrivateProfileString, ADDR SettingsIniMisc, \
+		ADDR SettingsIniIP, ADDR NetServerAddr, ADDR NetServerAddr, \
+		SIZEOF NetServerAddr, ADDR SettingsIniPathAbs
+		
+		invoke GetPrivateProfileString, ADDR SettingsIniMisc, \
+		ADDR SettingsIniPort, ADDR NetPortStr, ADDR NetPortStr, \
+		SIZEOF NetPortStr, ADDR SettingsIniPathAbs
+		
 		mov UIState, UI_STATE_MENU_MULTIPLAYER
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
@@ -1439,7 +1451,7 @@ UI_DrawMenuMain PROC EXPORT
 UI_DrawMenuMain ENDP
 
 UI_DrawMenuMultiplayer PROC EXPORT
-	UI_MENU_MULTIPLAYER_HEIGHT	EQU UI_EDIT_H*3 + UI_BTN_H*3 + UI_BTN_M*2 + \
+	UI_MENU_MULTIPLAYER_HEIGHT	EQU UI_EDIT_H*3 + UI_BTN_H*4 + UI_BTN_M*3 + \
 	UI_HR_H*2
 	
 	mov ebx, ScreenHalf.Y
@@ -1447,7 +1459,81 @@ UI_DrawMenuMultiplayer PROC EXPORT
 	
 	invoke UI_Edit, ADDR NetPlayers[0].Username, ScreenHalf.X, ebx, \
 	SIZEOF NetPlayers.Username, FALSE, StrMenuUsername
-	add ebx, UI_EDIT_H
+	add ebx, UI_EDIT_H + UI_BTN_M
+	
+	mov UISmallButtons, TRUE
+	pushb UIButtonType
+	mov UIButtonType, UI_CLICKER
+	mov edx, ScreenHalf.X
+	sub edx, UI_BTN_WS + UI_BTN_M/2
+	invoke UI_Button, 0, edx, ebx, BP_ALIGN_LEFT
+	.IF (al)
+		mov al, NetPlayers[0].Skin
+		and al, 1111b
+		inc al
+		.IF (al > 7)
+			xor al, al
+		.ENDIF
+		and NetPlayers[0].Skin, 11110000b
+		or NetPlayers[0].Skin, al
+	.ENDIF
+	call glPushMatrix	; Draw player color
+	mov edx, ScreenHalf.X
+	sub edx, (UI_BTN_WS + UI_BTN_M/2) - (UI_BTN_WS-UI_BTN_H)/2
+	invoke glTranslatei, edx, ebx, 0
+	invoke glScalef, f(%UI_BTN_H), f(%UI_BTN_H), FLT_1
+	invoke glBindTexture, GL_TEXTURE_2D, TexPlrHead
+	invoke glEnable, GL_ALPHA_TEST
+	invoke Net_SetColorBySkin, NetPlayers[0].Skin, FLT_1
+	invoke glCallList, ScreenQuad
+	invoke glColor3fv, ADDR clWhite
+	invoke glDisable, GL_ALPHA_TEST
+	call glPopMatrix
+	
+	mov edx, ScreenHalf.X
+	add edx, UI_BTN_M/2
+	invoke UI_Button, 0, edx, ebx, BP_ALIGN_LEFT
+	.IF (al)
+		mov al, NetPlayers[0].Skin
+		shr al, 4
+		inc al
+		.IF (al > NET_PLAYER_FACES-1)
+			xor al, al
+		.ENDIF
+		shl al, 4
+		and NetPlayers[0].Skin, 1111b
+		or NetPlayers[0].Skin, al
+	.ENDIF
+	call glPushMatrix	; Draw player eyes
+	mov edx, ScreenHalf.X
+	add edx, UI_BTN_M/2 + (UI_BTN_WS-UI_TXT_H*2)/2
+	mov eax, ebx
+	add eax, (UI_BTN_H-UI_TXT_H)/2
+	invoke glTranslatei, edx, eax, 0
+	invoke glScalef, f(%(UI_TXT_H*2)), f(%UI_TXT_H), FLT_1
+	movzx pax, NetPlayers[0].Skin
+	and pax, 11110000b
+	;shr pax, 4
+	;mov pcx, 12
+	;mul pcx
+	add pax, OFFSET TexPlrFace1
+	mov ecx, bpMouseClient[0]
+	mov edx, ScreenHalf.X
+	add edx, UI_BTN_WS
+	.IF (SDWORD PTR ecx < ScreenHalf.X)
+		add pax, 8
+	.ELSEIF (SDWORD PTR ecx > edx)
+		add pax, 4
+	.ENDIF
+	invoke glBindTexture, GL_TEXTURE_2D, DWORD PTR [pax]
+	invoke glEnable, GL_BLEND
+	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+	invoke glCallList, ScreenQuad
+	invoke glDisable, GL_BLEND
+	call glPopMatrix
+	popb UIButtonType
+	mov UISmallButtons, FALSE
+	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
 	add ebx, UI_HR_H
@@ -1490,12 +1576,17 @@ UI_DrawMenuMultiplayer ENDP
 
 UI_DrawMenuPause PROC EXPORT
 	UI_MENU_PAUSE_HEIGHT	EQU UI_BTN_H*4 + UI_BTN_M*3
+	UI_MENU_PAUSE_HEIGHTM	EQU UI_BTN_H*3 + UI_BTN_M*2
 	
 	mov ebx, ScreenHalf.Y
-	sub ebx, UI_MENU_PAUSE_HEIGHT/2
+	.IF (NetSock)
+		sub ebx, UI_MENU_PAUSE_HEIGHTM/2
+	.ELSE
+		sub ebx, UI_MENU_PAUSE_HEIGHT/2
 	
-	invoke UI_Text, StrMenuPaused, ScreenHalf.X, ebx, BP_ALIGN_CENTER, 0
-	add ebx, UI_BTN_H + UI_BTN_M
+		invoke UI_Text, StrMenuPaused, ScreenHalf.X, ebx, BP_ALIGN_CENTER, 0
+		add ebx, UI_BTN_H + UI_BTN_M
+	.ENDIF
 	
 	invoke UI_Button, StrMenuResume, ScreenHalf.X, ebx, BP_ALIGN_CENTER
 	.IF (al)
@@ -1634,9 +1725,9 @@ UI_DrawMenuSettingsControls PROC EXPORT
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
-	IFDEF BP_COMPATIBILITY_W9X
+	.IF !(bpRawInput)
 		mov UIDisabled, TRUE
-	ENDIF
+	.ENDIF
 	invoke UI_Checkbox, StrMenuMouseRaw, UIXFrom, ebx, \
 	OFFSET SettingsControlsRawMouse
 	add ebx, UI_BTN_H
@@ -1989,6 +2080,9 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 			fcmp res.Y, f(0.05)
 			.IF (Carry?)
 				bpMEM32 SettingsGraphicsUIScale, res.X
+				push pcx
+				invoke Settings_SetOption, OFFSET SettingsGraphicsUIScale
+				pop pcx
 			.ENDIF
 			
 			fld res.X
@@ -2477,6 +2571,8 @@ UI_DrawPlayers PROC EXPORT
 	add ecx, eax
 	mov xRight, ecx
 	
+	print str$(NetPlayersCount), 13, 10
+	
 	mov eax, NetPlayersCount
 	mov ecx, UI_BTN_H + UI_BTN_M
 	mul ecx
@@ -2497,7 +2593,7 @@ UI_DrawPlayers PROC EXPORT
 	xor pbx, pbx
 	.WHILE (pbx < SIZEOF NetPlayers)
 		.IF (NetPlayers[pbx].PlayerID != -1)
-			invoke Net_SetColorByID, NetPlayers[pbx].PlayerID, FLT_1
+			invoke Net_SetColorBySkin, NetPlayers[pbx].Skin, FLT_1
 			
 			call glPushMatrix
 			invoke glTranslatei, xFace, yFrom, 1
@@ -2508,7 +2604,9 @@ UI_DrawPlayers PROC EXPORT
 			invoke glDisable, GL_ALPHA_TEST
 			call glPopMatrix
 			
-			invoke Net_SetColorByID, 0, FLT_1
+			;invoke Net_SetColorBySkin, 0, FLT_1
+			invoke glColor4fv, ADDR clWhite
+			
 			invoke UI_Text, ADDR NetPlayers[pbx].Username, xLeft, yFrom, \
 			BP_ALIGN_LEFT, 0
 			invoke UI_Text, str$(NetPlayersV[pbx].Score), xRight, yFrom, \

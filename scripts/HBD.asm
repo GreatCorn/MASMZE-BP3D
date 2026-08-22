@@ -30,7 +30,11 @@ HBD_Spawn PROC EXPORT State:BPEnum
 		invoke fpuSetRounding, FPU_ROUND_ROUND
 		sar HBDCell.X, 1
 		sar HBDCell.Y, 1
-		mov HBDTimer, rv(flRandRange, f(5), f(8))
+		.IF (NetSock && !NetHosting)
+			bpMEM32 HBDTimer, f(10)
+		.ELSE
+			mov HBDTimer, rv(flRandRange, f(5), f(8))
+		.ENDIF
 	.ENDIF
 	ret
 HBD_Spawn ENDP
@@ -58,80 +62,86 @@ HBD_Process PROC EXPORT
 	fstp HBDTimer
 	
 	.IF (HBDTimer & FLT_NEG)
-		.IF (HBD == HBD_SLEEP)
-			mov HBD, HBD_MOVE
-			bpMEM32 HBDTimer, f(2)
+		.IF (HBD == HBD_SLEEP)			
+			.IF (NetSock && !NetHosting)
 			
-			; Choose direction to go
-			mov movePool, 0
-			.IF (HBDCell.Y > 0)		; Up
-				.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
-					or movePool, MAZE_FREE_UP
-				.ENDIF
-			.ENDIF
-			.IF (HBDCell.X > 0)		; Left
-				.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
-					or movePool, MAZE_FREE_LEFT
-				.ENDIF
-			.ENDIF
-			mov eax, HBDCell.Y
-			.IF (eax < MazeSize[12]); Down
-				inc HBDCell.Y
-				.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
-					or movePool, MAZE_FREE_DOWN
-				.ENDIF
-				dec HBDCell.Y
-			.ENDIF
-			mov eax, HBDCell.X
-			.IF (eax < MazeSize[8])	; Right
-				inc HBDCell.X
-				.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
-					or movePool, MAZE_FREE_RIGHT
-				.ENDIF
-				dec HBDCell.X
-			.ENDIF
-			.IF !(movePool)
-				print "Huenbergondel stuck", 13, 10
-				ret
-			.ENDIF
-			
-			xor al, al
-			.REPEAT	; Choose random available direction to go
-				invoke nRand, 4
-				mov cl, al
-				mov al, 1
-				shl al, cl
-				mov ecx, HBDRot[4]
-				; Give it up baby
-				.IF ((ecx == 0) && (al == MAZE_FREE_UP)) \
-				|| ((ecx == PIHalf) && (al == MAZE_FREE_LEFT)) \
-				|| ((ecx == PI) && (al == MAZE_FREE_DOWN)) \
-				|| ((ecx == PIHalfN) && (al == MAZE_FREE_RIGHT))
-					; Check if HBD is going backward
-					.IF (movePool != al)	; Not our only option
-						xor al, al	; Try again
+			.ELSE
+				; Choose direction to go
+				mov movePool, 0
+				.IF (HBDCell.Y > 0)		; Up
+					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
+						or movePool, MAZE_FREE_UP
 					.ENDIF
 				.ENDIF
-			.UNTIL (movePool & al)
-			
-			.IF (al == MAZE_FREE_UP)
-				bpMEM32 HBDRot[4], PI
-				dec HBDCell.Y
-			.ELSEIF (al == MAZE_FREE_LEFT)
-				bpMEM32 HBDRot[4], PIHalfN
-				dec HBDCell.X
-			.ELSEIF (al == MAZE_FREE_DOWN)
-				mov HBDRot[4], 0
-				inc HBDCell.Y
-			.ELSEIF (al == MAZE_FREE_RIGHT)
-				bpMEM32 HBDRot[4], PIHalf
-				inc HBDCell.X		
+				.IF (HBDCell.X > 0)		; Left
+					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
+						or movePool, MAZE_FREE_LEFT
+					.ENDIF
+				.ENDIF
+				mov eax, HBDCell.Y
+				.IF (eax < MazeSize[12]); Down
+					inc HBDCell.Y
+					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
+						or movePool, MAZE_FREE_DOWN
+					.ENDIF
+					dec HBDCell.Y
+				.ENDIF
+				mov eax, HBDCell.X
+				.IF (eax < MazeSize[8])	; Right
+					inc HBDCell.X
+					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
+						or movePool, MAZE_FREE_RIGHT
+					.ENDIF
+					dec HBDCell.X
+				.ENDIF
+				.IF !(movePool)
+					print "Huenbergondel stuck", 13, 10
+					ret
+				.ENDIF
+				
+				xor al, al
+				.REPEAT	; Choose random available direction to go
+					invoke nRand, 4
+					mov cl, al
+					mov al, 1
+					shl al, cl
+					mov ecx, HBDRot[4]
+					; Give it up baby
+					.IF ((ecx == 0) && (al == MAZE_FREE_UP)) \
+					|| ((ecx == PIHalf) && (al == MAZE_FREE_LEFT)) \
+					|| ((ecx == PI) && (al == MAZE_FREE_DOWN)) \
+					|| ((ecx == PIHalfN) && (al == MAZE_FREE_RIGHT))
+						; Check if HBD is going backward
+						.IF (movePool != al)	; Not our only option
+							xor al, al	; Try again
+						.ENDIF
+					.ENDIF
+				.UNTIL (movePool & al)
+				
+				.IF (al == MAZE_FREE_UP)
+					bpMEM32 HBDRot[4], PI
+					dec HBDCell.Y
+				.ELSEIF (al == MAZE_FREE_LEFT)
+					bpMEM32 HBDRot[4], PIHalfN
+					dec HBDCell.X
+				.ELSEIF (al == MAZE_FREE_DOWN)
+					mov HBDRot[4], 0
+					inc HBDCell.Y
+				.ELSEIF (al == MAZE_FREE_RIGHT)
+					bpMEM32 HBDRot[4], PIHalf
+					inc HBDCell.X		
+				.ENDIF
+				
+				invoke Vector2Copy, ADDR HBDPosT, ADDR HBDCell
+				invoke Vector2F, ADDR HBDPosT
+				invoke Vector2MulF, ADDR HBDPosT, f(2)
+				invoke Vector2Add, ADDR HBDPosT, ADDR Vector2One
+				
+				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 			.ENDIF
 			
-			invoke Vector2Copy, ADDR HBDPosT, ADDR HBDCell
-			invoke Vector2F, ADDR HBDPosT
-			invoke Vector2MulF, ADDR HBDPosT, f(2)
-			invoke Vector2Add, ADDR HBDPosT, ADDR Vector2One
+			mov HBD, HBD_MOVE
+			bpMEM32 HBDTimer, f(2)
 			
 			invoke SndSetPos, SndHBDO, ADDR HBDPos
 			invoke alSourcePlay, SndHBDO

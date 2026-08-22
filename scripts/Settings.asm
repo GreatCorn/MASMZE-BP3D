@@ -57,6 +57,8 @@ SettingsIniWindowMode		DB "WindowMode", 0
 SettingsIniMisc				DB "Misc", 0
 SettingsIniLanguage			DB "Language", 0
 SettingsIniUsername			DB "Username", 0
+SettingsIniIP				DB "IP", 0
+SettingsIniPort				DB "Port", 0
 
 SettingsIni2f		DB "2.0", 0
 SettingsIni1f		DB "1.0", 0
@@ -402,7 +404,7 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		ADDR SettingsMiscLanguage, 255, ADDR SettingsIniPathAbs
 		invoke Settings_SetOption, OFFSET SettingsMiscLanguage
 		
-		; Username gets loaded on multiplayer open
+		; Multiplayer stuff gets loaded upon opening the menu
 	.ENDIF
 	
 	mov SettingsChanged, FALSE
@@ -698,6 +700,10 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		invoke WritePrivateProfileStringA, ADDR SettingsIniMisc, \
 		ADDR SettingsIniUsername, ADDR NetPlayers[0].Username, \
 		ADDR SettingsIniPathAbs
+		invoke WritePrivateProfileStringA, ADDR SettingsIniMisc, \
+		ADDR SettingsIniIP, ADDR NetServerAddr, ADDR SettingsIniPathAbs
+		invoke WritePrivateProfileStringA, ADDR SettingsIniMisc, \
+		ADDR SettingsIniPort, ADDR NetPortStr, ADDR SettingsIniPathAbs
 	.ENDIF
 	ret
 Settings_Save ENDP

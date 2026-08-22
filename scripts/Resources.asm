@@ -24,6 +24,7 @@ AnimPlrCrouch		BPAnimTrack <>
 AnimPlrCrouchWalk	BPAnimTrack <>
 AnimPlrDead			BPAnimTrack <>
 AnimPlrIdle			BPAnimTrack <>
+AnimPlrStretch		BPAnimTrack <>
 AnimPlrWalk			BPAnimTrack <>
 AnimVasFloat		BPAnimTrack <>
 AnimVebraGo			BPAnimTrack <>
@@ -183,9 +184,13 @@ TexPlrBlink			DWORD ?
 TexPlrBody			DWORD ?
 TexPlrDead			DWORD ?
 TexPlrHead			DWORD ?
-TexPlrLeft			DWORD ?
-TexPlrRight			DWORD ?
-TexPlrNeut			DWORD ?
+; Player face customization comes as Neutral, Look Left, Look Right
+TexPlrFace1			DWORD ?, ?, ?, ?
+TexPlrFace2			DWORD ?, ?, ?, ?
+TexPlrFace3			DWORD ?, ?, ?, ?
+TexPlrFace4			DWORD ?, ?, ?, ?
+TexPlrFace5			DWORD ?, ?, ?, ?
+TexPlrFace6			DWORD ?, ?, ?, ?
 TexPlrWounded		DWORD ?
 
 TexRain				DWORD ?
@@ -350,6 +355,7 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimPlrDead,			"assets\anim\plrDead.bpa"
 		LoadBPA OFFSET AnimPlrIdle,			"assets\anim\plrIdle.bpa"
 		mov AnimPlrIdle.Looping, TRUE
+		LoadBPA OFFSET AnimPlrStretch,		"assets\anim\plrStretch.bpa"
 		LoadBPA OFFSET AnimPlrWalk,			"assets\anim\plrWalk.bpa"
 		mov AnimPlrWalk.Looping, TRUE
 		
@@ -364,7 +370,6 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimWmblykDead,		"assets\anim\wmblykDead.bpa"
 		mov AnimWmblykDead.Looping, TRUE
 		LoadBPA OFFSET AnimWmblykStrangle,	"assets\anim\wmblykStrangle.bpa"
-		
 		LoadBPA OFFSET AnimWmblykWalk,		"assets\anim\wmblykWalk.bpa"
 		mov AnimWmblykWalk.Looping, TRUE
 		
@@ -635,9 +640,30 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexPlrBlink,		"assets\textures\plrBlink.bpt"
 		LoadBPT OFFSET TexPlrDead,		"assets\textures\plrDead.bpt"
 		LoadBPT OFFSET TexPlrHead,		"assets\textures\plrHead.bpt"
-		LoadBPT OFFSET TexPlrLeft,		"assets\textures\plrLeft.bpt"
-		LoadBPT OFFSET TexPlrRight,		"assets\textures\plrRight.bpt"
-		LoadBPT OFFSET TexPlrNeut,		"assets\textures\plrNeut.bpt"
+		LoadBPT OFFSET TexPlrFace1[0],	"assets\textures\plrNeut.bpt"
+		LoadBPT OFFSET TexPlrFace1[4],	"assets\textures\plrLeft.bpt"
+		LoadBPT OFFSET TexPlrFace1[8],	"assets\textures\plrRight.bpt"
+		LoadBPT OFFSET TexPlrFace1[12],	"assets\textures\plrSquish.bpt"
+		LoadBPT OFFSET TexPlrFace2[0],	"assets\textures\plrTNeut.bpt"
+		LoadBPT OFFSET TexPlrFace2[4],	"assets\textures\plrTLeft.bpt"
+		LoadBPT OFFSET TexPlrFace2[8],	"assets\textures\plrTRight.bpt"
+		LoadBPT OFFSET TexPlrFace2[12],	"assets\textures\plrTSquish.bpt"
+		LoadBPT OFFSET TexPlrFace3[0],	"assets\textures\plrCNeut.bpt"
+		LoadBPT OFFSET TexPlrFace3[4],	"assets\textures\plrCLeft.bpt"
+		LoadBPT OFFSET TexPlrFace3[8],	"assets\textures\plrCRight.bpt"
+		LoadBPT OFFSET TexPlrFace3[12],	"assets\textures\plrCSquish.bpt"
+		LoadBPT OFFSET TexPlrFace4[0],	"assets\textures\plrNNeut.bpt"
+		LoadBPT OFFSET TexPlrFace4[4],	"assets\textures\plrNLeft.bpt"
+		LoadBPT OFFSET TexPlrFace4[8],	"assets\textures\plrNRight.bpt"
+		LoadBPT OFFSET TexPlrFace4[12],	"assets\textures\plrNSquish.bpt"	
+		LoadBPT OFFSET TexPlrFace5[0],	"assets\textures\plrFNeut.bpt"
+		LoadBPT OFFSET TexPlrFace5[4],	"assets\textures\plrFLeft.bpt"
+		LoadBPT OFFSET TexPlrFace5[8],	"assets\textures\plrFRight.bpt"
+		LoadBPT OFFSET TexPlrFace5[12],	"assets\textures\plrFSquish.bpt"
+		LoadBPT OFFSET TexPlrFace6[0],	"assets\textures\plrRNeut.bpt"
+		LoadBPT OFFSET TexPlrFace6[4],	"assets\textures\plrRLeft.bpt"
+		LoadBPT OFFSET TexPlrFace6[8],	"assets\textures\plrRRight.bpt"
+		LoadBPT OFFSET TexPlrFace6[12],	"assets\textures\plrRSquish.bpt"
 		LoadBPT OFFSET TexPlrWounded,	"assets\textures\plrWounded.bpt"
 		LoadBPT OFFSET TexRain,			"assets\textures\rain.bpt"
 		LoadBPT OFFSET TexRoof,			"assets\textures\roof.bpt"
@@ -972,6 +998,28 @@ Stiffness:REAL4, Damping:REAL4, T:REAL4
 	fstp REAL4 PTR [pax]
 	ret
 DampedSpringAngle ENDP
+
+;   Will return the nearest plr distance in eax, offset in ecx, accounts for
+; singleplayer
+GetPlrNearDist PROC EXPORT PosPtr:BPPtr
+	.IF (NetSock)
+		invoke Net_GetClosestPlr, PosPtr, -1
+		xchg eax, ecx
+	.ELSE
+		vinvoke Vector32DDistanceSqr, OFFSET CamPos, PosPtr
+	.ENDIF
+	ret
+GetPlrNearDist ENDP
+
+GetPlrNearPos PROC EXPORT PosPtr:BPPtr
+	.IF (NetSock)
+		invoke Net_GetClosestPlr, PosPtr, -1
+		lea pax, NetPlayersVL[pax].Position
+	.ELSE
+		mov pax, OFFSET CamPosL
+	.ENDIF
+	ret
+GetPlrNearPos ENDP
 
 IntRandRLocal PROC EXPORT Min:SDWORD, Max:SDWORD, Seed:BPPtr
 	mov eax, Max

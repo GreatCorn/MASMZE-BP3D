@@ -1,3 +1,7 @@
+;   The maze generation uses exclusively local pseudo-random number generation
+; to keep a consistent generation seed and comply with reproducibility
+; (important in online play).
+
 MAZE_CELL_PASSTOP	EQU 00000001b
 MAZE_CELL_PASSLEFT	EQU 00000010b
 MAZE_CELL_VISITED	EQU 00000100b
@@ -166,6 +170,7 @@ MazeDoorPos		Vector3 <?, ?, ?>	; Maze end door cell center position
 MazeMapSize		Vector2 <?, ?>
 MazePlrPos		Vector2 <?, ?>		; Player cell position
 MazeSeed		DWORD ?
+MazeStartSeed	DWORD ?
 
 .CODE
 Maze_GetCellF PROTO :REAL4, :REAL4
@@ -225,6 +230,21 @@ Maze_CheckFree PROC EXPORT X:SDWORD, Y:SDWORD, Hor:BPBool, Fat:BPBool
 	xor pax, pax
 	ret
 Maze_CheckFree ENDP
+
+Maze_CloseShop PROC EXPORT
+	mov MazeShop, 2
+	bpMEM32 MazeShopTimer, f(-2)
+							
+	.IF (SettingsGraphicsInterpolation)
+		mov KoluplykAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
+	.ENDIF
+	invoke bpAnimPlay, ADDR KoluplykAnimPlr, ADDR AnimKoluplykDig
+	
+	invoke alSourcePlay, SndDig
+	invoke alSourcePlay, SndMistake
+	invoke alSourcePlay, SndHBD
+	ret
+Maze_CloseShop ENDP
 
 Maze_CollectItem PROC EXPORT Item:BYTE, Sock:DWORD
 	.IF (Item == MAZE_ITEM_COMPASS)
@@ -511,7 +531,7 @@ Maze_DrawCheck PROC EXPORT
 		vinvoke glRotatef, CamBillboard.X, f(1), 0, 0
 		vinvoke glRotatefr, v3Val.Y, 0, 0, f(1)
 		invoke glDisable, GL_DEPTH_TEST
-		invoke flRandRange, f(0.8), f(1)
+		invoke flRandRange, f(0.8), f(1)	; Flicker, visual only, allowed
 		invoke Vector3Set, ADDR v3Val, eax, eax, eax
 		
 		;   Sometimes OpenGL likes glMaterial, sometimes it likes glColor. I
@@ -745,6 +765,8 @@ Maze_DrawLayout PROC EXPORT
 Maze_DrawLayout ENDP
 
 Maze_Finish PROC EXPORT	
+	print "Finishing Maze generation, seed is now "
+	print str$(MazeSeed), 13, 10
 	; Something uses it at start idfk what
 	push pbx
 	
@@ -772,8 +794,8 @@ Maze_Finish PROC EXPORT
 	bpMEM32 MazeDoorPos.Y, CamHeight
 	
 	; Trench
-	.IF (MazeLayer > 22) && (PlrState != PLAYER_STATE_SPECTATE)
-		.IF !(rv(nRand, 12))
+	.IF (MazeLayer > 22) && !(NetSock)
+		.IF !(rv(nRandLocal, 12, OFFSET MazeSeed))
 			call Maze_SpawnTrench
 		.ENDIF
 	.ENDIF
@@ -807,6 +829,7 @@ Maze_Generate PROC EXPORT Seed:DWORD
 	print str$(Seed), 13, 10
 	
 	bpMEM32 MazeSeed, Seed
+	bpMEM32 MazeStartSeed, Seed
 	
 	mov eax, MazeSize[0]
 	dec eax
@@ -970,6 +993,7 @@ Maze_GenerateLayoutTex PROC EXPORT
 	mul ecx
 	mov buf, rv(bpMalloc, bpDefHeap, HEAP_ZERO_MEMORY, eax)
 	
+	print "Generating map texture of size "
 	print str$(texSize.X), 'x'
 	print str$(texSize.Y), 13, 10
 	
@@ -1045,7 +1069,10 @@ Maze_GenerateLayoutTex PROC EXPORT
 	.ENDIF
 	invoke glGenTextures, 1, ADDR MazeLayoutTex
 	invoke glBindTexture, GL_TEXTURE_2D, MazeLayoutTex
-	invoke gluBuild2DMipmaps, GL_TEXTURE_2D, 1, texSize.X, texSize.Y, \
+	; Weird shit here online
+	;invoke gluBuild2DMipmaps, GL_TEXTURE_2D, 1, texSize.X, texSize.Y, \
+	;GL_LUMINANCE, GL_UNSIGNED_BYTE, buf
+	invoke glTexImage2D, GL_TEXTURE_2D, 0, 1, texSize.X, texSize.Y, 0, \
 	GL_LUMINANCE, GL_UNSIGNED_BYTE, buf
 	invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST
 	invoke glTexParameteri, GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST
@@ -1095,11 +1122,14 @@ Maze_GetCellF ENDP
 Maze_GetCellI PROC EXPORT X:SDWORD, Y:SDWORD
 	mov eax, X
 	mov ecx, Y
-	.IF (SDWORD PTR eax > MazeSize[8]) || (SDWORD PTR ecx > MazeSize[12])
+	.IF (SDWORD PTR eax > MazeSize[8]) || (SDWORD PTR ecx > MazeSize[12]) || \
+	(SDWORD PTR eax < 0) || (SDWORD PTR ecx < 0)
+		print "Maze_GetCellI out of bounds. Returning 0", 13, 10
+		xor pcx, pcx
 		xor al, al
 		ret
 	.ENDIF
-	Maze_ClampXYI
+	;Maze_ClampXYI
 	invoke bp2DArrayGetOffset, X, Y, MazeSize[0], 1
 	mov pcx, pax
 	
@@ -1145,6 +1175,7 @@ Maze_GetRandomPos PROC EXPORT PosPtr:BPPtr, Occupy:BPBool
 	print str$(pos.Y), 13, 10
 	invoke Maze_GetCellI, pos.X, pos.Y
 	.IF (al & MAZE_CELL_VISITED) && (pbx < MazeRandPosMax)
+		print ubyte$(al), 13, 10
 		inc pbx
 		jmp mazeRandPosLoop
 	.ENDIF
@@ -1217,6 +1248,7 @@ Maze_ProcessState PROC EXPORT
 			fstp MazeNoiseTimer
 			
 			.IF (MazeNoiseTimer & FLT_NEG)
+				; Random noises, could be synchronized, but I don't wanna
 				mov MazeNoiseTimer, \
 				rv(flRandRange, MazeNoiseTimer[4], MazeNoiseTimer[8])
 				
@@ -1279,7 +1311,7 @@ Maze_ProcessState PROC EXPORT
 		.ENDIF
 		invoke SndSetPos, SndWmblykB, ADDR MazeVasPos
 		
-		.IF !(rv(nRand, 4))
+		.IF !(rv(nRand, 4))	; Visual only, allowed
 			xor VasAnimPlr.Speed, FLT_NEG
 		.ENDIF
 		invoke bpProcessAnimPlayer, ADDR VasAnimPlr, deltaTime
@@ -1440,7 +1472,7 @@ Maze_ProcessState PROC EXPORT
 	mazeShake:
 		mov MazeState, MAZE_STATE_GAME
 		invoke alSourcePlay, SndAmb
-		invoke nRand, 2
+		invoke nRand, 2	; Local only music, allowed
 		.IF (al)
 			invoke alSourcePlay, SndMus[4]
 		.ENDIF
@@ -1457,6 +1489,7 @@ Maze_ProcessState PROC EXPORT
 		call Plr_ProcessState
 		vinvoke bpAnimPlay, OFFSET CamAnimPlr, OFFSET AnimPlrWalk
 		bpMEM32 CamPosL.Y, f(8)
+		; Apply random offset to player to not propell others, will transfer
 		mov v3Val.X, rv(flRandRange, f(0.3), f(1.7))
 		mov v3Val.Z, rv(flRandRange, f(0.3), f(1.7))
 		vinvoke Plr_Teleport, v3Val.X, v3Val.Z
@@ -1481,13 +1514,6 @@ Maze_Progress PROC EXPORT
 	.ENDIF
 	inc MazeLayer
 	
-	invoke nRand, 6
-	.IF (al == 0)
-		inc MazeSize[0]
-	.ELSEIF (al == 1)
-		inc MazeSize[4]
-	.ENDIF
-	
 	.IF (NetSock)		
 		invoke fpuSetRounding, FPU_ROUND_CEIL
 		fild MazeLayer
@@ -1502,6 +1528,13 @@ Maze_Progress PROC EXPORT
 		mov eax, NetMagic
 		add eax, MazeLayer
 	.ELSE
+		invoke nRand, 6	; Explicit multiplayer testing, allowed
+		.IF (al == 0)	; Dynamically increase maze size by change
+			inc MazeSize[0]
+		.ELSEIF (al == 1)
+			inc MazeSize[4]
+		.ENDIF
+	
 		vinvoke Settings_SaveGame, TRUE
 		mov eax, nRandSeed
 	.ENDIF
@@ -1702,28 +1735,13 @@ Maze_SetPropI ENDP
 
 Maze_SpawnElements PROC EXPORT
 	LOCAL bounds:Vector4, posY:DWORD, typeVal:DWORD
-	
-	; Crevice
-	.IF (rv(nRandLocal, 10, OFFSET MazeSeed) > 6) && (MazeLayer > 4)
-		print "Spawned crevice at "
-		mov MazeCrevice, 1
-		invoke Maze_GetRandomPos, ADDR MazeCrevicePos, TRUE
-		Vector32DPrint MazeCrevicePos
-		invoke fpuSetRounding, FPU_ROUND_TRUNC
-		fld MazeCrevicePos.X
-		fistp MazeCreviceCell[0]
-		sar MazeCreviceCell[0], 1
-		fld MazeCrevicePos.Z
-		fistp MazeCreviceCell[4]
-		sar MazeCreviceCell[4], 1
-		invoke fpuSetRounding, FPU_ROUND_ROUND
-	.ENDIF
-	
-	; Props and clear MAZE_CELL_VISITED
+	print "Spawning Maze elements with seed "
+	print str$(MazeSeed), 13, 10
+	; Props and CLEAR MAZE_CELL_VISITED
 	xor pbx, pbx
 	.WHILE (pbx < MazeByteSize)
 		mov pcx, Maze
-		and BYTE PTR [pcx+pbx], 00000011b
+		and BYTE PTR [pcx+pbx], 00000011b	; leave only walls
 		
 		invoke nRandLocal, 2, ADDR MazeSeed
 		.IF !(al)
@@ -1741,15 +1759,31 @@ Maze_SpawnElements PROC EXPORT
 		inc pbx
 	.ENDW
 	
+	; Crevice
+	.IF (rv(nRandLocal, 10, OFFSET MazeSeed) > 6) && (MazeLayer > 4)
+		print "Spawned crevice at "
+		mov MazeCrevice, 1
+		invoke Maze_GetRandomPos, ADDR MazeCrevicePos, TRUE
+		Vector32DPrint MazeCrevicePos
+		invoke fpuSetRounding, FPU_ROUND_TRUNC
+		fld MazeCrevicePos.X
+		fistp MazeCreviceCell[0]
+		sar MazeCreviceCell[0], 1
+		fld MazeCrevicePos.Z
+		fistp MazeCreviceCell[4]
+		sar MazeCreviceCell[4], 1
+		invoke fpuSetRounding, FPU_ROUND_ROUND
+	.ENDIF
+		
 	.IF !(rv(nRandLocal, 8, OFFSET MazeSeed))	; Room
 		mov ebx, MazeSize[0]
 		shr ebx, 1	; /2
-		mov bounds.X, rv(intRandRange, 1, ebx)
-		mov bounds.Z, rv(intRandRange, ebx, MazeSize[0])
+		mov bounds.X, rv(IntRandRLocal, 1, ebx, OFFSET MazeSeed)
+		mov bounds.Z, rv(IntRandRLocal, ebx, MazeSize[0], OFFSET MazeSeed)
 		mov ebx, MazeSize[4]
 		shr ebx, 1	; /2
-		mov bounds.Y, rv(intRandRange, 1, ebx)
-		mov bounds.W, rv(intRandRange, ebx, MazeSize[4])
+		mov bounds.Y, rv(IntRandRLocal, 1, ebx, OFFSET MazeSeed)
+		mov bounds.W, rv(IntRandRLocal, ebx, MazeSize[4], OFFSET MazeSeed)
 		
 		mov typeVal, rv(nRandLocal, 4, OFFSET MazeSeed)	; Fill doorways or not
 		
@@ -1932,7 +1966,7 @@ Maze_SpawnElements PROC EXPORT
 	.IF (MazeState == MAZE_STATE_GAME)
 		; Items
 		; Compass
-		.IF !(PlrItems & MAZE_ITEM_COMPASS) && (MazeLayer > 11)
+		.IF (!(PlrItems & MAZE_ITEM_COMPASS) || NetSock) && (MazeLayer > 11)
 			.IF !(rv(nRandLocal, 4, OFFSET MazeSeed))
 				print "Spawned compass at "
 				or MazeItems, MAZE_ITEM_COMPASS
@@ -1983,10 +2017,11 @@ Maze_SpawnElements PROC EXPORT
 				print "Spawned shop", 13, 10
 				mov MazeShop, TRUE
 				mov MazeShopTimer, 0
-				call Maze_GenerateLayoutTex
 				
 				mov KoluplykAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 				invoke bpAnimPlay, ADDR KoluplykAnimPlr, ADDR AnimKoluplykShop
+				
+				PollProc Maze_GenerateLayoutTex
 			.ENDIF
 		.ENDIF
 		
@@ -2185,7 +2220,7 @@ Maze_Create ENDP
 
 Maze_Draw PROC EXPORT
 	LOCAL flVal:REAL4
-	.IF (Maze)
+	.IF (Maze) && !(MazeGenerating)
 		call Maze_DrawLayout
 		
 		.IF (MazeLayer == 1)	; Tutorial
@@ -2361,6 +2396,12 @@ Maze_Exit PROC EXPORT
 		call Maze_Free
 	.ENDIF
 	mov MazeCheck, 0
+	mov MazeState, MAZE_STATE_GAME
+	mov MazeStateTimer, 0
+	
+	.IF (NetSock && !NetHosting)
+		call Net_LobbyInit
+	.ENDIF
 	ret
 Maze_Exit ENDP
 
@@ -2414,7 +2455,7 @@ Maze_Fixed PROC EXPORT
 		mov flVal, rv(flDistance, MazeKeyRot[0], MazeKeyRot[4])
 		fcmp flVal, f(0.05)
 		.IF (Carry?)
-			mov MazeKeyRot[4], rv(flRandRange, PIN, PI)
+			mov MazeKeyRot[4], rv(flRandRange, PIN, PI)	; Visual rotation
 		.ENDIF
 		fld deltaFixed
 		fmul f(0.2)
@@ -2447,12 +2488,7 @@ Maze_Fixed PROC EXPORT
 		fadd f(1)
 		fstp v3Val.X
 		mov v3Val.Z, FLT_1
-		.IF (NetSock)
-			invoke Net_GetClosestPlr, ADDR v3Val, -1
-			mov flVal, ecx
-		.ELSE
-			mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, ADDR v3Val)
-		.ENDIF
+		mov flVal, rv(GetPlrNearDist, ADDR v3Val)
 		
 		.IF (MazeSlam == 1)
 			fcmp flVal, f(24)
@@ -2543,12 +2579,13 @@ Maze_Process PROC EXPORT
 							mov PlrState, PLAYER_STATE_GAME
 							
 							; Beautiful
+							; nRand allowed because of check for NetSock
 							.IF (MazeLayer != 22) && (MazeLayer != 43) \
 							&& (MazeLayer != 20) && (MazeLayer != 41) \
 							&& (MazeLayer != 62) && !(rv(nRand, 8)) \
 							&& (MazePrevLayer.MazeSeed != 0) && !(NetSock)
 								; Teleport to next or previous layer	
-								.IF !(rv(nRand, 3))
+								.IF !(rv(nRand, 3))	; Unreachable online
 									; Previous
 									dec MazeLayer						
 									call Maze_Free
@@ -2608,21 +2645,15 @@ Maze_Process PROC EXPORT
 					
 					.IF (InputConfirm)
 						.IF (PlrGlyphs >= 5)
-							bpMEM32 MazeShopTimer, f(-2)
 							vinvoke UI_ShowSubtitles, StrCCShopBuy, UISubDur
-							sub PlrGlyphs, 5
 							or PlrItems, MAZE_ITEM_MAP
+							sub PlrGlyphs, 5
 							
-							.IF (SettingsGraphicsInterpolation)
-								mov KoluplykAnimPlr.Interpolation, \
-								BP_INTERPOLATE_LINEAR
+							call Maze_CloseShop
+							
+							.IF (NetSock)
+								invoke Net_FormSend, NET_MAZE_ELEMENTS, NetSock
 							.ENDIF
-							invoke bpAnimPlay, ADDR KoluplykAnimPlr, \
-							ADDR AnimKoluplykDig
-							
-							invoke alSourcePlay, SndDig
-							invoke alSourcePlay, SndMistake
-							invoke alSourcePlay, SndHBD
 						.ELSE
 							vinvoke UI_ShowSubtitles, StrCCShopNo, UISubDur
 						.ENDIF

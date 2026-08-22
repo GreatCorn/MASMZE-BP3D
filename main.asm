@@ -2,8 +2,8 @@
 .model flat,stdcall
 option casemap:none
 
-BP_COMPATIBILITY_W9X		EQU <1>
-BP_ERROR_PASS				EQU <1>
+;BP_COMPATIBILITY_W9X		EQU <1>
+;BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
 IFDEF MODE_DEBUG
@@ -368,7 +368,14 @@ CapsLock		BPBool FALSE
 ClearBuffers	BPBool TRUE
 FogDensity		REAL4 0.5
 
-PollProc		BPPtr 0
+PollProcPtr		BPPtr (-1)
+PollProcStack	BPPtr 8 dup (0)
+
+PollProc MACRO ProcPtr:REQ
+	inc PollProcPtr
+	mov pax, PollProcPtr
+	mov PollProcStack[pax*SIZEOF BPPtr], OFFSET ProcPtr
+ENDM
 
 ENUM	\
 		GAME_STATE_MENU, \
@@ -505,7 +512,7 @@ GameInit PROC EXPORT
 	
 	bpMEM32 ListParticle, MdlParticle
 	
-	mov PollProc, OFFSET LockMouse
+	PollProc LockMouse
 	
 	.IF (NetSock)
 		mov NetScore, 0
@@ -822,6 +829,12 @@ InitNetwork PROC EXPORT
 		;call WSACleanup
 	.ENDIF
 	
+	; Get random skin for player
+	invoke nRand, 8	; Color
+	mov NetPlayers[0].Skin, al
+	invoke nRand, NET_PLAYER_FACES
+	shl al, 4
+	or NetPlayers[0].Skin, al
 	ret
 InitNetwork ENDP
 
@@ -864,7 +877,7 @@ MenuInit PROC EXPORT
 	call Maze_Exit
 	mov NetUnformed, TRUE
 	
-	mov PollProc, OFFSET UnlockMouse
+	PollProc UnlockMouse
 	ret
 MenuInit ENDP
 
@@ -1009,6 +1022,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE VK_F4, VK_F11
 					.IF (Keys[VK_MENU])
 						invoke bpDestroyForm, ADDR FMain
+						ret
 					.ENDIF
 					.IF (FMain.WindowMode == BP_WINDOW_MODE_FULLSCREEN) || \
 					(FMain.WindowMode == BP_WINDOW_MODE_FULLSCREEN_EX)
@@ -1050,7 +1064,12 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'R'
 					.IF (Maze)
 						call Maze_Free
-						invoke Maze_Generate, nRandSeed
+						.IF (Keys[VK_CONTROL])
+							mov eax, MazeStartSeed
+						.ELSE
+							mov eax, nRandSeed
+						.ENDIF
+						invoke Maze_Generate, eax
 					.ENDIF
 				CASE 'T'
 					invoke Plr_Teleport, MazeDoorPos.X, MazeDoorPos.Z
@@ -1281,9 +1300,10 @@ OnInput ENDP
 OnRender PROC EXPORT
 	LOCAL v3Val:Vector3
 	
-	.IF (PollProc)
-		call PollProc
-		mov PollProc, 0
+	.IF (PollProcPtr != -1)
+		mov pax, PollProcPtr
+		dec PollProcPtr
+		call PollProcStack[pax*SIZEOF BPPtr]
 	.ENDIF
 	
 	fld deltaTime

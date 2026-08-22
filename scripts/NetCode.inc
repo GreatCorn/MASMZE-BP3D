@@ -50,6 +50,12 @@ ENUML 127
 	;	PlayersAlive:	DWORD
 	E NET_LEADERBOARD
 	
+	;	Send text message
+	;	Message:	BYTE[256] (256)
+	E NET_MESSAGE
+	
+NET_PLAYER_FACES EQU 6
+	
 NetMazeElements STRUCT
 	NetMsgType		BYTE ?
 	
@@ -67,6 +73,10 @@ NetMazeElements ENDS
 NetMazeEntities STRUCT
 	NetMsgType		BYTE ?
 	
+	HBD				BYTE ?
+	HBDPos			Vector2 <?,?>
+	HBDRot			REAL4 ?
+	HBDTimer		REAL4 ?
 	Kubale			BYTE ?
 	KubalePos		Vector3 <?,?,?>
 	KubaleRot		REAL4 ?
@@ -119,6 +129,7 @@ NetPlayerVShift	EQU 5
 
 Net_Close PROTO
 Net_Connect PROTO :LPVOID
+Net_FindPlrByID PROTO :DWORD
 Net_FormRespond PROTO :SOCKET, :BPPtr
 Net_FormSend PROTO :BYTE, :SOCKET
 Net_GetClosestPlr PROTO :BPPtr, :DWORD
@@ -131,7 +142,7 @@ Net_PlayersClear PROTO
 Net_PopulateVolatile PROTO :BPPtr
 Net_ProcessLoop PROTO :LPVOID
 Net_ScoreAdd PROTO :SDWORD
-Net_SetColorByID PROTO :DWORD, :REAL4
+Net_SetColorBySkin PROTO :BYTE, :REAL4
 
 .CONST
 MeshPlrHeadOff	Vector3 <0.0, 0.2, -0.04>
@@ -158,6 +169,7 @@ NetPlayersScarf	BPPtr NET_MAX_PLAYERS dup (0)
 NetPlayersScVel	BPPtr NET_MAX_PLAYERS dup (0)
 NetPlayersPosP	Vector2 NET_MAX_PLAYERS dup (<>)
 NetPlayersAlive	DWORD 0
+NetPlayersColl	BPBool NET_MAX_PLAYERS dup (FALSE)
 NetLeaderboard	BYTE NET_MAX_PLAYERS dup (-1)
 
 NetPlrConnStr	BYTE 128 DUP (0)

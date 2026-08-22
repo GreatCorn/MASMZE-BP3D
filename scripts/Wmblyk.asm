@@ -180,13 +180,7 @@ Wmblyk_Process PROC EXPORT
 	.IF (Wmblyk == WMBLYK_STILL) || (Wmblyk == WMBLYK_STILL_SCARE)
 		; StateVal is blink timer (< 0 - blink)
 		; WmblykCellPos is waiting boredom timer
-		.IF (NetSock)
-			invoke Net_GetClosestPlr, ADDR WmblykPos, -1
-			lea pax, NetPlayersVL[pax].Position
-			mov plrPosPtr, pax
-		.ELSE
-			mov plrPosPtr, OFFSET CamPosL
-		.ENDIF
+		mov plrPosPtr, rv(GetPlrNearPos, OFFSET WmblykPos)
 		
 		invoke Vector32DAngle, ADDR WmblykPos, plrPosPtr
 		mov WmblykHeadRot.Y, eax
@@ -373,7 +367,7 @@ Wmblyk_Process PROC EXPORT
 		fist v3Val.X
 		fmul v3Val.Y
 		fadd WmblykPos.X
-		fstp WmblykPos.X
+		fstp WmblykPos.X	
 		
 		; Crevice crawl
 		.IF (MazeCrevice)
@@ -392,6 +386,7 @@ Wmblyk_Process PROC EXPORT
 		.ELSEIF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykWalk)
 			vinvoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
 		.ENDIF
+		mov MazeCrevice, FALSE
 			
 		invoke Maze_GetCellOffsetF, WmblykPos.X, WmblykPos.Z
 		push pax
@@ -582,9 +577,7 @@ Wmblyk_Process PROC EXPORT
 			invoke alSourcePlay, SndWmblykStrM
 			
 			bpMEM32 WmblykStrPlr, NetPlayerID
-			.IF (NetSock)
-				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
-			.ENDIF
+			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 		.ENDIF
 		
 		mov WmblykAnimPlr.Speed, FLT_1
@@ -704,15 +697,7 @@ Wmblyk_Process PROC EXPORT
 		fistp flVal
 		invoke intClamp, flVal, 0, (SIZEOF TexWmblykStr)/4-2
 		bpMEM32 WmblykFace, TexWmblykStr[pax*4]
-	.ELSEIF (Wmblyk == WMBLYK_DEAD)
-		.IF (NetSock)
-			invoke Net_GetClosestPlr, ADDR WmblykPos, -1
-			lea pax, NetPlayersVL[pax].Position
-			mov plrPosPtr, pax
-		.ELSE
-			mov plrPosPtr, OFFSET CamPosL
-		.ENDIF
-		
+	.ELSEIF (Wmblyk == WMBLYK_DEAD)		
 		.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykDead)
 			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykDead
 			mov WmblykAnimPlr.Speed, FLT_1
@@ -723,7 +708,7 @@ Wmblyk_Process PROC EXPORT
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 		
-		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, plrPosPtr)
+		mov flVal, rv(GetPlrNearDist, OFFSET WmblykPos)
 		fcmp flVal, f(32)
 		.IF (!Carry?)
 			mov Wmblyk, WMBLYK_NONE

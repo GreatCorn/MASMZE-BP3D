@@ -890,6 +890,7 @@ Plr_ProcessState PROC EXPORT
 		mov CamAnimPlr.TrackPtr, 0
 		invoke Vector3Copy, ADDR CamPosA, ADDR Vector3Zero
 		invoke Vector3Copy, ADDR CamRotA, ADDR Vector3Zero
+		invoke Vector3Set, ADDR CamRot, PIQuarter, PIQuarter, 0
 		ret
 	plrLeaderboard:
 		.IF (NetPlayersAlive)

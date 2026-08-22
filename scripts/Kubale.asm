@@ -72,7 +72,8 @@ Kubale_Draw	PROC EXPORT
 Kubale_Draw ENDP
 
 Kubale_Process PROC EXPORT
-	LOCAL dist:REAL4, flVal:REAL4, blocked:BPBool
+	LOCAL dist:REAL4, flVal:REAL4, blocked:BPBool, invisible:BPBool
+	LOCAL dot:Vector3, fwd:Vector3, plr:DWORD
 	
 	.IF (Kubale == KUBALE_EVENT)
 		; KubaleRot is state val (timer)
@@ -103,18 +104,78 @@ Kubale_Process PROC EXPORT
 	.ELSEIF (Kubale == KUBALE_ACTIVE)
 		mov FogDensity, rv(flLerp, FogDensity, f(0.5), delta2)
 		
-		mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
-		
-		mov flVal, rv(Plr_FrustumDot, OFFSET KubalePos)
-		mov blocked, FALSE
-		.IF (rv(Maze_Raycast, OFFSET KubalePos, OFFSET CamPosL))
-			.IF (KubaleRaycast)
-				mov flVal, 0
-			.ENDIF
-			mov blocked, TRUE
+		;mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
+		mov dist, rv(GetPlrNearDist, OFFSET KubalePos)
+		.IF (NetSock)
+			bpMEM32 plr, NetPlayers[pcx].PlayerID
+		.ELSE
+			bpMEM32 plr, NetPlayerID
 		.ENDIF
-		fcmp flVal, KubaleDot
-		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME)	; Invisible
+		
+		mov blocked, TRUE
+		.IF (NetSock)
+			push pbx
+			xor pbx, pbx
+			.WHILE (pbx < SIZEOF NetPlayers)
+				.IF (NetPlayers[pbx].PlayerID != -1) \
+				&& (NetPlayersVL[pbx].Visible & NET_VISIBLE_GLOBAL)
+					invoke Maze_Raycast, ADDR KubalePos, \
+					ADDR NetPlayersV[pbx].Position
+					.IF (!al)
+						mov blocked, FALSE
+						.BREAK
+					.ENDIF
+				.ENDIF
+				add pbx, SIZEOF NetPlayerLocal
+			.ENDW
+			pop pbx
+		.ELSE
+			invoke Maze_Raycast, ADDR KubalePos, ADDR CamPosL
+			mov blocked, al
+		.ENDIF
+		
+		mov invisible, TRUE
+		.IF !(blocked && KubaleRaycast)
+			.IF (NetSock)
+				push pbx
+				xor pbx, pbx
+				.WHILE (pbx < SIZEOF NetPlayers)
+					.IF (NetPlayers[pbx].PlayerID != -1) \
+					&& (NetPlayersVL[pbx].Visible & NET_VISIBLE_GLOBAL)
+						invoke Vector32DCopy, ADDR dot, ADDR KubalePos
+						invoke Vector32DSub, ADDR dot, \
+						ADDR NetPlayersV[pbx].Position
+						invoke Vector32DNormalize, ADDR dot
+						mov eax, NetPlayerID
+						.IF (NetPlayers[pbx].PlayerID == eax)
+							invoke Vector32DDot, ADDR dot, ADDR PlrForward
+						.ELSE
+							fld NetPlayersV[pbx].Rotation.Y
+							fsincos
+							fstp fwd.Z
+							;for some reason no fchs required on X
+							fstp fwd.X
+							invoke Vector32DDot, ADDR dot, ADDR fwd
+						.ENDIF
+						fcmp eax, KubaleDot
+						.IF (!Carry?)
+							mov invisible, FALSE
+							.BREAK
+						.ENDIF
+					.ENDIF
+					add pbx, SIZEOF NetPlayerLocal
+				.ENDW
+				pop pbx
+			.ELSE
+				mov flVal, rv(Plr_FrustumDot, OFFSET KubalePos)
+				fcmp flVal, KubaleDot
+				.IF (!Carry?) || (PlrState != PLAYER_STATE_GAME)
+					mov invisible, FALSE
+				.ENDIF
+			.ENDIF
+		.ENDIF
+		
+		.IF (invisible)
 			fcmp dist, f(2)
 			.IF (Carry?)
 				or KubaleAction, KUBALE_ACT_ATTACK
@@ -133,7 +194,8 @@ Kubale_Process PROC EXPORT
 				fadd delta2
 				fstp flVal
 				
-				mov KubaleRot, rv(Vector32DAngle,OFFSET KubalePos,OFFSET CamPos)
+				invoke GetPlrNearPos, OFFSET KubalePos
+				mov KubaleRot, rv(Vector32DAngle, OFFSET KubalePos, pax)
 				
 				fld KubaleRot
 				fsincos
@@ -157,8 +219,19 @@ Kubale_Process PROC EXPORT
 		.ENDIF
 			
 		; Kollisions
-		fcmp dist, f(32)
-		.IF (Carry?)
+		push dist
+		.IF (NetSock)
+			mov al, 1
+			mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
+		.ELSE
+			fcmp dist, f(32)
+			.IF (Carry?)
+				mov al, 1
+			.ELSE
+				xor al, al
+			.ENDIF
+		.ENDIF
+		.IF (al)
 			.IF (Maze) && (KubaleAction & KUBALE_ACT_MOVE)	; Just in case
 				invoke Maze_CollideLayout, ADDR KubalePos, f(1.6), FALSE
 			.ENDIF
@@ -172,10 +245,13 @@ Kubale_Process PROC EXPORT
 				OFFSET WmblykPos, f(0.8), 0
 			.ENDIF
 		.ENDIF
+		pop dist
 				
-		.IF (KubaleAction & KUBALE_ACT_ATTACK) && (!blocked)
+		mov eax, plr
+		.IF (KubaleAction & KUBALE_ACT_ATTACK) && (!blocked) && \
+		((eax == NetPlayerID) && (PlrState == PLAYER_STATE_GAME))
 			mov KubaleVision, rv(flLerp, KubaleVision, FLT_1, delta2)
-			
+		
 			fld PlrHealth
 			fsub deltaTime
 			fst PlrHealth
@@ -184,7 +260,7 @@ Kubale_Process PROC EXPORT
 			fstp flVal
 			
 			invoke Plr_Shake, flVal
-			
+		
 			bpMPM UIDeadTipStr, StrTipKubale
 		.ELSE
 			mov KubaleVision, rv(flLerp, KubaleVision, f(-0.1), delta2)
