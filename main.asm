@@ -50,6 +50,7 @@ include ..\BoilPlate3D\src\BP3DAssets.inc
 include ..\BoilPlate3D\src\BP3DGLPlus.inc
 include ..\BoilPlate3D\src\BP3DText.inc
 
+AL_ALEXT_PROTOTYPES	EQU <1>
 include lib\soft_oal.inc
 includelib lib\soft_oal.lib
 include lib\stb_vorbis.inc
@@ -244,8 +245,10 @@ ENUM	BIND_NONE, \
 		BIND_KEY_MOUSE, \
 		BIND_JOYSTICK
 
-AppName DB "MASMZE-3D", 0	; App name & caption
-AsmTime	DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), 13, 10, 0
+AppName 	DB "MASMZE-3D", 0	; App name & caption
+AppVersion	DB "0.8.2", 0
+AsmTime		DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), \
+13, 10, 0
 
 clAmbient	REAL4 0.2, 0.2, 0.2, 1.0
 clSky		REAL4 0.24, 0.24, 0.22, 1.0
@@ -529,7 +532,7 @@ GameStart PROC EXPORT
 	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0
 	invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, f(0.5)
 	
-	bpMEM32 FogDensity, f(0.5)
+	bpMEM32 FogDensity, MazeFog
 	invoke alSourceStop, SndIntro
 		
 	.IF (MazeCheck)
@@ -1020,18 +1023,20 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					neg CapsLock
 				
 				CASE VK_F4, VK_F11
-					.IF (Keys[VK_MENU])
-						invoke bpDestroyForm, ADDR FMain
-						ret
-					.ENDIF
-					.IF (FMain.WindowMode == BP_WINDOW_MODE_FULLSCREEN) || \
-					(FMain.WindowMode == BP_WINDOW_MODE_FULLSCREEN_EX)
-						invoke bpSetWindowMode, ADDR FMain, ScreenMode
-					.ELSE
-						mov al, FMain.WindowMode
-						mov ScreenMode, al
-						invoke bpSetWindowMode, ADDR FMain, \
-						BP_WINDOW_MODE_FULLSCREEN
+					;.IF (Keys[VK_MENU])	; no need to hardcode this?
+						;invoke bpDestroyForm, ADDR FMain
+						;ret
+					;.ENDIF
+					.IF !(Keys[VK_MENU])
+						.IF (FMain.WindowMode == BP_WINDOW_MODE_FULLSCREEN) || \
+						(FMain.WindowMode == BP_WINDOW_MODE_FULLSCREEN_EX)
+							mbm SettingsGraphicsWindowMode, ScreenMode
+						.ELSE
+							mbm ScreenMode, SettingsGraphicsWindowMode
+							mov SettingsGraphicsWindowMode,BP_WINDOW_MODE_FULLSCREEN
+						.ENDIF
+						invoke Settings_SetOption, \
+						OFFSET SettingsGraphicsWindowMode
 					.ENDIF
 					
 				; Mouse

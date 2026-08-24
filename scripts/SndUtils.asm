@@ -154,6 +154,48 @@ SndPlaying PROC EXPORT ALSound:DWORD
 	ret
 SndPlaying ENDP
 
+SndSetBusGain PROC EXPORT GainPtr:BPPtr, Gain:REAL4
+	LOCAL endPtr:BPPtr, gainVal:REAL4
+	
+	push pbx
+	.IF (GainPtr == OFFSET SettingsAudioMusic)
+		mov endPtr, OFFSET SndSectionEnd
+		mov pbx, OFFSET SndAmb
+	.ELSE
+		mov endPtr, OFFSET SndAmb
+		mov pbx, OFFSET SndSectionStart+1
+	.ENDIF
+	
+	.WHILE (pbx < endPtr)
+		invoke alGetSourcef, DWORD PTR [pbx], AL_GAIN, ADDR gainVal
+		mov pax, GainPtr
+		fld gainVal
+		fdiv REAL4 PTR [pax]
+		fmul Gain
+		fstp gainVal
+		invoke alSourcef, DWORD PTR [pbx], AL_GAIN, gainVal
+		add pbx, 4
+	.ENDW
+	pop pbx
+	
+	mov pax, GainPtr
+	mov ecx, Gain
+	mov REAL4 PTR [pax], ecx
+	ret
+SndSetBusGain ENDP
+
+SndSetGain PROC EXPORT ALSound:DWORD, GainPtr:BPPtr, Gain:REAL4
+	LOCAL gainVal:REAL4
+	
+	mov pax, GainPtr
+	fld REAL4 PTR [pax]
+	fmul Gain
+	fstp gainVal
+	
+	invoke alSourcef, ALSound, AL_GAIN, gainVal
+	ret
+SndSetGain ENDP
+
 SndSetPos PROC EXPORT ALSound:DWORD, PosPtr:BPPtr
 	mov pax, PosPtr
 	mov ecx, CamPosL.Y	; vinvoke messes something up in UASM
@@ -161,3 +203,4 @@ SndSetPos PROC EXPORT ALSound:DWORD, PosPtr:BPPtr
 	REAL4 PTR [pax+8]
 	ret
 SndSetPos ENDP
+

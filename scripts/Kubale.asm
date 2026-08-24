@@ -30,7 +30,7 @@ Kubale_Spawn PROC EXPORT State:BPEnum
 	.ENDIF
 	ENDIF
 	.IF (State == KUBALE_NONE)
-		bpMEM32 FogDensity, f(0.5)
+		bpMEM32 FogDensity, MazeFog
 		mov KubaleVision, 0
 		invoke alSourceStop, SndKubale
 		invoke alSourceStop, SndKubaleV
@@ -97,12 +97,12 @@ Kubale_Process PROC EXPORT
 					mov FogDensity, rv(flLerp, FogDensity, f(5), delta20)
 				.ELSE			; > -1, < 0
 					; Flicker
-					mov FogDensity, rv(flRandRange, f(0.5), f(1.0))
+					mov FogDensity, rv(flRandRange, MazeFog, f(1.0))
 				.ENDIF		
 			.ENDIF
 		.ENDIF
 	.ELSEIF (Kubale == KUBALE_ACTIVE)
-		mov FogDensity, rv(flLerp, FogDensity, f(0.5), delta2)
+		mov FogDensity, rv(flLerp, FogDensity, MazeFog, delta2)
 		
 		;mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
 		mov dist, rv(GetPlrNearDist, OFFSET KubalePos)

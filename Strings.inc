@@ -39,7 +39,10 @@ SV	StrMenuGraphics
 SV	StrMenuControls
 SV	StrMenuBack
 SV	StrMenuVolume
+SV	StrMenuMusic
+SV	StrMenuSounds
 SV	StrMenuLanguage
+SV	StrMenuCameraBobbing
 SV	StrMenuResolution
 SV	StrMenuDisplayMode
 SV	StrMenuDisplayDev
@@ -61,7 +64,9 @@ SV	StrMenuAfterimage
 SV	StrMenuParticles
 SV	StrMenuInterpolation
 SV	StrMenuMouseSens
+SV	StrMenuInvertY
 SV	StrMenuMouseRaw
+SV	StrMenuMouseSmoothing
 SV	StrMenuUseGpad
 SV	StrMenuGpadSpd
 SV	StrMenuBindings

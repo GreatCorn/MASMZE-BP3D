@@ -1,12 +1,16 @@
 .CONST
 SettingsIniAudio			DB "Audio", 0
 SettingsIniVolume			DB "Volume", 0
+SettingsIniMusic			DB "Music", 0
+SettingsIniSounds			DB "Sounds", 0
 
 SettingsIniControls			DB "Controls", 0
+SettingsIniInvertY			DB "InvertY", 0
 SettingsIniJoystick			DB "Joystick", 0
 SettingsIniJoystickSpeed	DB "JoystickSpeed", 0
 SettingsIniMouseSensitivity	DB "MouseSensitivity", 0
 SettingsIniRawMouse			DB "RawMouse", 0
+SettingsIniMouseSmoothing	DB "MouseSmoothing", 0
 
 ; Bind settings are in main
 SettingsIniIBUp				DB "IBUp", 0
@@ -56,6 +60,7 @@ SettingsIniWindowMode		DB "WindowMode", 0
 
 SettingsIniMisc				DB "Misc", 0
 SettingsIniLanguage			DB "Language", 0
+SettingsIniCameraBobbing	DB "CameraBobbing", 0
 SettingsIniUsername			DB "Username", 0
 SettingsIniIP				DB "IP", 0
 SettingsIniPort				DB "Port", 0
@@ -85,11 +90,17 @@ SettingsRegPath DB "Software\\GreatCorn\\MASMZE-3D", 0
 
 .DATA
 SettingsAudioVolume				REAL4 1.0
+SettingsAudioMusic				REAL4 1.0
+SettingsAudioMusicT				REAL4 1.0
+SettingsAudioSounds				REAL4 1.0
+SettingsAudioSoundsT			REAL4 1.0
 
+SettingsControlsInvertY				BPBool FALSE
 SettingsControlsJoystick			BPBool TRUE
 SettingsControlsJoystickSpeed		REAL4 2.0
 SettingsControlsMouseSensitivity	REAL4 0.5
-SettingsControlsRawMouse			BPBool TRUE
+SettingsControlsRawMouse			BPBool FALSE
+SettingsControlsMouseSmoothing		BPBool TRUE
 
 SettingsGraphicsAfterimage		BPBool TRUE
 SettingsGraphicsDisplay			DWORD 0
@@ -108,6 +119,7 @@ SettingsGraphicsVignette		BPBool TRUE
 SettingsGraphicsVSync			BPBool TRUE
 SettingsGraphicsWindowMode		BPEnum BP_WINDOW_MODE_FULLSCREEN
 
+SettingsMiscCameraBobbing		BPBool TRUE
 SettingsMiscLanguage			DB 256 DUP (0)
 SettingsMiscMultithreading		BPBool TRUE
 
@@ -217,6 +229,13 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		invoke Settings_SetOption, OFFSET SettingsAudioVolume
 	.ELSEIF (IniSection == OFFSET SettingsIniControls)
 		; ----- CONTROLS -----
+		; Invert look Y
+		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
+		ADDR SettingsIniInvertY, ADDR SettingsIniFalse, \
+		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		mov SettingsControlsInvertY, al
+		
 		; Joystick
 		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
 		ADDR SettingsIniJoystick, ADDR SettingsIniTrue, \
@@ -243,7 +262,7 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		
 		; Raw mouse
 		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
-		ADDR SettingsIniRawMouse, ADDR SettingsIniTrue, \
+		ADDR SettingsIniRawMouse, ADDR SettingsIniFalse, \
 		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
 		call Settings_IsTrue
 		.IF (al != SettingsControlsRawMouse)
@@ -570,6 +589,15 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		ADDR SettingsIniMouseSensitivity, \
 		real4$(SettingsControlsMouseSensitivity), ADDR SettingsIniPathAbs
 		
+		; Invert look Y
+		.IF (SettingsControlsInvertY)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+		ADDR SettingsIniInvertY, pax, ADDR SettingsIniPathAbs
+		
 		; Use raw mouse
 		.IF (SettingsControlsRawMouse)
 			lea pax, SettingsIniTrue
@@ -578,6 +606,15 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		.ENDIF
 		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
 		ADDR SettingsIniRawMouse, pax, ADDR SettingsIniPathAbs
+		
+		; Mouse smoothing
+		.IF (SettingsControlsMouseSmoothing)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+		ADDR SettingsIniMouseSmoothing, pax, ADDR SettingsIniPathAbs
 		
 		; Use joystick
 		.IF (SettingsControlsJoystick)
@@ -697,6 +734,14 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
 		ADDR SettingsIniInterpolation, pax, ADDR SettingsIniPathAbs
 	.ELSEIF (IniSection == OFFSET SettingsIniMisc)
+		.IF (SettingsMiscCameraBobbing)
+			lea pax, SettingsIniTrue
+		.ELSE
+			lea pax, SettingsIniFalse
+		.ENDIF
+		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+		ADDR SettingsIniCameraBobbing, pax, ADDR SettingsIniPathAbs
+		
 		invoke WritePrivateProfileStringA, ADDR SettingsIniMisc, \
 		ADDR SettingsIniUsername, ADDR NetPlayers[0].Username, \
 		ADDR SettingsIniPathAbs
@@ -817,6 +862,21 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		IFDEF AUDIO_OPENAL
 		.IF (AudioDevice)
 			invoke alListenerf, AL_GAIN, SettingsAudioVolume
+		.ENDIF
+		ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsAudioMusic)
+		print "audio/music", 13, 10
+		IFDEF AUDIO_OPENAL
+		.IF (AudioDevice)
+			invoke SndSetBusGain, OFFSET SettingsAudioMusic, SettingsAudioMusicT
+		.ENDIF
+		ENDIF
+	.ELSEIF (OptionPtr == OFFSET SettingsAudioSounds)
+		print "audio/music", 13, 10
+		IFDEF AUDIO_OPENAL
+		.IF (AudioDevice)
+			invoke SndSetBusGain, OFFSET SettingsAudioSounds, \
+			SettingsAudioSoundsT
 		.ENDIF
 		ENDIF
 		

@@ -67,7 +67,7 @@ ENUM	UIPP_NONE, \
 		UIPP_CONNFAIL, \
 		UIPP_SERVDISC
 .CONST
-UISubDur	REAL4 2.0
+UISubDur	REAL4 4.0
 
 
 .DATA
@@ -1618,7 +1618,7 @@ UI_DrawMenuSettings PROC EXPORT
 	LOCAL fFind:WIN32_FIND_DATAA, hFind:BPPtr, langStr[32]:BYTE, hFile:BPPtr
 	LOCAL dwBytesRead:DWORD	; Needed for older WinAPI
 	
-	UI_MENU_SETTINGS_HEIGHT	EQU UI_BTN_H*5 + UI_BTN_M*3 + UI_HR_H
+	UI_MENU_SETTINGS_HEIGHT	EQU UI_BTN_H*7 + UI_BTN_M*5 + UI_HR_H
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_SETTINGS_HEIGHT/2
@@ -1647,6 +1647,14 @@ UI_DrawMenuSettings PROC EXPORT
 	invoke UI_Slider, StrMenuVolume, UIXFrom, ebx, OFFSET SettingsAudioVolume
 	.IF (al)
 		invoke Settings_SetOption, OFFSET SettingsAudioVolume
+		invoke Settings_Save, OFFSET SettingsIniAudio
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke Vector2Set, ADDR UISliderRange, f(0), f(1)
+	invoke UI_Slider, StrMenuMusic, UIXFrom, ebx, OFFSET SettingsAudioMusicT
+	.IF (al)
+		invoke Settings_SetOption, OFFSET SettingsAudioMusic
 		invoke Settings_Save, OFFSET SettingsIniAudio
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
@@ -1698,6 +1706,10 @@ UI_DrawMenuSettings PROC EXPORT
 		
 		invoke FindClose, hFind
 	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Checkbox, StrMenuCameraBobbing, UIXFrom, ebx, \
+	OFFSET SettingsMiscCameraBobbing
 	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
@@ -1711,7 +1723,7 @@ UI_DrawMenuSettings PROC EXPORT
 UI_DrawMenuSettings ENDP
 
 UI_DrawMenuSettingsControls PROC EXPORT
-	UI_MENU_CONTROLS_HEIGHT	EQU UI_BTN_H*6 + UI_BTN_M*3 + UI_HR_H*3
+	UI_MENU_CONTROLS_HEIGHT	EQU UI_BTN_H*7 + UI_BTN_M*4 + UI_HR_H*3
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_CONTROLS_HEIGHT/2
@@ -1725,11 +1737,19 @@ UI_DrawMenuSettingsControls PROC EXPORT
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
+	invoke UI_Checkbox, StrMenuInvertY, UIXFrom, ebx, \
+	OFFSET SettingsControlsInvertY
+	add ebx, UI_BTN_H + UI_BTN_M
+	
 	.IF !(bpRawInput)
 		mov UIDisabled, TRUE
 	.ENDIF
 	invoke UI_Checkbox, StrMenuMouseRaw, UIXFrom, ebx, \
 	OFFSET SettingsControlsRawMouse
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Checkbox, StrMenuMouseSmoothing, UIXFrom, ebx, \
+	OFFSET SettingsControlsMouseSmoothing
 	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
@@ -2078,7 +2098,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 		.WHILE (pcx)
 			mov res.Y, rv(flDistance, SettingsGraphicsUIScale, res.X)
 			fcmp res.Y, f(0.05)
-			.IF (Carry?)
+			.IF (Carry?) && (res.Y)
 				bpMEM32 SettingsGraphicsUIScale, res.X
 				push pcx
 				invoke Settings_SetOption, OFFSET SettingsGraphicsUIScale

@@ -1,5 +1,6 @@
 *.db
 *.db:encryptable
+*.def
 *.dll
 *.err
 *.exe

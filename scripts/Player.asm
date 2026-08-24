@@ -150,9 +150,11 @@ Plr_Control PROC EXPORT
 	fstp CamPos.Y
 	
 	; Tilt
-	fld InputMovementClamped.X
-	fmul f(0.02)
-	fstp CamRot.Z
+	.IF (SettingsMiscCameraBobbing)
+		fld InputMovementClamped.X
+		fmul f(0.02)
+		fstp CamRot.Z
+	.ENDIF
 	
 	; Glyphs
 	.IF (PlrState == PLAYER_STATE_GAME) && (InputGlyph) \
@@ -190,6 +192,9 @@ Plr_ControlLook PROC EXPORT
 			dec PlrMouseCool
 		.ELSE
 			fld InputLook.Y
+			.IF (SettingsControlsInvertY)
+				fchs
+			.ENDIF
 			fadd CamRot.X
 			fstp CamRot.X
 			mov CamRot.X, rv(flClamp, CamRot.X, PIHalfN, PIHalf)
@@ -413,14 +418,35 @@ Plr_LateProcess PROC EXPORT
 	fmul CamRotSmooth
 	fstp flVal
 	
-	invoke Vector3Copy, ADDR v3Val, ADDR CamPosA
-	;invoke Vector3MulF, ADDR v3Val, f(16.0)
+	.IF (CamAnimPlr.TrackPtr == OFFSET AnimCamWalk) && \
+	!(SettingsMiscCameraBobbing)
+		mov pax, OFFSET Vector3Zero
+	.ELSE
+		mov pax, OFFSET CamPosA
+	.ENDIF
+	invoke Vector3Copy, ADDR v3Val, pax
 	invoke Vector3Add, ADDR v3Val, ADDR CamPos
-	invoke Vector3Lerp, ADDR CamPosL, ADDR v3Val, delta10
-	invoke Vector3Copy, ADDR v3Val, ADDR CamRotA
+	.IF (SettingsControlsMouseSmoothing)
+		invoke Vector3Lerp, ADDR CamPosL, ADDR v3Val, delta10
+	.ELSE
+		invoke Vector3Copy, ADDR CamPosL, ADDR v3Val
+	.ENDIF
+	
+	.IF (CamAnimPlr.TrackPtr == OFFSET AnimCamWalk) && \
+	!(SettingsMiscCameraBobbing)
+		mov pax, OFFSET Vector3Zero
+	.ELSE
+		mov pax, OFFSET CamRotA
+	.ENDIF
+	invoke Vector3Copy, ADDR v3Val, pax
 	;invoke Vector3MulF, ADDR v3Val, f(16.0)
 	invoke Vector3Add, ADDR v3Val, ADDR CamRot
-	invoke Vector3LerpAngle, ADDR CamRotL, ADDR v3Val, flVal
+	.IF (SettingsControlsMouseSmoothing)
+		invoke Vector3LerpAngle, ADDR CamRotL, ADDR v3Val, flVal
+	.ELSE
+		invoke Vector3Copy, ADDR CamRotL, ADDR v3Val
+	.ENDIF
+	;invoke Vector3LerpAngle, ADDR CamRotL, ADDR v3Val, flVal
 	
 	.IF (PlrCanControl)
 		mov flVal, rv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET CamPosP)
@@ -635,6 +661,8 @@ Plr_ProcessState PROC EXPORT
 		.ENDIF
 	.ELSEIF (PlrState == PLAYER_STATE_STRANGLE)
 		mov PlrCanControl, FALSE
+		mov CamAnimPlr.TrackPtr, 0
+		
 		mov CamRot.Y, vrv(Vector32DAngle, OFFSET CamPos, OFFSET WmblykPos)
 		;bpMEM32 CamRot.X, WmblykStateVal
 		fld WmblykStateVal
@@ -658,14 +686,14 @@ Plr_ProcessState PROC EXPORT
 		
 		; Translate by forward
 		fld WmblykStateVal
-		fadd f(0.5)
+		fadd f(0.3)
 		;fmul f(2)
 		fstp flVal
 		mov flVal, rv(flClamp, flVal, f(0.2), f(2))
-		invoke Vector32DCopy, ADDR v3Val, ADDR PlrForward
-		invoke Vector32DMulF, ADDR v3Val, flVal
-		invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
-		invoke Vector32DAdd, ADDR CamPosL, ADDR v3Val
+		invoke Vector32DCopy, ADDR CamPosA, ADDR PlrForward
+		invoke Vector32DMulF, ADDR CamPosA, flVal
+		;invoke Vector32DCopy, ADDR CamPosA, ADDR v3Val
+		;invoke Vector32DAdd, ADDR CamPosL, ADDR v3Val
 		
 		; Time limit
 		fld deltaTime
@@ -682,12 +710,15 @@ Plr_ProcessState PROC EXPORT
 		fmul delta2
 		fstp flVal
 		
+		invoke Vector3Copy, ADDR CamPosA, ADDR Vector3Zero
+		
 		mov CamRot.X, rv(flLerp, CamRot.X, 0, flVal)
 		mov flVal, rv(flAbs, CamRot.X)
 		fcmp flVal, f(0.1)
 		.IF (Carry?)
 			mov PlrCanControl, TRUE
 			mov PlrState, PLAYER_STATE_GAME
+			invoke bpAnimPlay, OFFSET CamAnimPlr, OFFSET AnimPlrWalk
 		.ENDIF
 		
 		mov CamPos.Y, rv(flLerp, CamPos.Y, CamHeight, deltaTime)
@@ -1140,6 +1171,7 @@ Plr_Process PROC EXPORT
 	mov FXAfterimageEnd, pcx
 	
 	; Health check (one hundred dollar (because US haha get it))
+	; who the fuck wrote this comment up there what
 	.IF (PlrState != PLAYER_STATE_DYING) && (PlrState != PLAYER_STATE_DEAD)
 		mov eax, PlrHealth
 		.IF (eax & FLT_NEG)

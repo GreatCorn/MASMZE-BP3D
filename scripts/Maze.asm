@@ -75,6 +75,7 @@ LayerData STRUCT
 LayerData ENDS
 	
 .CONST
+MazeFog			REAL4 0.3
 MazeItemDist	REAL4 0.7
 MazeItemDistImp	REAL4 1.0
 MazeRaycastMax	BPPtr 64
@@ -770,7 +771,7 @@ Maze_Finish PROC EXPORT
 	; Something uses it at start idfk what
 	push pbx
 	
-	bpMEM32 FogDensity, f(0.5)
+	bpMEM32 FogDensity, MazeFog
 	
 	; Clear all elements
 	call Maze_ResetElements
@@ -1998,7 +1999,7 @@ Maze_SpawnElements PROC EXPORT
 		.ENDIF
 		
 		; Kubale
-		.IF (rv(nRandLocal, MazeLayer, OFFSET MazeSeed) > 10) \
+		.IF (rv(nRandLocal, MazeLayer, OFFSET MazeSeed) > 7) \
 		&& (MazeTram == MAZE_TRAM_NONE)
 			.IF !(rv(nRandLocal, 3, OFFSET MazeSeed))
 				.IF !(rv(nRandLocal, 10, OFFSET MazeSeed)) || !(KubaleAppeared)
@@ -2050,7 +2051,7 @@ Maze_SpawnElements PROC EXPORT
 		.ENDIF
 		
 		; Wmblyk
-		.IF (rv(nRandLocal, MazeLayer, OFFSET MazeSeed) > 3)
+		.IF (rv(nRandLocal, MazeLayer, OFFSET MazeSeed) > 2)
 			invoke nRandLocal, 5, ADDR MazeSeed
 			SWITCH eax
 				CASE 0
@@ -2330,7 +2331,7 @@ Maze_Draw PROC EXPORT
 	.ENDIF
 	
 	
-	.IF (MazeDoorRot)	; Exit door stairs
+	.IF (MazeDoorRot) && !(MazeCheck)	; Exit door stairs
 		call glPushMatrix
 		sub psp, SIZEOF BPPtr*3
 		fld MazeDoorPos.X
@@ -2756,7 +2757,6 @@ Maze_Process PROC EXPORT
 				.ENDIF
 			.ELSE
 				.IF (!MazeStateTimer)
-					mov MazeCheck, MAZE_CHECK_SAVED
 					mov MazeStateTimer, FLT_1
 					mov MazeDoorRot, 0
 					invoke Vector32DSet, ADDR MazeDoorPos, f(1), f(5)
@@ -2770,10 +2770,15 @@ Maze_Process PROC EXPORT
 					call Maze_ResetEntities
 					vinvoke UI_ShowSubtitles, StrCCSaved, UISubDur
 					
-					vinvoke Settings_EraseSave, TRUE
-					vinvoke Settings_SaveGame, FALSE
+					.IF !(NetSock)
+						vinvoke Settings_EraseSave, TRUE
+						vinvoke Settings_SaveGame, FALSE
+					.ELSE
+						; Online behavior (TODO)
+					.ENDIF
 					
 					invoke alSourcePlay, SndMus[8]
+					mov MazeCheck, MAZE_CHECK_SAVED
 				.ENDIF
 				fld MazeStateTimer
 				fsubr f(0.5)
@@ -2841,6 +2846,6 @@ Maze_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 	.ENDIF
-		
+	
 	ret
 Maze_Process ENDP

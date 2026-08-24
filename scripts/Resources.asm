@@ -240,8 +240,6 @@ TexWmblykWait		DWORD ?, ?, ?
 ; ----- SOUNDS -----
 SndSectionStart	BYTE ?
 SndAlarm		DWORD ?
-SndAmb			DWORD ?
-SndAmbT			DWORD ?
 SndAmbW			DWORD ?, ?, ?, ?
 SndCheckpoint	DWORD ?
 SndCreak		DWORD ?
@@ -266,8 +264,6 @@ SndKubale		DWORD ?
 SndKubaleAppear	DWORD ?
 SndKubaleV		DWORD ?
 SndMistake		DWORD ?
-SndMus			DWORD ?, ?, ?, ?, ?, ?
-SndOver			DWORD ?
 SndRand			DWORD ?, ?, ?, ?, ?, ?
 SndSave			DWORD ?
 SndScribble		DWORD ?
@@ -275,7 +271,6 @@ SndSiren		DWORD ?
 SndSlam			DWORD ?
 SndSplash		DWORD ?
 SndStep			DWORD ?, ?, ?, ?
-SndSurvive		DWORD ?
 SndTram			DWORD ?
 SndTramAnn		DWORD ?, ?, ?
 SndTramClose	DWORD ?
@@ -291,6 +286,14 @@ SndWmblyk		DWORD ?
 SndWmblykB		DWORD ?
 SndWmblykStr	DWORD ?
 SndWmblykStrM	DWORD ?
+
+
+SndAmb			DWORD ?
+SndAmbT			DWORD ?
+SndMus			DWORD ?, ?, ?, ?, ?, ?
+SndOver			DWORD ?
+SndSurvive		DWORD ?
+
 SndSectionEnd	BYTE ?
 
 ; ----- STRINGS -----
