@@ -244,7 +244,7 @@ Wmblyk_Process PROC EXPORT
 			fstp flVal
 			mov flVal, rv(flClamp, flVal, 0, f(1))
 			mov WmblykStateVal, eax
-			invoke alSourcef, SndWmblyk, AL_GAIN, eax
+			invoke SndSetGain, ADDR SndWmblyk, eax
 			print real4$(flVal), 13, 10
 			invoke alSourcePlay, SndWmblyk
 			fld flVal
@@ -573,7 +573,7 @@ Wmblyk_Process PROC EXPORT
 			bpMPM UIDeadTipStr, StrTipWmblyk
 						
 			invoke alSourcePlay, SndWmblykStr
-			invoke alSourcef, SndWmblykStrM, AL_GAIN, 0
+			invoke SndSetGain, ADDR SndWmblykStrM, 0
 			invoke alSourcePlay, SndWmblykStrM
 			
 			bpMEM32 WmblykStrPlr, NetPlayerID
@@ -648,7 +648,7 @@ Wmblyk_Process PROC EXPORT
 				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 			.ENDIF
 			
-			invoke SndFade, SndWmblykStrM, f(1), deltaTime
+			invoke SndFade, ADDR SndWmblykStrM, f(1), deltaTime
 		
 			fcmp WmblykStateVal, f(-1)
 			.IF (Carry?)
@@ -704,7 +704,7 @@ Wmblyk_Process PROC EXPORT
 			invoke alSourceStop, SndWmblykB
 		.ENDIF
 		
-		invoke SndFade, SndWmblykStrM, 0, delta2
+		invoke SndFade, ADDR SndWmblykStrM, 0, delta2
 		
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
 		

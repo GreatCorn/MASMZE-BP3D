@@ -875,7 +875,8 @@ MenuInit PROC EXPORT
 	
 	mov UIWhiteFadeVal, 0
 	
-	invoke alSourcef, SndMus[20], AL_GAIN, f(1)
+	;invoke alSourcef, SndMus[20], AL_GAIN, f(1)
+	invoke SndSetGain, ADDR SndMus[20], f(0.75)
 	
 	call Maze_Exit
 	mov NetUnformed, TRUE

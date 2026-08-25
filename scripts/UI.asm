@@ -133,6 +133,7 @@ UIDeadTipStr		BPPtr 0
 UITextPopup			BPEnum UI_FADE_NONE
 UITextPopupTimer	REAL4 0.0
 UITextPopupY		REAL4 0.0
+UITextPopupSmall	BPBool FALSE
 UITextPopupStr		BPPtr 0
 
 UISubtitlesStr		BPPtr 0
@@ -163,6 +164,7 @@ UIScaleForMouse		REAL4 ?
 .CODE
 UI_DrawRectangle PROTO :DWORD, :DWORD
 UI_MouseFocus PROTO :SDWORD, :SDWORD, :BYTE
+UI_ShowTextPopupHint PROTO :BPPtr, :BPBool
 UI_Text PROTO :BPPtr, :SDWORD, :SDWORD, :BPEnum, :BPEnum
 
 FontSize MACRO FontWidth:REQ, FontHeight:REQ
@@ -1371,14 +1373,8 @@ UI_DrawMenuMain PROC EXPORT
 		mov deltaScale, 0
 		mov UIState, UI_STATE_FADING
 	.ENDIF
-	mov al, UIFocus
-	.IF (al == UIID) && (HasSave)
-		mov UITextPopup, UI_FADE_IN
-		bpMEM32 UITextPopupTimer, f(0.1)
-		.IF (UITextPopup == UI_FADE_NONE)
-			bpMEM32 UITextPopupY, f(%(-UI_BTN_H - UI_BTN_M))
-		.ENDIF
-		bpMPM UITextPopupStr, StrLayerNumber
+	.IF (HasSave)
+		invoke UI_ShowTextPopupHint, StrLayerNumber, FALSE
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
@@ -1618,7 +1614,7 @@ UI_DrawMenuSettings PROC EXPORT
 	LOCAL fFind:WIN32_FIND_DATAA, hFind:BPPtr, langStr[32]:BYTE, hFile:BPPtr
 	LOCAL dwBytesRead:DWORD	; Needed for older WinAPI
 	
-	UI_MENU_SETTINGS_HEIGHT	EQU UI_BTN_H*7 + UI_BTN_M*5 + UI_HR_H
+	UI_MENU_SETTINGS_HEIGHT	EQU UI_BTN_H*8 + UI_BTN_M*6 + UI_HR_H
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_SETTINGS_HEIGHT/2
@@ -1652,9 +1648,17 @@ UI_DrawMenuSettings PROC EXPORT
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke Vector2Set, ADDR UISliderRange, f(0), f(1)
-	invoke UI_Slider, StrMenuMusic, UIXFrom, ebx, OFFSET SettingsAudioMusicT
+	invoke UI_Slider, StrMenuMusic, UIXFrom, ebx, OFFSET SettingsAudioMusic
 	.IF (al)
 		invoke Settings_SetOption, OFFSET SettingsAudioMusic
+		invoke Settings_Save, OFFSET SettingsIniAudio
+	.ENDIF
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke Vector2Set, ADDR UISliderRange, f(0), f(1)
+	invoke UI_Slider, StrMenuSounds, UIXFrom, ebx, OFFSET SettingsAudioSounds
+	.IF (al)
+		invoke Settings_SetOption, OFFSET SettingsAudioSounds
 		invoke Settings_Save, OFFSET SettingsIniAudio
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
@@ -1710,6 +1714,7 @@ UI_DrawMenuSettings PROC EXPORT
 	
 	invoke UI_Checkbox, StrMenuCameraBobbing, UIXFrom, ebx, \
 	OFFSET SettingsMiscCameraBobbing
+	invoke UI_ShowTextPopupHint, StrMenuHintCameraBobbing, TRUE
 	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
@@ -1723,7 +1728,7 @@ UI_DrawMenuSettings PROC EXPORT
 UI_DrawMenuSettings ENDP
 
 UI_DrawMenuSettingsControls PROC EXPORT
-	UI_MENU_CONTROLS_HEIGHT	EQU UI_BTN_H*7 + UI_BTN_M*4 + UI_HR_H*3
+	UI_MENU_CONTROLS_HEIGHT	EQU UI_BTN_H*8 + UI_BTN_M*5 + UI_HR_H*3
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_CONTROLS_HEIGHT/2
@@ -1737,19 +1742,22 @@ UI_DrawMenuSettingsControls PROC EXPORT
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
-	invoke UI_Checkbox, StrMenuInvertY, UIXFrom, ebx, \
-	OFFSET SettingsControlsInvertY
-	add ebx, UI_BTN_H + UI_BTN_M
-	
 	.IF !(bpRawInput)
 		mov UIDisabled, TRUE
 	.ENDIF
 	invoke UI_Checkbox, StrMenuMouseRaw, UIXFrom, ebx, \
 	OFFSET SettingsControlsRawMouse
+	invoke UI_ShowTextPopupHint, StrMenuHintRawMouse, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke UI_Checkbox, StrMenuMouseSmoothing, UIXFrom, ebx, \
 	OFFSET SettingsControlsMouseSmoothing
+	invoke UI_ShowTextPopupHint, StrMenuHintMouseSmoothing, TRUE
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	invoke UI_Checkbox, StrMenuInvertY, UIXFrom, ebx, \
+	OFFSET SettingsControlsInvertY
+	invoke UI_ShowTextPopupHint, StrMenuHintInvertY, TRUE
 	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
@@ -1779,6 +1787,7 @@ UI_DrawMenuSettingsControls PROC EXPORT
 		.ENDIF
 		mov UIState, UI_STATE_MENU_SETTINGS_CONTROLS_BINDINGS
 	.ENDIF
+	invoke UI_ShowTextPopupHint, StrMenuHintBindings, TRUE
 	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
@@ -2028,6 +2037,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 			mov UIComboboxSelected, 131
 		.ENDIF
 	.ENDIF
+	invoke UI_ShowTextPopupHint, StrMenuHintDisplayMode, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke UI_Combobox, StrMenuDisplayDev, UIXFrom, ebx, UICB_DISPLAYDEV
@@ -2082,9 +2092,11 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 		mov al, bpDisplayDevices[3*SIZEOF BPDisplayDevice].Active
 		print ubyte$(al), 13, 10
 	.ENDIF
+	invoke UI_ShowTextPopupHint, StrMenuHintDisplayDev, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke UI_Checkbox, StrMenuVSync, UIXFrom, ebx, OFFSET SettingsGraphicsVSync
+	invoke UI_ShowTextPopupHint, StrMenuHintVSync, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke Vector2Set, ADDR UISliderRange, f(0.5), f(4)
@@ -2127,6 +2139,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 		fld resEnum
 		fistp SettingsGraphicsMazeCull
 	.ENDIF
+	invoke UI_ShowTextPopupHint, StrMenuHintMazeCull, TRUE
 	mov UISliderZeros, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
@@ -2237,6 +2250,7 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 			pop pbx
 		.ENDIF
 	.ENDIF
+	invoke UI_ShowTextPopupHint, StrMenuHintMSAA, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Pixelization
@@ -2245,6 +2259,7 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	.ENDIF
 	invoke UI_Checkbox, StrMenuPixelization, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsPixelization
+	invoke UI_ShowTextPopupHint, StrMenuHintPixelization, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Posterization
@@ -2253,6 +2268,7 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	.ENDIF
 	invoke UI_Checkbox, StrMenuPosterization, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsPosterization
+	invoke UI_ShowTextPopupHint, StrMenuHintPosterization, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Afterimage
@@ -2261,16 +2277,19 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	.ENDIF
 	invoke UI_Checkbox, StrMenuAfterimage, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsAfterimage
+	invoke UI_ShowTextPopupHint, StrMenuHintAfterimage, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Particles
 	invoke UI_Checkbox, StrMenuParticles, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsParticles
+	invoke UI_ShowTextPopupHint, StrMenuHintParticles, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	; Animation interpolation
 	invoke UI_Checkbox, StrMenuInterpolation, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsInterpolation
+	invoke UI_ShowTextPopupHint, StrMenuHintInterpolation, TRUE
 	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
@@ -2322,6 +2341,7 @@ UI_DrawMenuSettingsGraphicsGamma PROC EXPORT
 	; Bypass
 	invoke UI_Checkbox, StrMenuBypass, UIXFrom, ebx, \
 	OFFSET SettingsGraphicsGammaBypass
+	invoke UI_ShowTextPopupHint, StrMenuHintGammaBypass, TRUE
 	add ebx, UI_BTN_H
 	
 	invoke UI_HR, UIXFrom, ebx
@@ -2758,12 +2778,28 @@ UI_ShowSubtitles PROC EXPORT String:BPPtr, Duration:REAL4
 UI_ShowSubtitles ENDP
 
 UI_ShowTextPopup PROC EXPORT StrPtr:BPPtr, Duration:REAL4
+	mov UITextPopupSmall, FALSE
 	mov UITextPopup, UI_FADE_IN
 	bpMEM32 UITextPopupTimer, Duration
 	bpMEM32 UITextPopupY, f(%(-UI_BTN_H - UI_BTN_M))
 	bpMPM UITextPopupStr, StrPtr
 	ret
 UI_ShowTextPopup ENDP
+
+UI_ShowTextPopupHint PROC EXPORT StrPtr:BPPtr, PopupSmall:BPBool
+	mov al, UIFocus
+	.IF (al == UIID)
+		mov UITextPopupSmall, FALSE
+		mov UITextPopup, UI_FADE_IN
+		bpMEM32 UITextPopupTimer, f(0.1)
+		bpMPM UITextPopupStr, StrPtr
+		.IF (UITextPopup == UI_FADE_NONE)
+			bpMEM32 UITextPopupY, f(%(-UI_BTN_H - UI_BTN_M))
+		.ENDIF
+		mbm UITextPopupSmall, PopupSmall
+	.ENDIF
+	ret
+UI_ShowTextPopupHint ENDP
 
 
 
@@ -3008,7 +3044,8 @@ UI_Draw PROC EXPORT
 	
 	; Menu background darkening frame
 	.IF (UIState != UI_STATE_GAME) && \
-	(UIState != UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA)
+	((UIState != UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA) || \
+	(GameState == GAME_STATE_MENU))
 		invoke UI_DrawFullscreen, f(0.5)
 	.ENDIF
 	
@@ -3134,7 +3171,13 @@ UI_Draw PROC EXPORT
 			mov eax, UITextPopupY
 		.ENDIF
 		invoke glTranslatef, f(%(UI_BTN_M)), eax, 0
+		.IF (UITextPopupSmall)
+			FontSize 3, 6 
+		.ENDIF
 		invoke UI_Text, UITextPopupStr, 0, 0, 0, 0
+		.IF (UITextPopupSmall)
+			FontSize 4, 8
+		.ENDIF
 		call glPopMatrix
 	.ENDIF
 	mov UIShadow, FALSE
@@ -3243,7 +3286,7 @@ UI_Process PROC EXPORT
 				fld deltaUnscaled
 				fmul f(2)
 				fstp flVal
-				invoke SndFade, SndMus[20], 0, flVal
+				invoke SndFade, ADDR SndMus[20], 0, flVal
 			.ENDIF
 			mov eax, deltaUnscaled
 		.ELSE
@@ -3276,7 +3319,7 @@ UI_Process PROC EXPORT
 		.IF (UITextPopup == UI_FADE_IN)
 			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%UI_BTN_M), delta10)
 		.ELSEIF (UITextPopup == UI_FADE_OUT)
-			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%(-UI_BTN_H-UI_BTN_M)), delta10)
+			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%(-UI_BTN_H*2-UI_BTN_M)), delta10)
 		.ENDIF
 		
 		fld UITextPopupTimer

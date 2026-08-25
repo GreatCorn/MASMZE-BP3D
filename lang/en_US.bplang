@@ -38,7 +38,7 @@ Restart game to#apply MSAA.
 GRAPHICS
 CONTROLS
 BACK
-VOLUME
+MASTER VOLUME
 MUSIC
 SOUNDS
 LANGUAGE
@@ -66,7 +66,7 @@ ANIM. INTERPOLATION
 MOUSE SENSITIVITY
 INVERT LOOK Y
 RAW MOUSE INPUT
-MOUSE SMOOTHING
+LOOK SMOOTHING
 GAMEPAD
 GAMEPAD LOOK SPEED
 BINDINGS
@@ -86,6 +86,22 @@ Crouch
 Glyph
 Action
 Confirm
+Animate and smooth camera movement. May induce motion#sickness in some individuals.
+Fullscreen mode sets render size to screen size,#while Exclusive mode sets screen size to chosen resolution.
+Display device (e.g., monitor) to render on.
+Vertical synchronization. Limits FPS to the display#device's refresh rate to avoid screen tearing.
+Maze cell draw distance.
+Multisample Anti-Aliasing, used to smooth jagged edges.#May work differently from platform to platform.
+Render the game in lower resolution for chunkier pixels.#Boosts performance when used with Afterimage or Posterization.
+Limit the render color palette. May hinder performance#when used at high resolution without Pixelization.
+Keep previous frames to linger. May hinder performance#when used in high-resolution without Pixelization.
+Draw and process particle effects.
+Interpolate vertex animations to make them smoother.
+Bypass gamma correction (may improve performance on#low-end devices).
+Invert look Y-axis input (applies to all input modes).
+Capture raw mouse input (may improve responsiveness).
+Smooth look input (applies to all input modes). May induce#motion sickness in some individuals.
+Rebind individual actions.
 GREATCORN PRESENTS
 A GAME WRITTEN IN X86 ASSEMBLY#WITH MASM32 AND OPENGL
 LAYER ___

@@ -1240,7 +1240,7 @@ Maze_ProcessState PROC EXPORT
 			.ENDIF
 			
 			mov MazeSiren, rv(flLerp, MazeSiren, flVal, delta2)
-			invoke alSourcef, SndSiren, AL_GAIN, MazeSiren
+			invoke SndSetGain, ADDR SndSiren, MazeSiren
 		.ENDIF
 	.ELSEIF (MazeState == MAZE_STATE_GAME)
 		.IF (Maze)
@@ -1257,8 +1257,8 @@ Maze_ProcessState PROC EXPORT
 				mov v3Val.Z, rv(flRandRange, f(-4), f(4))
 				vinvoke Vector32DAdd, ADDR v3Val, OFFSET CamPos
 				invoke PlayRandomSnd, ADDR SndRand, 6
-				mov ecx, eax
-				invoke SndSetPos, ecx, ADDR v3Val
+				mov pcx, pax
+				invoke SndSetPos, DWORD PTR [pcx], ADDR v3Val
 			.ENDIF
 		.ENDIF
 	.ELSEIF (MazeState == MAZE_STATE_STOP_SIREN)
@@ -1268,7 +1268,7 @@ Maze_ProcessState PROC EXPORT
 		.ENDIF
 		
 		mov MazeSiren, rv(flLerp, MazeSiren, 0, delta2)
-		invoke alSourcef, SndSiren, AL_GAIN, MazeSiren
+		invoke SndSetGain, ADDR SndSiren, MazeSiren
 	.ELSEIF (MazeState == MAZE_STATE_WAIT_IMPACT)
 		.IF !(MazeStateTimer)
 			fild MazeLayer
@@ -1348,7 +1348,7 @@ Maze_ProcessState PROC EXPORT
 			invoke alSourcePlay, SndAmb
 			
 			invoke alSourcef, SndWmblykB, AL_PITCH, f(1)
-			invoke alSourcef, SndWmblykB, AL_GAIN, f(1)
+			invoke SndSetGain, ADDR SndWmblykB, f(1)
 			invoke alSourceStop, SndWmblykB
 			
 			mov UIFade, UI_FADE_IN
@@ -1385,7 +1385,7 @@ Maze_ProcessState PROC EXPORT
 				vinvoke Plr_Shake, flVal
 			.ENDIF
 			
-			invoke SndFade, SndMus[20], 0, delta2
+			invoke SndFade, ADDR SndMus[20], 0, delta2
 		.ELSE
 			fld MazeCheckPos.Y
 			fadd delta10
@@ -1420,7 +1420,7 @@ Maze_ProcessState PROC EXPORT
 		fsubr f(1)
 		fstp flVal
 		
-		invoke alSourcef, SndExplosion, AL_GAIN, flVal
+		invoke SndSetGain, ADDR SndExplosion, flVal
 		invoke alSourcePlay, SndExplosion
 			
 		invoke alSourceStop, SndSiren
@@ -1444,9 +1444,9 @@ Maze_ProcessState PROC EXPORT
 		sub psp, SIZEOF BPPtr
 		fistp REAL4 PTR [psp]
 		
-		invoke alSourcef, SndImpact, AL_GAIN, flVal
+		invoke SndSetGain, ADDR SndImpact, flVal
 		invoke alSourcePlay, SndImpact
-		invoke alSourcef, SndCrumble, AL_GAIN, f(0.2)
+		invoke SndSetGain, ADDR SndCrumble, f(0.2)
 		invoke alSourcePlay, SndCrumble
 		
 		.IF (SettingsGraphicsParticles)
@@ -2120,7 +2120,7 @@ Maze_SpawnTrench PROC EXPORT
 	
 	invoke alSourcePlay, SndAmbT
 	invoke alSourcef, SndWmblykB, AL_PITCH, f(0.2)
-	invoke alSourcef, SndWmblykB, AL_GAIN, f(10)
+	invoke SndSetGain, ADDR SndWmblykB, f(10)
 	invoke alSourcePlay, SndWmblykB
 	invoke alSourceStop, SndAmb
 	
@@ -2723,7 +2723,7 @@ Maze_Process PROC EXPORT
 			vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(2.7), f(0.9)
 		.ENDIF
 		
-		invoke SndFade, SndAmb, f(0), delta2
+		invoke SndFade, ADDR SndAmb, f(0), delta2
 				
 		; Process Motrya animator
 		.IF (MazeCheck != MAZE_CHECK_SAVED)
@@ -2757,6 +2757,8 @@ Maze_Process PROC EXPORT
 				.ENDIF
 			.ELSE
 				.IF (!MazeStateTimer)
+					call Maze_Exit
+					bpMEM32 MazeCurWall, TexWall
 					mov MazeStateTimer, FLT_1
 					mov MazeDoorRot, 0
 					invoke Vector32DSet, ADDR MazeDoorPos, f(1), f(5)
@@ -2766,8 +2768,6 @@ Maze_Process PROC EXPORT
 					invoke Vector3Set, ADDR MazeCheckErasePosL, f(1), f(1), f(4)
 					invoke Vector32DAdd, ADDR MazeCheckErasePosL, \
 					ADDR MazeCheckPos
-					call Maze_ResetElements
-					call Maze_ResetEntities
 					vinvoke UI_ShowSubtitles, StrCCSaved, UISubDur
 					
 					.IF !(NetSock)
@@ -2795,13 +2795,13 @@ Maze_Process PROC EXPORT
 			.ENDIF
 			
 			.IF (PlrState == PLAYER_STATE_EXITING)
-				invoke SndFade, SndMus[8], f(0), delta2
+				invoke SndFade, ADDR SndMus[8], f(0), delta2
 			.ELSEIF (PlrState == PLAYER_STATE_GAME) \
 			&& (MazeState == MAZE_STATE_GAME)
 				fld deltaTime
 				fmul f(0.3)
 				fstp flVal
-				invoke SndFade, SndMus[8], f(0.5), flVal
+				invoke SndFade, ADDR SndMus[8], f(0.5), flVal
 				
 				; Exit door
 				mov flVal, \

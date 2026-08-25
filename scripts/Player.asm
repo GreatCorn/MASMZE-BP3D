@@ -426,7 +426,7 @@ Plr_LateProcess PROC EXPORT
 	.ENDIF
 	invoke Vector3Copy, ADDR v3Val, pax
 	invoke Vector3Add, ADDR v3Val, ADDR CamPos
-	.IF (SettingsControlsMouseSmoothing)
+	.IF (SettingsMiscCameraBobbing)
 		invoke Vector3Lerp, ADDR CamPosL, ADDR v3Val, delta10
 	.ELSE
 		invoke Vector3Copy, ADDR CamPosL, ADDR v3Val
@@ -560,7 +560,7 @@ Plr_ProcessState PROC EXPORT
 		
 		.IF (MazeState == MAZE_STATE_GAME)
 			.IF (rv(SndPlaying, SndAmb) == AL_STOPPED)
-				invoke alSourcef, SndAmb, AL_GAIN, f(1)
+				invoke SndSetGain, ADDR SndAmb, f(1)
 				invoke alSourcePlay, SndAmb
 			.ENDIF
 		.ENDIF
@@ -718,7 +718,7 @@ Plr_ProcessState PROC EXPORT
 		.IF (Carry?)
 			mov PlrCanControl, TRUE
 			mov PlrState, PLAYER_STATE_GAME
-			invoke bpAnimPlay, OFFSET CamAnimPlr, OFFSET AnimPlrWalk
+			invoke bpAnimPlay, OFFSET CamAnimPlr, OFFSET AnimCamWalk
 		.ENDIF
 		
 		mov CamPos.Y, rv(flLerp, CamPos.Y, CamHeight, deltaTime)
@@ -746,13 +746,14 @@ Plr_ProcessState PROC EXPORT
 		.ENDIF
 		
 		; Fade sounds
-		.IF (Kubale)
-			invoke SndFade, SndKubale, 0, deltaTime
-			invoke SndFade, SndKubaleV, 0, deltaTime
-		.ENDIF
-		.IF (Wmblyk)
-			invoke SndFade, SndWmblykStrM, 0, deltaTime
-			invoke SndFade, SndWmblykB, 0, deltaTime
+		.IF (NetSock) || (PlrState == PLAYER_STATE_DYING)
+			;invoke SndFade, ADDR SndHBD, 0, deltaTime
+			;invoke SndFade, ADDR SndKubale, 0, deltaTime
+			invoke SndFade, ADDR SndKubaleV, 0, deltaTime
+			invoke SndFade, ADDR SndWmblykStrM, 0, deltaTime
+			;invoke SndFade, ADDR SndWmblykB, 0, deltaTime
+		.ELSEIF (PlrState == PLAYER_STATE_DEAD)
+			call Maze_ResetEntities
 		.ENDIF
 	.ELSEIF (PlrState == PLAYER_STATE_SPECTATE)
 		mov PlrCollide, FALSE
@@ -981,7 +982,7 @@ Plr_Step PROC EXPORT HalfStep:BPBool
 		fld PlrSpeedScaled
 		fmul st, st
 		fstp v2Val.X
-		invoke alSourcef, eax, AL_GAIN, v2Val.X
+		invoke SndSetGain, pax, v2Val.X
 		
 		fld PlrStepPitch
 		fsub f(0.1)
@@ -991,7 +992,7 @@ Plr_Step PROC EXPORT HalfStep:BPBool
 		fstp v2Val.Y
 		invoke flRandRange, v2Val.X, v2Val.Y
 		pop pcx
-		invoke alSourcef, ecx, AL_PITCH, eax
+		invoke alSourcef, DWORD PTR [pcx], AL_PITCH, eax
 	.ENDIF
 	ret
 Plr_Step ENDP

@@ -91,9 +91,7 @@ SettingsRegPath DB "Software\\GreatCorn\\MASMZE-3D", 0
 .DATA
 SettingsAudioVolume				REAL4 1.0
 SettingsAudioMusic				REAL4 1.0
-SettingsAudioMusicT				REAL4 1.0
 SettingsAudioSounds				REAL4 1.0
-SettingsAudioSoundsT			REAL4 1.0
 
 SettingsControlsInvertY				BPBool FALSE
 SettingsControlsJoystick			BPBool TRUE
@@ -227,6 +225,18 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		9, ADDR SettingsIniPathAbs
 		invoke StrToFl, ADDR SettingsIniString, ADDR SettingsAudioVolume
 		invoke Settings_SetOption, OFFSET SettingsAudioVolume
+		; Music
+		invoke GetPrivateProfileString, ADDR SettingsIniAudio, \
+		ADDR SettingsIniMusic, ADDR SettingsIni1f, ADDR SettingsIniString, \
+		9, ADDR SettingsIniPathAbs
+		invoke StrToFl, ADDR SettingsIniString, ADDR SettingsAudioMusic
+		invoke Settings_SetOption, OFFSET SettingsAudioMusic
+		; Sounds
+		invoke GetPrivateProfileString, ADDR SettingsIniAudio, \
+		ADDR SettingsIniSounds, ADDR SettingsIni1f, ADDR SettingsIniString, \
+		9, ADDR SettingsIniPathAbs
+		invoke StrToFl, ADDR SettingsIniString, ADDR SettingsAudioSounds
+		invoke Settings_SetOption, OFFSET SettingsAudioSounds
 	.ELSEIF (IniSection == OFFSET SettingsIniControls)
 		; ----- CONTROLS -----
 		; Invert look Y
@@ -583,6 +593,14 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		invoke WritePrivateProfileStringA, ADDR SettingsIniAudio, \
 		ADDR SettingsIniVolume, real4$(SettingsAudioVolume), \
 		ADDR SettingsIniPathAbs
+		; Music
+		invoke WritePrivateProfileStringA, ADDR SettingsIniAudio, \
+		ADDR SettingsIniMusic, real4$(SettingsAudioMusic), \
+		ADDR SettingsIniPathAbs
+		; Sounds
+		invoke WritePrivateProfileStringA, ADDR SettingsIniAudio, \
+		ADDR SettingsIniSounds, real4$(SettingsAudioSounds), \
+		ADDR SettingsIniPathAbs
 	.ELSEIF (IniSection == OFFSET SettingsIniControls)
 		; Mouse sensitivity
 		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
@@ -868,15 +886,14 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		print "audio/music", 13, 10
 		IFDEF AUDIO_OPENAL
 		.IF (AudioDevice)
-			invoke SndSetBusGain, OFFSET SettingsAudioMusic, SettingsAudioMusicT
+			invoke SndSetBusGain, OFFSET SettingsAudioMusic
 		.ENDIF
 		ENDIF
 	.ELSEIF (OptionPtr == OFFSET SettingsAudioSounds)
 		print "audio/music", 13, 10
 		IFDEF AUDIO_OPENAL
 		.IF (AudioDevice)
-			invoke SndSetBusGain, OFFSET SettingsAudioSounds, \
-			SettingsAudioSoundsT
+			invoke SndSetBusGain, OFFSET SettingsAudioSounds
 		.ENDIF
 		ENDIF
 		

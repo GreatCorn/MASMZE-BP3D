@@ -239,6 +239,7 @@ TexWmblykWait		DWORD ?, ?, ?
 
 ; ----- SOUNDS -----
 SndSectionStart	BYTE ?
+
 SndAlarm		DWORD ?
 SndAmbW			DWORD ?, ?, ?, ?
 SndCheckpoint	DWORD ?
@@ -295,6 +296,9 @@ SndOver			DWORD ?
 SndSurvive		DWORD ?
 
 SndSectionEnd	BYTE ?
+
+.DATA
+SndGain	REAL4 (OFFSET SndSectionEnd - (OFFSET SndSectionStart+1))/4 DUP (1.0)
 
 ; ----- STRINGS -----
 SV	MACRO StrID:REQ
@@ -772,27 +776,27 @@ LoadResources PROC EXPORT
 		invoke alSourcef, SndKubale, AL_ROLLOFF_FACTOR, f(2)
 		LoadBPS OFFSET SndKubaleAppear,	"assets\sounds\kubaleAppear.bps"
 		LoadBPS OFFSET SndKubaleV,		"assets\sounds\kubaleV.bps"
-		invoke alSourcef, SndKubaleV, AL_GAIN, 0
+		invoke SndSetGain, ADDR SndKubaleV, 0
 		invoke alSourcei, SndKubaleV, AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndMistake,		"assets\sounds\mistake.bps"
 		LoadBPS OFFSET SndMus[0],		"assets\sounds\mus1.bps"
-		invoke alSourcef, SndMus[0], AL_GAIN, f(0.5)
+		invoke SndSetGain, ADDR SndMus[0], f(0.5)
 		LoadBPS OFFSET SndMus[4],		"assets\sounds\mus2.bps"
-		invoke alSourcef, SndMus[4], AL_GAIN, f(0.5)
+		invoke SndSetGain, ADDR SndMus[4], f(0.5)
 		.IF (rv(nRand, 2))
 			LoadBPS OFFSET SndMus[8],		"assets\sounds\mus3.bps"
 		.ELSE
 			LoadBPS OFFSET SndMus[8],		"assets\sounds\mus3Bach.bps"
 		.ENDIF
-		invoke alSourcef, SndMus[8], AL_GAIN, 0
+		invoke SndSetGain, ADDR SndMus[8], 0
 		invoke alSourcei, SndMus[8], AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndMus[12],		"assets\sounds\mus4.bps"
-		invoke alSourcef, SndMus[12], AL_GAIN, 0
+		invoke SndSetGain, ADDR SndMus[12], 0
 		invoke alSourcei, SndMus[12], AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndMus[16],		"assets\sounds\mus5.bps"
-		invoke alSourcef, SndMus[16], AL_GAIN, f(0.5)
+		invoke SndSetGain, ADDR SndMus[16], f(0.5)
 		LoadBPS OFFSET SndMus[20],		"assets\sounds\mus6.bps"
-		invoke alSourcef, SndMus[20], AL_GAIN, f(0.5)
+		invoke SndSetGain, ADDR SndMus[20], f(0.5)
 		LoadBPS OFFSET SndOver,			"assets\sounds\over.bps"
 		LoadBPS OFFSET SndRand[0],		"assets\sounds\rand1.bps"
 		LoadBPS OFFSET SndRand[4],		"assets\sounds\rand2.bps"
@@ -803,7 +807,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndSave,			"assets\sounds\save.bps"
 		LoadBPS OFFSET SndScribble,		"assets\sounds\scribble.bps"
 		LoadBPS OFFSET SndSiren,		"assets\sounds\siren.bps"
-		invoke alSourcef, SndSiren, AL_GAIN, 0
+		invoke SndSetGain, ADDR SndSiren, 0
 		invoke alSourcei, SndSiren, AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndSlam,			"assets\sounds\slam.bps"
 		LoadBPS OFFSET SndSplash,		"assets\sounds\splash.bps"
@@ -826,7 +830,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndTramOpen,		"assets\sounds\tramOpen.bps"
 		invoke alSourcef, SndTramOpen, AL_ROLLOFF_FACTOR, f(1.5)
 		LoadBPS OFFSET SndVirdya,		"assets\sounds\virdya.bps"
-		invoke alSourcef, SndVirdya, AL_GAIN, 0
+		invoke SndSetGain, ADDR SndVirdya, 0
 		invoke alSourcei, SndVirdya, AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndWBAlarm,		"assets\sounds\wbAlarm.bps"
 		invoke alSourcef, SndWBAlarm, AL_ROLLOFF_FACTOR, f(1.5)
@@ -855,7 +859,7 @@ LoadResources PROC EXPORT
 		invoke alSourcef, SndWmblykB, AL_ROLLOFF_FACTOR, f(4)
 		LoadBPS OFFSET SndWmblykStr,	"assets\sounds\wmblykStr.bps"
 		LoadBPS OFFSET SndWmblykStrM,	"assets\sounds\wmblykStrM.bps"
-		invoke alSourcef, SndWmblykStrM, AL_GAIN, 0
+		invoke SndSetGain, ADDR SndWmblykStrM, 0
 		invoke alSourcei, SndWmblykStrM, AL_LOOPING, AL_TRUE
 		print "...done!", 13, 10
 	.ELSEIF (LoadState == LOADING_FINISHED)

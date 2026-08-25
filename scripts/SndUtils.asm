@@ -105,10 +105,12 @@ PauseSounds ENDP
 
 PlayRandomSnd PROC EXPORT SndPtr:BPPtr, Count:BPPtr
 	invoke nRand, Count
+	shl pax, 2
 	mov pcx, SndPtr
-	push DWORD PTR [pcx+pax*4]
-	invoke alSourcePlay, DWORD PTR [pcx+pax*4]
-	pop eax
+	add pcx, pax
+	push pcx
+	invoke alSourcePlay, DWORD PTR [pcx]
+	pop pax
 	ret
 PlayRandomSnd ENDP
 
@@ -128,18 +130,22 @@ MulSoundPitch PROC EXPORT Factor:REAL4
 	ret
 MulSoundPitch ENDP
 
-SndFade PROC EXPORT ALSound:DWORD, TargetGain:REAL4, T:REAL4
+SndFade PROC EXPORT SndPtr:BPPtr, TargetGain:REAL4, T:REAL4
 	LOCAL gainVal:REAL4
 	
-	.IF (rv(SndPlaying, ALSound) == AL_PLAYING)
-		invoke alGetSourcef, ALSound, AL_GAIN, ADDR gainVal
-		mov gainVal, rv(flLerp, gainVal, TargetGain, T)
-		invoke alSourcef, ALSound, AL_GAIN, gainVal
-		
+	mov pax, SndPtr
+	.IF (rv(SndPlaying, DWORD PTR [pax]) == AL_PLAYING)
+		mov pcx, SndPtr
+		sub pcx, OFFSET SndSectionStart+1
+		vinvoke flLerp, SndGain[pcx], TargetGain, T
+		push eax
+		vinvoke SndSetGain, SndPtr, eax
+		pop eax
 		.IF (TargetGain == 0)
-			fcmp gainVal, f(0.01)
+			fcmp eax, f(0.01)
 			.IF (Carry?)
-				invoke alSourceStop, ALSound
+				mov pax, SndPtr
+				invoke alSourceStop, DWORD PTR [pax]
 			.ENDIF
 		.ENDIF
 	.ENDIF
@@ -154,7 +160,7 @@ SndPlaying PROC EXPORT ALSound:DWORD
 	ret
 SndPlaying ENDP
 
-SndSetBusGain PROC EXPORT GainPtr:BPPtr, Gain:REAL4
+SndSetBusGain PROC EXPORT GainPtr:BPPtr
 	LOCAL endPtr:BPPtr, gainVal:REAL4
 	
 	push pbx
@@ -167,32 +173,40 @@ SndSetBusGain PROC EXPORT GainPtr:BPPtr, Gain:REAL4
 	.ENDIF
 	
 	.WHILE (pbx < endPtr)
-		invoke alGetSourcef, DWORD PTR [pbx], AL_GAIN, ADDR gainVal
-		mov pax, GainPtr
-		fld gainVal
-		fdiv REAL4 PTR [pax]
-		fmul Gain
+		mov pax, pbx
+		sub pax, OFFSET SndSectionStart+1
+		mov pcx, GainPtr
+		fld REAL4 PTR [pcx]
+		fmul SndGain[pax]
 		fstp gainVal
 		invoke alSourcef, DWORD PTR [pbx], AL_GAIN, gainVal
 		add pbx, 4
 	.ENDW
 	pop pbx
-	
-	mov pax, GainPtr
-	mov ecx, Gain
-	mov REAL4 PTR [pax], ecx
 	ret
 SndSetBusGain ENDP
 
-SndSetGain PROC EXPORT ALSound:DWORD, GainPtr:BPPtr, Gain:REAL4
+SndSetGain PROC EXPORT SndPtr:BPPtr, Gain:REAL4
 	LOCAL gainVal:REAL4
 	
-	mov pax, GainPtr
-	fld REAL4 PTR [pax]
+	.IF (SndPtr < OFFSET SndAmb)
+		mov ecx, SettingsAudioSounds
+	.ELSE
+		mov ecx, SettingsAudioMusic
+	.ENDIF
+	mov gainVal, ecx
+	
+	fld gainVal
 	fmul Gain
 	fstp gainVal
 	
-	invoke alSourcef, ALSound, AL_GAIN, gainVal
+	mov pax, SndPtr
+	invoke alSourcef, DWORD PTR [pax], AL_GAIN, gainVal
+	
+	mov pax, SndPtr
+	sub pax, OFFSET SndSectionStart+1
+	mov ecx, Gain
+	mov SndGain[pax], ecx
 	ret
 SndSetGain ENDP
 

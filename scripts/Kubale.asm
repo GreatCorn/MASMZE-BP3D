@@ -275,7 +275,7 @@ Kubale_Process PROC EXPORT
 		shr pax, 2
 		mov KubaleInkblot, rv(nRand, pax)
 		shl KubaleInkblot, 2
-		invoke alSourcef, SndKubaleV, AL_GAIN, KubaleVision
+		invoke SndSetGain, ADDR SndKubaleV, KubaleVision
 		
 		; Do action trigger stuff
 		push pbx

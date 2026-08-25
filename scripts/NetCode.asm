@@ -126,11 +126,29 @@ Net_FormPlrPopup ENDP
 ; Respond to or process received message
 Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 	;print "Received "
+	
 	push pbx
 	mov pbx, Buffer
 	
+	; Validate message
+	.IF (BYTE PTR [pbx] != NET_PLAYERS_REQUEST) && (NetHosting)
+		xor pax, pax
+		.WHILE (pax < SIZEOF NetPlayers)
+			mov pcx, Sock
+			.IF (NetPlayers[pax].SockOnServ == pcx)
+				jmp netFormRespondValidate
+			.ENDIF
+			add pax, SIZEOF NetPlayer
+		.ENDW
+		
+		pop pbx
+		ret
+	.ENDIF
+	
+	netFormRespondValidate:
+	
 	.IF (BYTE PTR [pbx] == NET_PLAYERS_REQUEST)
-		;print "NET_PLAYERS_REQUEST", 13, 10
+		print "NET_PLAYERS_REQUEST", 13, 10
 		.IF (NetHosting)
 			; Get first free player slot and fill new player struct
 			xor pax, pax
@@ -722,7 +740,7 @@ Net_LobbyInit PROC EXPORT
 	mov UITextPopupStr, 0
 	
 	.IF (rv(SndPlaying, SndMus[20]) != AL_PLAYING)
-		invoke alSourcef, SndMus[20], AL_GAIN, f(1)
+		invoke SndSetGain, ADDR SndMus[20], f(0.75)
 		invoke alSourcePlay, SndMus[20]
 	.ENDIF
 	

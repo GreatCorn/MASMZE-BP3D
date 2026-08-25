@@ -70,7 +70,7 @@ Vebra_Process PROC EXPORT
 			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 		.ENDIF
 	.ELSEIF (Vebra == VEBRA_GOING)
-		fcmp VebraAnimPlr.Timer, f(26)
+		fcmp VebraAnimPlr.Timer, f(28)
 		.IF (!Carry?)
 			mov MazeDoorRot, rv(flLerp, MazeDoorRot, 0, delta10)
 			.IF !(rv(SndPlaying, SndDoorClose))
