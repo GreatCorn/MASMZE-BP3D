@@ -6,7 +6,8 @@ ENUM	WMBLYK_NONE, \
 		WMBLYK_STEALTH_APPEAR, \
 		WMBLYK_WALK, \
 		WMBLYK_STRANGLE, \
-		WMBLYK_DEAD
+		WMBLYK_DEAD, \
+		WMBLYK_FROZEN
 
 .DATA
 Wmblyk			BPEnum WMBLYK_NONE
@@ -46,7 +47,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		print "still, at "
 		Vector32DPrint WmblykPos
 	.ELSEIF (State == WMBLYK_STEALTH_WAIT)
-		mov WmblykStateVal, rv(flRandRange, f(4), f(11))
+		mov WmblykStateVal, rv(flRandRange, f(5), f(20))
 		mov WmblykCellPos.X, FLT_1
 		
 		print "stealthy", 13, 10
@@ -62,7 +63,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
 		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, 0
 		.IF (SettingsGraphicsInterpolation)
-			mov WmblykAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
+			mov WmblykAnimPlr.Interpolation, ANIM_INTERPOLATION
 		.ENDIF
 		
 		invoke alSourcePlay, SndWmblykB
@@ -126,17 +127,47 @@ Wmblyk_Draw PROC EXPORT
 		.ELSEIF (Wmblyk >= WMBLYK_WALK)
 			.IF (Wmblyk == WMBLYK_DEAD)
 				invoke glColor4fv, ADDR clBlack
+			.ELSEIF (Wmblyk == WMBLYK_FROZEN)
+				invoke flDistance, WmblykStateVal, f(3.6)
+				fcmp eax, f(0.05)	; blink
+				.IF (Carry?)
+					invoke glColor4fv, ADDR clBlack
+				.ELSE
+					invoke flDistance, WmblykStateVal, f(3.4)
+					fcmp eax, f(0.05)
+					.IF (Carry?)
+						invoke glColor4fv, ADDR clBlack
+					.ENDIF
+				.ENDIF
 			.ENDIF
+			
 			invoke bpDrawMesh, ADDR MeshWmblyk
+			.IF (Wmblyk == WMBLYK_FROZEN)
+				fld f(2.5)
+				fsub WmblykStateVal
+				fmul f(0.5)
+				fstp flVal
+				mov flVal, rv(flClamp, flVal, 0, FLT_1)
+				invoke glColor4f, FLT_1, FLT_1, FLT_1, flVal
+				invoke glDisable, GL_DEPTH_TEST
+				invoke glEnable, GL_BLEND
+				invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+				invoke glBindTexture, GL_TEXTURE_2D, TexWmblykL
+				invoke bpDrawMesh, ADDR MeshWmblyk
+				invoke glEnable, GL_DEPTH_TEST
+				invoke glDisable, GL_BLEND
+			.ENDIF
 		.ENDIF
 		invoke glColor4fv, ADDR clWhite
 		.IF (Wmblyk != WMBLYK_STEALTH_APPEAR)
 			invoke glEnable, GL_BLEND
+			invoke glDepthMask, GL_FALSE
 			invoke glTranslatef, f(-1), f(0.01), f(-1)
 			invoke glBlendFunc, GL_DST_COLOR, GL_ZERO
 			invoke glBindTexture, GL_TEXTURE_2D, TexShadow
 			invoke glCallList, MdlPlane
 			invoke glDisable, GL_BLEND
+			invoke glDepthMask, GL_TRUE
 		.ENDIF
 		
 		call glPopMatrix
@@ -652,8 +683,44 @@ Wmblyk_Process PROC EXPORT
 		
 			fcmp WmblykStateVal, f(-1)
 			.IF (Carry?)
-				mov PlrState, PLAYER_STATE_DYING
-				bpMEM32 WmblykStateVal, f(-1)
+				mov ways, FALSE
+				.IF (GameComplete) && !(NetSock)
+					mov eax, PlrGlyphsInMaze
+					add eax, PlrGlyphs
+					.IF (eax == 7) && (PlrGlyphsInMaze)
+						invoke Vector32DDistanceSqr, ADDR WmblykPos, \
+						ADDR PlrGlyphPos[0]
+						fcmp eax, f(2)
+						.IF (Carry?)
+							mov ways, TRUE
+						.ENDIF
+					.ENDIF
+				.ENDIF
+				.IF (ways)
+					bpMEM32 CamRot.X, f(-0.9)
+					bpMEM32 CamRotL.X, f(-0.9)
+					call Plr_CalculateAxes
+					invoke Vector3Copy, ADDR v3Val, ADDR CamForward
+					invoke Vector3MulF, ADDR v3Val, f(0.45)
+					invoke Vector3Add, ADDR CamPosL, ADDR v3Val
+					invoke SndSetPos, SndSplash, ADDR CamPosL
+					invoke alSourcePlay, SndSplash
+					invoke alSourceStop, SndWmblykStr
+					invoke alSourceStop, SndWmblykStrM
+					invoke alSourceStop, SndWmblykB
+					mov pax, MazeAmb
+					invoke alSourceStop, DWORD PTR [pax]
+					mov PlrHealth, FLT_1
+					mov PlrState, PLAYER_STATE_ETC
+					mov UIFadeVal, 0
+					mov Wmblyk, WMBLYK_FROZEN
+					bpMEM32 WmblykFace, TexWmblykStr[16]
+					bpMEM32 WmblykStateVal, f(4)
+					ret
+				.ELSE
+					mov PlrState, PLAYER_STATE_DYING
+					bpMEM32 WmblykStateVal, f(-1)
+				.ENDIF
 			.ELSE
 				fcmp WmblykStateVal, f(1)
 				.IF (!Carry?)
@@ -713,6 +780,18 @@ Wmblyk_Process PROC EXPORT
 		.IF (!Carry?)
 			mov Wmblyk, WMBLYK_NONE
 			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+		.ENDIF
+	.ELSEIF (Wmblyk == WMBLYK_FROZEN)
+		fld WmblykStateVal
+		fsub deltaTime
+		fstp WmblykStateVal
+		
+		.IF (WmblykStateVal & FLT_NEG)
+			mov UIDeadTipStr, OFFSET StrTipL
+			mov UIFadeVal, FLT_1
+			
+			mov PlrHealth, 0
+			mov PlrState, PLAYER_STATE_DYING
 		.ENDIF
 	.ENDIF
 	ret

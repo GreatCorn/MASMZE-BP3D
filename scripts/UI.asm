@@ -41,6 +41,8 @@ UI_SLD_T	EQU 5*UI_SCALE				; Slider tack size
 UI_TXT_H	EQU 8*UI_SCALE				; Text height
 UI_TXT_M	EQU 4*UI_SCALE				; Text margin
 
+UI_LOAD_S	EQU 48*UI_SCALE
+
 ENUM	UI_NONE, \
 		UI_BUTTON, \
 		UI_BUTTON_SMALL, \
@@ -65,7 +67,8 @@ ENUM	UIPP_NONE, \
 		UIPP_BIND, \
 		UIPP_OVERWRITE, \
 		UIPP_CONNFAIL, \
-		UIPP_SERVDISC
+		UIPP_SERVDISC, \
+		UIPP_MULTIPLAYER
 .CONST
 UISubDur	REAL4 4.0
 
@@ -111,6 +114,9 @@ UIFocusPrev			BYTE 0
 UIFocusBeforePopup	BYTE 0
 UIFocusType			BPEnum UI_NONE
 UIPressed			BYTE 0
+
+UILoadTimer			REAL4 0.0
+UILoadTex			DWORD 0
 
 UIMenuSplash		BPEnum 0
 UIMenuSplashTimer	REAL4 0.0
@@ -1411,6 +1417,11 @@ UI_DrawMenuMain PROC EXPORT
 		SIZEOF NetPortStr, ADDR SettingsIniPathAbs
 		
 		mov UIState, UI_STATE_MENU_MULTIPLAYER
+		
+		.IF !(GameTips & GAME_TIP_MULTIPLAYER)
+			mov UIPopupMenu, UIPP_MULTIPLAYER
+			or GameTips, GAME_TIP_MULTIPLAYER
+		.ENDIF
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
 	
@@ -2548,7 +2559,7 @@ UI_DrawPopupMenu PROC EXPORT
 			UIPP_CONNFAIL_H		EQU UI_TXT_H*2+UI_TXT_M + UI_BTN_H + UI_HR_H
 			
 			mov ebx, ScreenHalf.Y
-			sub ebx, UIPP_RESTART_H/2
+			sub ebx, UIPP_CONNFAIL_H/2
 			add ebx, UI_BRD_M
 			
 			invoke UI_Text, StrMenuConnFail, ScreenHalf.X, ebx, \
@@ -2570,12 +2581,46 @@ UI_DrawPopupMenu PROC EXPORT
 			UIPP_SERVDISC_H		EQU UI_TXT_H*2+UI_TXT_M + UI_BTN_H + UI_HR_H
 			
 			mov ebx, ScreenHalf.Y
-			sub ebx, UIPP_RESTART_H/2
+			sub ebx, UIPP_SERVDISC_H/2
 			add ebx, UI_BRD_M
 			
 			invoke UI_Text, StrMenuServDisc, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, 0
 			add ebx, UI_TXT_H*2+UI_TXT_M
+			
+			invoke UI_HR, ScreenHalf.X, ebx
+			add ebx, UI_HR_H
+			
+			invoke UI_Button, StrMenuOK, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER
+			.IF (al)
+				call UI_HandleMenuEscape
+			.ENDIF
+			
+		CASE UIPP_MULTIPLAYER
+			mov UIComboboxCount, 1
+			
+			UIPP_MULTIPLAYER_H	EQU UI_TXT_H*4+UI_TXT_M + UI_BTN_H + UI_HR_H*2
+			
+			mov ebx, ScreenHalf.Y
+			sub ebx, UIPP_MULTIPLAYER_H/2
+			add ebx, UI_BRD_M
+			
+			invoke UI_Text, StrMenuDisclaimer, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, 0
+			add ebx, UI_TXT_H
+			
+			invoke UI_HR, ScreenHalf.X, ebx
+			add ebx, UI_HR_H
+			
+			push bpFontWidth
+			push bpFontHeight
+			FontSize 3, 6
+			invoke UI_Text, StrMenuDiscMult, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, 0
+			pop bpFontHeight
+			pop bpFontWidth
+			add ebx, UI_TXT_H*3+UI_TXT_M
 			
 			invoke UI_HR, ScreenHalf.X, ebx
 			add ebx, UI_HR_H
@@ -2810,7 +2855,7 @@ UI_Create PROC EXPORT
 UI_Create ENDP
 
 UI_Draw PROC EXPORT
-	LOCAL flVal:REAL4
+	LOCAL flVal:REAL4, flVal1:REAL4
 	
 	.IF (SettingsGraphicsMSAA)
 		invoke glDisable, GL_MULTISAMPLE
@@ -3116,7 +3161,12 @@ UI_Draw PROC EXPORT
 		CASE PLAYER_STATE_DEAD
 			mov ebx, ScreenHalf.Y
 			sub ebx, UI_BTN_H + UI_BTN_M
-			invoke UI_Text, StrYouDied, ScreenHalf.X, ebx, \
+			.IF (UIDeadTipStr == OFFSET StrTipL)
+				mov pax, OFFSET StrDeadL
+			.ELSE
+				mov pax, StrYouDied
+			.ENDIF
+			invoke UI_Text, pax, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			add ebx, UI_BTN_H + UI_BTN_M
 			invoke UI_Text, StrLayerNumber, ScreenHalf.X, ebx, \
@@ -3134,6 +3184,38 @@ UI_Draw PROC EXPORT
 			add ebx, UI_BTN_H + UI_BTN_M
 			invoke UI_Text, ADDR NetFinishStr, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+			
+			.IF (GameComplete)
+				invoke glBindTexture, GL_TEXTURE_2D, UILoadTex
+				call glPushMatrix
+				
+				mov eax, FMain.ScreenSize.y
+				sub eax, UI_LOAD_S+UI_LOAD_S/4
+				invoke glTranslatei, UI_LOAD_S/4, eax, 0
+				
+				invoke glScalef, f(%UI_LOAD_S), f(%UI_LOAD_S), f(%UI_LOAD_S)
+				
+				fld UILoadTimer
+				frndint
+				fmul f(0.25)
+				fst flVal
+				fadd f(0.25)
+				fstp flVal1
+				
+				invoke glBegin, GL_QUADS
+					invoke glTexCoord2f, flVal, 0
+					invoke glVertex2i, 0, 1
+					invoke glTexCoord2f, flVal1, 0
+					invoke glVertex2i, 1, 1
+					invoke glTexCoord2f, flVal1, f(1)
+					invoke glVertex2i, 1, 0
+					invoke glTexCoord2f, flVal, f(1)
+					invoke glVertex2i, 0, 0
+				call glEnd
+				
+				call glPopMatrix
+			.ENDIF
+			
 		CASE PLAYER_STATE_LEADERBOARD
 			call UI_DrawLeaderboard
 	ENDSW
@@ -3150,6 +3232,12 @@ UI_Draw PROC EXPORT
 				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			CASE StrCCFightBack, StrNetCCSwitch
 				invoke UI_TextInput, UISubtitlesStr, IBAction, JBAction, \
+				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER	
+			CASE StrCCCrouch
+				invoke UI_TextInput, UISubtitlesStr, IBCrouch, JBCrouch, \
+				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER	
+			CASE StrCCPlaceGlyph
+				invoke UI_TextInput, UISubtitlesStr, IBGlyph, JBGlyph, \
 				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER				
 			DEFAULT
 				invoke UI_Text, UISubtitlesStr, ScreenHalf.X, ecx, \
@@ -3310,7 +3398,7 @@ UI_Process PROC EXPORT
 	.IF (UIWhiteFade == UI_FADE_IN)
 		mov UIWhiteFadeVal, rv(flMove, UIWhiteFadeVal, 0, deltaTime)
 		.IF (UIWhiteFadeVal == 0)
-			mov UIWhiteFadeVal, UI_FADE_NONE
+			mov UIWhiteFade, UI_FADE_NONE
 		.ENDIF
 	.ENDIF
 	
@@ -3491,6 +3579,19 @@ UI_Process PROC EXPORT
 			mov UISubtitlesTimer, 0
 		.ENDIF
 	.ENDIF
+	
+	.IF (PlrState == PLAYER_STATE_COMPLETED)
+		fcmp UILoadTimer, f(4)
+		.IF (!Sign?)
+			fld UILoadTimer
+			fsub f(4)
+			fstp UILoadTimer
+		.ENDIF
+		fld deltaTime
+		fmul f(3)
+		fadd UILoadTimer
+		fstp UILoadTimer
+	.ENDIF
 	ret
 	
 	uiMenuLogoFade:
@@ -3502,6 +3603,7 @@ UI_Process PROC EXPORT
 			mov UIFadeVal, FLT_1
 			
 			invoke alSourcePlay, SndMus[20]
+			invoke Vector3Copy, ADDR CamLightPos, ADDR MenuLight
 		.ELSEIF (UIMenuSplash == 3)
 			mov UIFadeCallback, 0
 		.ENDIF

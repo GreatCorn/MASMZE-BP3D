@@ -253,6 +253,8 @@ AsmTime		DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), \
 clAmbient	REAL4 0.2, 0.2, 0.2, 1.0
 clSky		REAL4 0.24, 0.24, 0.22, 1.0
 
+MenuLight	Vector3 <0.0, -8.0, -2.2>
+
 .DATA
 ; ----- Forms, form creation -----
 FARB	BPForm <>		; Dummy form to load wgl functions and init ARB ext
@@ -386,6 +388,14 @@ ENUM	\
 		GAME_STATE_LOBBY
 GameState		DWORD GAME_STATE_MENU
 
+GAME_COMPLETE_WASTELAND	EQU 1
+GAME_COMPLETE_CROA		EQU 2
+GameComplete	BPEnum 0
+GAME_TIP_PLACE_GLYPH	EQU 1
+GAME_TIP_CROUCH			EQU 2
+GAME_TIP_MULTIPLAYER	EQU 4
+GameTips		BPEnum 0
+
 .DATA?
 delta2		REAL4 ?
 delta10		REAL4 ?
@@ -446,6 +456,53 @@ CreateScene PROC EXPORT
 	ret
 CreateScene ENDP
 
+DrawMenuScene PROC EXPORT
+	LOCAL flVal:REAL4
+	
+	invoke glDisable, GL_LIGHTING
+	invoke glBindTexture, GL_TEXTURE_2D, 0
+	call glPushMatrix
+	invoke glTranslatef, 0, 0, f(1)
+	invoke glRotatef, f(-90), f(1), 0, 0
+	invoke glRotatef, timeStart, 0, f(1), 0
+	;invoke glScalef, f(2), f(2), f(2)
+	invoke glCallList, MdlSigil[0]
+	fld timeStart
+	fmul f(2)
+	fchs
+	sub psp, SIZEOF BPPtr
+	fstp REAL4 PTR [psp]
+	pop eax
+	invoke glRotatef, eax, 0, f(1), 0
+	invoke glCallList, MdlSigil[4]
+	call glPopMatrix
+	invoke glEnable, GL_LIGHTING
+	
+	.IF (GameComplete & GAME_COMPLETE_CROA)
+		invoke glBindTexture, GL_TEXTURE_2D, TexCroa
+		invoke glEnable, GL_ALPHA_TEST
+		
+		call glPushMatrix
+		fld FMain.Aspect
+		fadd f(0.6)
+		fstp flVal
+		invoke glTranslatef, flVal, f(-1.2), f(2)
+		invoke glRotatef, f(30), 0, f(1), 0
+		invoke glCallList, MdlTorlagg
+		call glPopMatrix
+		
+		call glPushMatrix
+		or flVal, FLT_NEG
+		invoke glTranslatef, flVal, f(-1.2), f(2)
+		invoke glRotatef, f(-30), 0, f(1), 0
+		invoke glCallList, MdlNeqaotor
+		call glPopMatrix
+		
+		invoke glDisable, GL_ALPHA_TEST
+	.ENDIF
+	ret
+DrawMenuScene ENDP
+
 DrawScene PROC EXPORT
 	IFDEF MODE_DEBUG	; Wireframe
 		.IF (Keys[VK_MBUTTON])
@@ -472,21 +529,7 @@ DrawScene PROC EXPORT
 	call Plr_Draw
 	
 	.IF (GameState == GAME_STATE_MENU) && (UIMenuSplash >= 2)
-		invoke glBindTexture, GL_TEXTURE_2D, 0
-		call glPushMatrix
-		invoke glTranslatef, 0, 0, f(1.2)
-		invoke glRotatef, f(-90), f(1), 0, 0
-		invoke glRotatef, timeStart, 0, f(1), 0
-		invoke glCallList, MdlSigil[0]
-		fld timeStart
-		fmul f(2)
-		fchs
-		sub psp, SIZEOF BPPtr
-		fstp REAL4 PTR [psp]
-		pop eax
-		invoke glRotatef, eax, 0, f(1), 0
-		invoke glCallList, MdlSigil[4]
-		call glPopMatrix
+		call DrawMenuScene
 	.ENDIF
 	IFDEF MODE_DEBUG	; Wireframe cancel
 		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
@@ -508,6 +551,8 @@ GameInit PROC EXPORT
 	mov UIState, UI_STATE_GAME
 	mov deltaScale, FLT_1
 	mov UIFadeCallback, 0
+	
+	invoke Vector3Copy, ADDR CamLightPos, ADDR Vector3Zero
 	
 	print "Finished game object initialization.", 13, 10
 	
@@ -562,7 +607,6 @@ GameStart PROC EXPORT
 			bpMEM32 CamPosL.Y, CamHeight
 			invoke Plr_Teleport, f(1), f(4)
 		.ELSE
-			invoke alSourcePlay, SndAmb
 			invoke Maze_GetRandomPos, ADDR CamPos, FALSE
 			invoke Vector32DCopy, ADDR CamPosL, ADDR CamPos
 		.ENDIF
@@ -573,6 +617,7 @@ GameStart ENDP
 GameStartNew PROC EXPORT
 	invoke alSourceStop, SndMus[20]
 	call GameInit
+	mov PlrGlyphs, 7
 	mov PlrState, PLAYER_STATE_INTRO_DARK
 	mov MazeState, MAZE_STATE_SAFE
 	mov MazeStateTimer, 0
@@ -854,12 +899,18 @@ MenuInit PROC EXPORT
 	mov PlrCanControl, FALSE
 	invoke Vector3Copy, ADDR CamPos, ADDR Vector3Zero
 	invoke Vector3Copy, ADDR CamPosL, ADDR Vector3Zero
+	invoke Vector3Copy, ADDR CamPosA, ADDR Vector3Zero
 	invoke Vector3Copy, ADDR CamRot, ADDR Vector3Zero
 	invoke Vector3Copy, ADDR CamRotL, ADDR Vector3Zero
+	invoke Vector3Copy, ADDR CamRotA, ADDR Vector3Zero
+	
+	invoke Vector3Copy, ADDR CamLightPos, ADDR MenuLight
 	
 	mov deltaScale, FLT_1
 	
 	mov PlrState, PLAYER_STATE_ETC
+	mov PlrStateCallback, 0
+	mov CamAnimPlr.TrackPtr, 0
 	mov UIState, UI_STATE_MENU_MAIN
 	
 	.IF (UIMenuSplash >= 2)
@@ -879,6 +930,7 @@ MenuInit PROC EXPORT
 	invoke SndSetGain, ADDR SndMus[20], f(0.75)
 	
 	call Maze_Exit
+	mov MazeStateCallback, 0
 	mov NetUnformed, TRUE
 	
 	PollProc UnlockMouse
@@ -915,6 +967,9 @@ ProcessScene PROC EXPORT
 	.ENDIF
 	.IF (NetSock)
 		call Net_Process
+	.ENDIF
+	.IF (GameState == GAME_STATE_MENU) && (GameComplete & GAME_COMPLETE_CROA)
+		mov CamLightPos.Y, rv(flLerp, CamLightPos.Y, 0, deltaTime)
 	.ENDIF
 	call Plr_LateProcess
 	ret
@@ -1070,7 +1125,9 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'R'
 					.IF (Maze)
 						call Maze_Free
-						.IF (Keys[VK_CONTROL])
+						.IF (Keys[VK_SHIFT])
+							mov eax, 123456789
+						.ELSEIF (Keys[VK_CONTROL])
 							mov eax, MazeStartSeed
 						.ELSE
 							mov eax, nRandSeed
@@ -1435,6 +1492,7 @@ OnRender PROC EXPORT
 	mov InputUIConfirmT, FALSE
 	
 	invoke Vector2Set, ADDR InputLook, 0, 0
+	mov PlrHeightOffset, 0
 	
 	call glFlush
 	ret
@@ -1475,6 +1533,9 @@ OnStart PROC EXPORT
 	
 	; Continue loading after OnRender calls ended
 	mov LoadState, LOADING_TEXT+1
+	
+	invoke StrShift, ADDR StrDeadL, -14
+	invoke StrShift, ADDR StrTipL, -14
 	ret
 OnStart ENDP
 

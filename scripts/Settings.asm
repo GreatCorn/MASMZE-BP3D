@@ -80,7 +80,9 @@ SettingsRegComplete		DB "Complete", 0
 SettingsRegCurLayer		DB "CurLayer", 0
 SettingsRegCurWidth		DB "CurWidth", 0
 SettingsRegCurHeight	DB "CurHeight", 0
+SettingsRegGameTips		DB "GameTips", 0
 SettingsRegGlyphs		DB "Glyphs", 0
+SettingsRegHedge		DB "Hedge", 0
 SettingsRegLayer		DB "Layer", 0
 SettingsRegMazeW		DB "MazeW", 0
 SettingsRegMazeH		DB "MazeH", 0
@@ -145,6 +147,14 @@ Settings_CheckSave PROC EXPORT
 	.ENDIF
 	print "Checking game save from "
 	print ADDR SettingsRegPath, 13, 10
+	
+	mov pcbData, 1
+	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegComplete, 0, \
+	NULL, ADDR GameComplete, ADDR pcbData
+	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegGameTips, 0, \
+	NULL, ADDR GameTips, ADDR pcbData
+	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegHedge, 0, \
+	NULL, ADDR MazeHedge, ADDR pcbData
 	
 	mov pcbData, 4
 	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCurLayer, 0, \
@@ -934,7 +944,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsInterpolation)
 		print "graphics/interpolation", 13, 10
 		.IF (SettingsGraphicsInterpolation)
-			mov al, BP_INTERPOLATE_LINEAR
+			mov al, ANIM_INTERPOLATION
 		.ELSE
 			mov al, BP_INTERPOLATE_CONSTANT
 		.ENDIF
@@ -1010,7 +1020,8 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 			invoke glDeleteTextures, 255, OFFSET bpDefaultFont
 			invoke bpLoadFont, StrLangFontPath, OFFSET bpDefaultFont
 			
-			invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
+			;invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
+			call Settings_CheckSave
 		.ENDIF
 	.ENDIF
 	ret

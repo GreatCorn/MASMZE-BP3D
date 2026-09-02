@@ -49,6 +49,7 @@ PlrCanControl	BPBool TRUE
 PlrCrouch		REAL4 0.0
 PlrForward		Vector3 <>
 PlrUp			Vector3 <0.0, 1.0, 0.0>	; Up vector for AL_ORIENTATION
+PlrHeightOffset	REAL4 0.0
 PlrRight		Vector3 <>
 PlrSpeed		REAL4 0.0	; Current absolute player speed
 PlrSpeedScaled	REAL4 0.0	; Current scaled player speed (0.0 - PlrSpeedWalk)
@@ -80,11 +81,45 @@ PlrStateCallback	BPPtr 0
 PlrStateTimer		REAL4 0.0
 
 PlrStepPitch		REAL4 1.0
+PlrStepPtr			BPPtr OFFSET SndStep
 
-PlrPartRain	ParticleSystem	<>
+PlrPartRain		ParticleSystem	<>
+PlrPartRainB	ParticleSystem	<>
 
 .CODE
 Plr_Shake PROTO :REAL4
+
+Plr_CalculateAxes PROC EXPORT
+	fld CamRotL.Y
+	fsincos
+	fst PlrForward.Z
+	fchs
+	fstp PlrRight.X
+	fst PlrForward.X
+	fstp PlrRight.Z
+	
+	fld CamRotL.X
+	fsincos
+	fld st
+	fmul PlrForward.X
+	fstp CamForward.X
+	fmul PlrForward.Z
+	fstp CamForward.Z
+	fchs
+	fstp CamForward.Y
+
+	
+	; Get billboard
+	fld CamRotL.X
+	fmul R2D
+	fchs
+	fstp CamBillboard.X
+	fld CamRotL.Y
+	fadd PI
+	fmul R2D
+	fstp CamBillboard.Y
+	ret
+Plr_CalculateAxes ENDP
 
 Plr_Control PROC EXPORT
 	LOCAL flVal:REAL4, movSpd:REAL4, velocity:Vector3
@@ -203,7 +238,6 @@ Plr_ControlLook PROC EXPORT
 			fsubr CamRot.Y
 			fstp CamRot.Y
 			mov CamRot.Y, rv(flAngle, CamRot.Y)
-			mov CamRotL.Y, rv(flAngle, CamRotL.Y)
 		.ENDIF
 	.ENDIF
 	ret
@@ -374,31 +408,50 @@ Plr_DrawIntro PROC EXPORT
 		.IF (PlrState == PLAYER_STATE_INTRO_CITY) \
 		|| (PlrState == PLAYER_STATE_INTRO_OUTSKIRTS) \
 		|| (PlrState == PLAYER_STATE_INTRO_WOODS)
-			invoke glEnable, GL_BLEND
-			invoke glDepthMask, GL_FALSE
-			invoke glDisable, GL_LIGHTING
-			;invoke glDisable, GL_CULL_FACE
-			
-			invoke glColor4f, f(0.5), f(0.5), f(0.5), f(0.5)
-			
-			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
-			invoke glBindTexture, GL_TEXTURE_2D, 0
-			call glPushMatrix
-			invoke glScalef, f(1), f(8), f(1)
-			;invoke glRotatef, f(180), 0, f(1), 0
-			invoke Particles_Draw, ADDR PlrPartRain
-			call glPopMatrix
-			
-			invoke glDisable, GL_BLEND
-			invoke glDepthMask, GL_TRUE
-			invoke glEnable, GL_LIGHTING
-			;invoke glEnable, GL_CULL_FACE
-			
-			invoke glColor4fv, OFFSET clWhite
+			call Plr_DrawRain
 		.ENDIF
 	.ENDIF
 	ret
 Plr_DrawIntro ENDP
+
+Plr_DrawRain PROC EXPORT
+	invoke glEnable, GL_BLEND
+	invoke glDepthMask, GL_FALSE
+	invoke glDisable, GL_LIGHTING
+	invoke glDisable, GL_CULL_FACE
+	
+	invoke glColor4f, f(0.5), f(0.5), f(0.5), f(0.5)
+	
+	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+	invoke glBindTexture, GL_TEXTURE_2D, TexRaindrop
+	call glPushMatrix
+	invoke glScalef, f(1), f(6), f(1)
+	;invoke glRotatef, f(180), 0, f(1), 0
+	.IF (MazeState == MAZE_STATE_HEDGE)
+		mov eax, CamRotL.X
+		and eax, not FLT_NEG
+		fcmp eax, PIQuarter
+		.IF (!Carry?)
+			mov ParticlesDotCull, FALSE
+		.ENDIF
+	.ENDIF
+	invoke Particles_Draw, ADDR PlrPartRain
+	call glPopMatrix
+	
+	.IF (MazeState == MAZE_STATE_HEDGE)
+		mov ParticlesDotCull, TRUE
+		invoke glBindTexture, GL_TEXTURE_2D, TexRainsplash
+		invoke Particles_Draw, OFFSET PlrPartRainB
+	.ENDIF
+	
+	invoke glDisable, GL_BLEND
+	invoke glDepthMask, GL_TRUE
+	invoke glEnable, GL_LIGHTING
+	invoke glEnable, GL_CULL_FACE
+	
+	invoke glColor4fv, OFFSET clWhite
+	ret
+Plr_DrawRain ENDP
 
 ;   Checks if a point is in the (2D) frustum of the player camera
 Plr_FrustumDot PROC EXPORT Position:BPPtr
@@ -426,6 +479,9 @@ Plr_LateProcess PROC EXPORT
 	.ENDIF
 	invoke Vector3Copy, ADDR v3Val, pax
 	invoke Vector3Add, ADDR v3Val, ADDR CamPos
+	fld v3Val.Y
+	fadd PlrHeightOffset
+	fstp v3Val.Y
 	.IF (SettingsMiscCameraBobbing)
 		invoke Vector3Lerp, ADDR CamPosL, ADDR v3Val, delta10
 	.ELSE
@@ -446,6 +502,7 @@ Plr_LateProcess PROC EXPORT
 	.ELSE
 		invoke Vector3Copy, ADDR CamRotL, ADDR v3Val
 	.ENDIF
+	mov CamRotL.Y, rv(flAngle, CamRotL.Y)
 	;invoke Vector3LerpAngle, ADDR CamRotL, ADDR v3Val, flVal
 	
 	.IF (PlrCanControl)
@@ -465,6 +522,8 @@ Plr_LateProcess PROC EXPORT
 Plr_LateProcess ENDP
 
 Plr_PlaceGlyph PROC EXPORT PosPtr:BPPtr, Angle:REAL4, Sock:DWORD
+	LOCAL v3Val:Vector3
+	
 	invoke SndSetPos, SndScribble, PosPtr
 	invoke alSourcePlay, SndScribble
 
@@ -496,6 +555,44 @@ Plr_PlaceGlyph PROC EXPORT PosPtr:BPPtr, Angle:REAL4, Sock:DWORD
 	
 	.IF (NetSock) && (Sock)
 		invoke Net_FormSend, NET_MAZE_ELEMENTS, Sock
+	.ELSEIF (MazeState == MAZE_STATE_HEDGE)
+		push pbx
+		xor bl, bl
+		
+		mov eax, MazeSize[0]
+		shr eax, 1
+		dec eax
+		mov ecx, MazeSize[8]
+		dec ecx
+		mov edx, MazeSize[12]
+		dec edx
+		.IF (MazePlrPos.X == eax) && (MazePlrPos.Y == 1) && !(MazeHedge & 001b)
+			mov bl, 1
+			or MazeHedge, 001b
+		.ELSEIF (MazePlrPos.X == 1) && (MazePlrPos.Y == edx) && \
+		!(MazeHedge & 010b)
+			mov bl, 2
+			or MazeHedge, 010b
+		.ELSEIF (MazePlrPos.X == ecx) && (MazePlrPos.Y == edx) && \
+		!(MazeHedge & 100b)
+			mov bl, 3
+			or MazeHedge, 100b
+		.ENDIF
+		
+		.IF (bl)
+			dec PlrGlyphsInMaze
+			mov UIWhiteFade, UI_FADE_IN
+			mov UIWhiteFadeVal, FLT_1
+			invoke alSourcePlay, SndDistress
+		.ENDIF
+		
+		mov al, MazeHedge
+		and al, 00000111b
+		.IF (al == 111b) && !(MazeHedge & 1000b)
+			vinvoke UI_ShowSubtitles, StrCCKneel, UISubDur
+		.ENDIF
+		
+		pop pbx
 	.ENDIF
 	ret
 Plr_PlaceGlyph ENDP
@@ -508,7 +605,7 @@ Plr_ProcessState PROC EXPORT
 		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamEnter
 		invoke bpProcessAnimPlayer, ADDR CamAnimPlr, 0
-		mov CamAnimPlr.Interpolation, BP_INTERPOLATE_LINEAR
+		mov CamAnimPlr.Interpolation, ANIM_INTERPOLATION
 		
 		.IF (NetSock)
 			call Net_LeaderboardClear
@@ -553,16 +650,15 @@ Plr_ProcessState PROC EXPORT
 		
 		; Random flavor text subtitles
 		invoke nRand, 20
-		.IF (pax < 7) && (pax != UISubLastRandom)
+		.IF (pax < 7) && (pax != UISubLastRandom) && \
+		(MazeState == MAZE_STATE_GAME)
 			mov UISubLastRandom, pax
 			vinvoke UI_ShowSubtitles, StrCCRandom1[pax*SIZEOF BPPtr], UISubDur
 		.ENDIF
 		
-		.IF (MazeState == MAZE_STATE_GAME)
-			.IF (rv(SndPlaying, SndAmb) == AL_STOPPED)
-				invoke SndSetGain, ADDR SndAmb, f(1)
-				invoke alSourcePlay, SndAmb
-			.ENDIF
+		.IF (MazeLayer == 3) && !(GameTips & GAME_TIP_PLACE_GLYPH)
+			vinvoke UI_ShowSubtitles, StrCCPlaceGlyph, UISubDur
+			or GameTips, GAME_TIP_PLACE_GLYPH
 		.ENDIF
 		ret
 	.ELSEIF (PlrState == PLAYER_STATE_EXIT)
@@ -667,13 +763,13 @@ Plr_ProcessState PROC EXPORT
 		;bpMEM32 CamRot.X, WmblykStateVal
 		fld WmblykStateVal
 		fmul st, st
-		fmul f(1.5)
+		fmul f(1.2)
 		fstp CamRot.X
 		.IF (WmblykStateVal & FLT_NEG)
 			xor CamRot.X, FLT_NEG
 		.ENDIF
 		fld CamRot.X
-		fsub f(0.3)
+		fsub f(0.2)
 		fstp CamRot.X
 		
 		; Change cam height
@@ -737,6 +833,7 @@ Plr_ProcessState PROC EXPORT
 					mov PlrStateCallback, OFFSET plrDeadSpectate
 				.ELSE
 					vinvoke Settings_EraseSave, TRUE
+					call Maze_Exit
 				.ENDIF
 				mov PlrState, PLAYER_STATE_DEAD
 				invoke alSourcePlay, SndDeath
@@ -752,8 +849,6 @@ Plr_ProcessState PROC EXPORT
 			invoke SndFade, ADDR SndKubaleV, 0, deltaTime
 			invoke SndFade, ADDR SndWmblykStrM, 0, deltaTime
 			;invoke SndFade, ADDR SndWmblykB, 0, deltaTime
-		.ELSEIF (PlrState == PLAYER_STATE_DEAD)
-			call Maze_ResetEntities
 		.ENDIF
 	.ELSEIF (PlrState == PLAYER_STATE_SPECTATE)
 		mov PlrCollide, FALSE
@@ -897,6 +992,9 @@ Plr_ProcessState PROC EXPORT
 				&& (NetPlayersV[pax].PlrState < PLAYER_STATE_SPECTATE)
 					; Alive player found, don't end round yet
 					mov PlrState, PLAYER_STATE_COMPLETED
+					invoke nRand, 3
+					shl pax, 2
+					bpMEM32 UILoadTex, TexLoad[pax]
 					.BREAK
 				.ENDIF
 				add pax, SIZEOF NetPlayer
@@ -977,7 +1075,7 @@ Plr_Step PROC EXPORT HalfStep:BPBool
 		not al
 		mov PlrPlayStep, al
 		
-		invoke PlayRandomSnd, ADDR SndStep, 4
+		invoke PlayRandomSnd, PlrStepPtr, 4
 		push pax
 		fld PlrSpeedScaled
 		fmul st, st
@@ -1012,15 +1110,26 @@ Plr_Create PROC EXPORT
 	
 	
 	mov PlrPartRain.Billboard, PARTICLE_BILLBOARD_Y
-	mov PlrPartRain.Count, 256
-	invoke Vector2Set, ADDR PlrPartRain.Distance, 0, f(4)
+	mov PlrPartRain.Count, 360
+	invoke Vector2Set, ADDR PlrPartRain.Distance, 0, f(5)
 	mov PlrPartRain.Looping, TRUE
 	mov PlrPartRain.VelocityAffects, PARTICLE_VELOCITY_POSITION
 	invoke Vector2Set, ADDR PlrPartRain.Lifetime, f(0.4), f(0.8)
 	mov PlrPartRain.Gravity, TRUE
-	invoke Vector2Set, ADDR PlrPartRain.Scale, f(0.01), f(0.03)
-	vinvoke Vector3Copy, OFFSET PlrPartRain.Position, OFFSET CamPos
+	invoke Vector2Set, ADDR PlrPartRain.Scale, f(0.03), f(0.05)
 	invoke Particles_Create, ADDR PlrPartRain
+	
+	mov PlrPartRainB.Billboard, PARTICLE_BILLBOARD_Y
+	mov PlrPartRainB.Count, 64
+	mov PlrPartRainB.Fade, PARTICLE_FADE_OUT
+	;invoke Vector2Set, ADDR PlrPartRainB.Distance, 0, 0
+	;mov PlrPartRainB.VelocityAffects, PARTICLE_VELOCITY_POSITION
+	invoke Vector2Set, ADDR PlrPartRainB.Lifetime, f(0.2), f(0.3)
+	mov PlrPartRainB.Gravity, TRUE
+	invoke Vector2Set, ADDR PlrPartRainB.Scale, f(0.06), f(0.08)
+	;invoke Vector2Set, ADDR PlrPartRainB.Velocity, f(0.1), f(0.2)
+	;bpMEM32 PlrPartRainB.Position.Y, f(0.05)
+	invoke Particles_Create, ADDR PlrPartRainB
 	ret
 Plr_Create ENDP
 
@@ -1045,34 +1154,7 @@ Plr_Process PROC EXPORT
 	invoke Vector3RoundInt, ADDR CamPosI
 	
 	; Get forward & right
-	fld CamRotL.Y
-	fsincos
-	fst PlrForward.Z
-	fchs
-	fstp PlrRight.X
-	fst PlrForward.X
-	fstp PlrRight.Z
-	
-	fld CamRotL.X
-	fsincos
-	fld st
-	fmul PlrForward.X
-	fstp CamForward.X
-	fmul PlrForward.Z
-	fstp CamForward.Z
-	fchs
-	fstp CamForward.Y
-
-	
-	; Get billboard
-	fld CamRotL.X
-	fmul R2D
-	fchs
-	fstp CamBillboard.X
-	fld CamRotL.Y
-	fadd PI
-	fmul R2D
-	fstp CamBillboard.Y
+	call Plr_CalculateAxes
 	
 	; Move & rotate
 	.IF (PlrCanControl)

@@ -44,9 +44,11 @@ ParticleSystem ENDS
 
 .DATA
 ParticleColor		REAL4 1.0, 1.0, 1.0, 1.0
-ParticleGravity		REAL4 9.1
+ParticleGravity		REAL4 5.0
 ParticleMaxAlpha	REAL4 1.0
 ParticleFadeDist	REAL4 0.022
+
+ParticlesDotCull	BPBool TRUE
 
 .DATA?
 ListParticle	DWORD ?
@@ -101,12 +103,14 @@ Particles_Draw PROC EXPORT ParSysPtr:BPPtr
 			.CONTINUE
 		.ENDIF
 		IFDEF PARTICLES_DOT_CULL
-		mov Alpha, vrv(Plr_FrustumDot, ADDR [pbx].Position)
-		fcmp Alpha, f(0.2)
-		.IF (Carry?)
-			add pbx, SIZEOF Particle
-			mov pcx, ParSysPtr
-			.CONTINUE
+		.IF (ParticlesDotCull)
+			mov Alpha, vrv(Plr_FrustumDot, ADDR [pbx].Position)
+			fcmp Alpha, f(0.2)
+			.IF (Carry?)
+				add pbx, SIZEOF Particle
+				mov pcx, ParSysPtr
+				.CONTINUE
+			.ENDIF
 		.ENDIF
 		ENDIF
 		

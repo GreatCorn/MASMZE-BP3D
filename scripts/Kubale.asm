@@ -186,7 +186,7 @@ Kubale_Process PROC EXPORT
 			.IF (!Carry?)
 				or KubaleAction, KUBALE_ACT_MOVE
 				
-				invoke alSourcefv, SndKubale, AL_POSITION, ADDR KubalePos
+				invoke SndSetPos, SndKubale, ADDR KubalePos
 				
 				fld dist
 				fmul deltaTime

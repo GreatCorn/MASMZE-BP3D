@@ -33,6 +33,8 @@ SV	StrMenuCancel
 SV	StrMenuSave
 SV	StrMenuDiscard
 SV	StrMenuOff	; eh ha heh heh
+SV	StrMenuDisclaimer
+SV	StrMenuDiscMult
 SV	StrMenuDiscardSett
 SV	StrMenuRestartSett
 SV	StrMenuGraphics
@@ -109,12 +111,16 @@ SV	StrYouDied
 SV	StrCCCheckpoint
 SV	StrCCClose
 SV	StrCCCompass
+SV	StrCCCrouch
 SV	StrCCFightBack
 SV	StrCCGlyphs
 SV	StrCCGlyphsNone
 SV	StrCCGlyphsRestore
+SV	StrCCHedge
 SV	StrCCKey
+SV	StrCCKneel
 SV	StrCCLoad
+SV	StrCCPlaceGlyph
 SV	StrCCRandom1
 SV	StrCCRandom2
 SV	StrCCRandom3
@@ -131,6 +137,7 @@ SV	StrCCShopNo
 SV	StrCCTeleport
 SV	StrCCTeleportBad
 SV	StrCCTrench
+SV	StrCCWaitPlayers
 SV	StrTipEBD
 SV	StrTipHBD
 SV	StrTipKubale

@@ -63,6 +63,7 @@ NetMazeElements STRUCT
 	PlrGlyphsInMaze	DWORD ?
 	PlrGlyphPos		Vector3 7 DUP (<?,?,?>)
 	PlrGlyphRot		REAL4 7 DUP (?)
+	MazeCheck		BYTE ?
 	MazeItems		BYTE ?
 	MazeLocked		BYTE ?
 	MazeShop		BYTE ?
@@ -89,6 +90,7 @@ NetMazeEntities STRUCT
 NetMazeEntities ENDS
 	
 NPS_WOUNDED EQU 1
+NPS_CROUCH	EQU 2
 	
 NET_BUFFER_SIZE	EQU 320
 NET_MAX_PLAYERS	EQU 8
