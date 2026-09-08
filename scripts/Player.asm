@@ -671,7 +671,11 @@ Plr_ProcessState PROC EXPORT
 		mov PlrState, PLAYER_STATE_EXITING
 		mov PlrStateCallback, 0
 		
-		invoke alSourcePlay, SndExit
+		.IF (MazeElevator)
+			invoke alSourcePlay, SndExit2
+		.ELSE
+			invoke alSourcePlay, SndExit
+		.ENDIF
 		ret
 	.ELSEIF (PlrState == PLAYER_STATE_EXITING)
 		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-100), delta2)
@@ -1052,6 +1056,12 @@ Plr_Progress PROC EXPORT
 	ret
 Plr_Progress ENDP
 
+Plr_Reset PROC EXPORT
+	mov PlrGlyphs, 7
+	mov PlrItems, 0
+	ret
+Plr_Reset ENDP
+
 ;   Shake screen (through CamRotL)
 Plr_Shake PROC Amplitude:REAL4
 	LOCAL v3Val:Vector3
@@ -1172,7 +1182,8 @@ Plr_Process PROC EXPORT
 		.ENDIF
 		ENDIF
 		.IF (PlrItems & MAZE_ITEM_COMPASS)
-			.IF (MazeLocked == MAZE_LOCK_LOCKED)
+			.IF (MazeLocked == MAZE_LOCK_LOCKED) || \
+			(MazeLocked == MAZE_LOCK_LOCKED_JAPE)
 				mov pax, OFFSET MazeKeyPos
 			.ELSE
 				mov pax, OFFSET MazeDoorPos

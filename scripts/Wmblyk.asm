@@ -38,6 +38,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 	
 	.IF (State == WMBLYK_NONE)
 		invoke alSourceStop, SndWmblykB
+		invoke alSourceStop, SndWmblykSpin
 		invoke alSourceStop, SndWmblykStrM
 	.ELSEIF (State == WMBLYK_STILL)
 		invoke Maze_GetRandomPos, ADDR WmblykPos, FALSE
@@ -239,10 +240,20 @@ Wmblyk_Process PROC EXPORT
 				.ELSE
 					fcmp WmblykCellPos.X, f(-6.0)
 					.IF (Carry?)
-						bpMEM32 WmblykFace, TexWmblykWait[8]
+						.IF (GameComplete & GAME_COMPLETE_SPLASH)
+							mov eax, TexWmblykL
+						.ELSE
+							mov eax, TexWmblykWait[8]
+						.ENDIF
+						mov WmblykFace, eax
 					.ELSE
-						invoke nRand, 2
-						bpMEM32 WmblykFace, TexWmblykWait[pax*4]
+						.IF (GameComplete & GAME_COMPLETE_SPLASH)
+							mov eax, TexWmblykStr[16]
+						.ELSE
+							invoke nRand, 2
+							mov eax, TexWmblykWait[pax*4]
+						.ENDIF
+						mov WmblykFace, eax
 					.ENDIF
 				.ENDIF
 			.ENDIF
@@ -417,7 +428,22 @@ Wmblyk_Process PROC EXPORT
 		.ELSEIF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykWalk)
 			vinvoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykWalk
 		.ENDIF
-		mov MazeCrevice, FALSE
+		
+		.IF (EBD)
+			mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET EBDPos)
+			fcmp flVal, f(0.4)
+			.IF (Carry?)
+				.IF (rv(SndPlaying, SndWmblykSpin) != AL_PLAYING)
+					invoke alSourcePlay, SndWmblykSpin
+				.ENDIF
+				invoke SndSetPos, SndWmblykSpin, ADDR WmblykPos
+				mov WmblykRot, rv(flRandRange, PIN, PI)
+			.ELSE
+				.IF (rv(SndPlaying, SndWmblykSpin) == AL_PLAYING)
+					invoke alSourcePause, SndWmblykSpin
+				.ENDIF
+			.ENDIF
+		.ENDIF
 			
 		invoke Maze_GetCellOffsetF, WmblykPos.X, WmblykPos.Z
 		push pax
@@ -700,9 +726,10 @@ Wmblyk_Process PROC EXPORT
 					bpMEM32 CamRot.X, f(-0.9)
 					bpMEM32 CamRotL.X, f(-0.9)
 					call Plr_CalculateAxes
-					invoke Vector3Copy, ADDR v3Val, ADDR CamForward
-					invoke Vector3MulF, ADDR v3Val, f(0.45)
-					invoke Vector3Add, ADDR CamPosL, ADDR v3Val
+					invoke Vector3Add, ADDR CamPos, ADDR CamPosA
+					invoke Vector3Copy, ADDR CamPosA, ADDR CamForward
+					invoke Vector3MulF, ADDR CamPosA, f(0.3)
+					bpMEM32 CamPosA.Y, f(0.25)
 					invoke SndSetPos, SndSplash, ADDR CamPosL
 					invoke alSourcePlay, SndSplash
 					invoke alSourceStop, SndWmblykStr
@@ -782,6 +809,8 @@ Wmblyk_Process PROC EXPORT
 			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 		.ENDIF
 	.ELSEIF (Wmblyk == WMBLYK_FROZEN)
+		invoke Vector3Lerp, ADDR CamPosA, ADDR Vector3Zero, delta10
+		
 		fld WmblykStateVal
 		fsub deltaTime
 		fstp WmblykStateVal
@@ -792,6 +821,10 @@ Wmblyk_Process PROC EXPORT
 			
 			mov PlrHealth, 0
 			mov PlrState, PLAYER_STATE_DYING
+			
+			or GameComplete, GAME_COMPLETE_SPLASH
+			vinvoke Settings_SaveEnum, OFFSET SettingsRegComplete, \
+			OFFSET GameComplete
 		.ENDIF
 	.ENDIF
 	ret

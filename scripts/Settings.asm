@@ -108,7 +108,7 @@ SettingsGraphicsGamma			REAL4 0.5
 SettingsGraphicsGammaBypass		BPBool FALSE
 SettingsGraphicsInterpolation	BPBool FALSE
 SettingsGraphicsMazeCull		DWORD 5
-SettingsGraphicsMSAA			DWORD 0
+SettingsGraphicsMSAA			DWORD 4
 SettingsGraphicsNoise			BPBool TRUE
 SettingsGraphicsParticles		BPBool TRUE
 SettingsGraphicsPixelization	BPBool TRUE
@@ -256,6 +256,13 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		call Settings_IsTrue
 		mov SettingsControlsInvertY, al
 		
+		; Smooth look
+		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
+		ADDR SettingsIniMouseSmoothing, ADDR SettingsIniTrue, \
+		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		mov SettingsControlsMouseSmoothing, al
+		
 		; Joystick
 		invoke GetPrivateProfileString, ADDR SettingsIniControls, \
 		ADDR SettingsIniJoystick, ADDR SettingsIniTrue, \
@@ -320,9 +327,7 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		ADDR SettingsIniGammaBypass, ADDR SettingsIniFalse, ADDR SettingsIniString,\
 		9, ADDR SettingsIniPathAbs
 		call Settings_IsTrue
-		.IF (al != SettingsGraphicsGammaBypass)
-			mov SettingsGraphicsGammaBypass, al
-		.ENDIF
+		mov SettingsGraphicsGammaBypass, al
 		
 		; Animation interpolation
 		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
@@ -344,7 +349,7 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		
 		; MSAA
 		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
-		ADDR SettingsIniMSAA, 0, ADDR SettingsIniPathAbs
+		ADDR SettingsIniMSAA, SettingsGraphicsMSAA, ADDR SettingsIniPathAbs
 		.IF (eax != SettingsGraphicsMSAA)
 			mov SettingsGraphicsMSAA, eax
 			invoke Settings_SetOption, OFFSET SettingsGraphicsMSAA
@@ -383,9 +388,7 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		ADDR SettingsIniPosterization,ADDR SettingsIniTrue,ADDR SettingsIniString, \
 		9, ADDR SettingsIniPathAbs
 		call Settings_IsTrue
-		.IF (al != SettingsGraphicsPosterization)
-			mov SettingsGraphicsPosterization, al
-		.ENDIF
+		mov SettingsGraphicsPosterization, al
 		
 		; Resolution
 		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
@@ -413,9 +416,7 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		ADDR SettingsIniVignette, ADDR SettingsIniTrue, ADDR SettingsIniString, \
 		9, ADDR SettingsIniPathAbs
 		call Settings_IsTrue
-		.IF (al != SettingsGraphicsVignette)
-			mov SettingsGraphicsVignette, al
-		.ENDIF
+		mov SettingsGraphicsVignette, al
 		
 		; VSync
 		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
@@ -442,6 +443,13 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		ADDR SettingsIniLanguage, ADDR SettingsIniEnUS, \
 		ADDR SettingsMiscLanguage, 255, ADDR SettingsIniPathAbs
 		invoke Settings_SetOption, OFFSET SettingsMiscLanguage
+		
+		; Camera bobbing
+		invoke GetPrivateProfileString, ADDR SettingsIniMisc, \
+		ADDR SettingsIniCameraBobbing, ADDR SettingsIniTrue, \
+		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		mov SettingsMiscCameraBobbing, al
 		
 		; Multiplayer stuff gets loaded upon opening the menu
 	.ENDIF
@@ -767,7 +775,7 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		.ELSE
 			lea pax, SettingsIniFalse
 		.ENDIF
-		invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+		invoke WritePrivateProfileStringA, ADDR SettingsIniMisc, \
 		ADDR SettingsIniCameraBobbing, pax, ADDR SettingsIniPathAbs
 		
 		invoke WritePrivateProfileStringA, ADDR SettingsIniMisc, \
@@ -780,45 +788,6 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 	.ENDIF
 	ret
 Settings_Save ENDP
-
-Settings_SaveGame PROC EXPORT Temporary:BPBool
-	IFDEF SAVEGAME_REG
-	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \
-	REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, ADDR SettingsRegistry, NULL
-	.IF (eax != ERROR_SUCCESS)
-		print "Failed to create registry key.", 13, 10
-		ret
-	.ENDIF
-	
-	.IF (Temporary)
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurLayer, 0, \
-		REG_DWORD, ADDR MazeLayer, 4
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurWidth, 0, \
-		REG_DWORD, ADDR MazeSize[0], 4
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurHeight, 0, \
-		REG_DWORD, ADDR MazeSize[4], 4
-	.ELSE
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegLayer, 0, \
-		REG_DWORD, ADDR MazeLayer, 4
-		
-		.IF (PlrItems & MAZE_ITEM_COMPASS)
-			invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCompass, \
-			0, REG_BINARY, ADDR PlrItems, 1
-		.ENDIF
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegGlyphs, 0, \
-		REG_BINARY, ADDR PlrGlyphs, 1
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeW, 0, \
-		REG_DWORD, ADDR MazeSize[0], 4
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeH, 0, \
-		REG_DWORD, ADDR MazeSize[4], 4
-	.ENDIF
-	
-	invoke RegCloseKey, SettingsRegistry
-	ELSE
-		
-	ENDIF
-	ret
-Settings_SaveGame ENDP
 
 Settings_SaveBindings PROC EXPORT
 	; Keyboard/mouse
@@ -875,6 +844,57 @@ Settings_SaveBindings PROC EXPORT
 	
 	ret
 Settings_SaveBindings ENDP
+
+Settings_SaveEnum PROC EXPORT ValStr:BPPtr, ValPtr:BPPtr
+	IFDEF SAVEGAME_REG
+	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \
+	REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, ADDR SettingsRegistry, NULL
+	
+	invoke RegSetValueExA, SettingsRegistry, ValStr, 0, REG_BINARY, ValPtr, 1
+	
+	invoke RegCloseKey, SettingsRegistry
+	ENDIF
+	ret
+Settings_SaveEnum ENDP
+
+Settings_SaveGame PROC EXPORT Temporary:BPBool
+	IFDEF SAVEGAME_REG
+	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \
+	REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, ADDR SettingsRegistry, NULL
+	.IF (eax != ERROR_SUCCESS)
+		print "Failed to create registry key.", 13, 10
+		ret
+	.ENDIF
+	
+	.IF (Temporary)
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurLayer, 0, \
+		REG_DWORD, ADDR MazeLayer, 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurWidth, 0, \
+		REG_DWORD, ADDR MazeSize[0], 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurHeight, 0, \
+		REG_DWORD, ADDR MazeSize[4], 4
+	.ELSE
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegLayer, 0, \
+		REG_DWORD, ADDR MazeLayer, 4
+		
+		.IF (PlrItems & MAZE_ITEM_COMPASS)
+			invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCompass, \
+			0, REG_BINARY, ADDR PlrItems, 1
+		.ENDIF
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegGlyphs, 0, \
+		REG_BINARY, ADDR PlrGlyphs, 1
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeW, 0, \
+		REG_DWORD, ADDR MazeSize[0], 4
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeH, 0, \
+		REG_DWORD, ADDR MazeSize[4], 4
+	.ENDIF
+	
+	invoke RegCloseKey, SettingsRegistry
+	ELSE
+		
+	ENDIF
+	ret
+Settings_SaveGame ENDP
 
 Settings_SetMSAA PROC
 	;   Haven't found a way to set it in the middle of the game without 
@@ -945,13 +965,14 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		print "graphics/interpolation", 13, 10
 		.IF (SettingsGraphicsInterpolation)
 			mov al, ANIM_INTERPOLATION
+			mov cl, BP_INTERPOLATE_LINEAR
 		.ELSE
 			mov al, BP_INTERPOLATE_CONSTANT
 		.ENDIF
 		mov HBDAnimPlr.Interpolation, al
 		mov KubaleAnimPlr.Interpolation, al
 		mov MotryaAnimPlr.Interpolation, al
-		mov VebraAnimPlr.Interpolation, al
+		mov VebraAnimPlr.Interpolation, cl
 		mov WmblykAnimPlr.Interpolation, al
 		
 		xor pcx, pcx
@@ -990,6 +1011,8 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsUIScale)
 		print "graphics/ui scale", 13, 10
 		call UI_Resize
+
+		bpMEM32 UIScaleForMouse, SettingsGraphicsUIScale
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsVSync)
 		print "graphics/vsync", 13, 10
 		.IF (wglSwapIntervalEXT) && (FMain.GraphicsContext)
@@ -1006,6 +1029,9 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 			invoke bpSetWindowMode, ADDR FMain, SettingsGraphicsWindowMode
 		.ENDIF
 		
+	.ELSEIF (OptionPtr == OFFSET SettingsMiscCameraBobbing)
+		print "misc/camera bobbing", 13, 10
+		invoke Settings_Save, OFFSET SettingsIniMisc
 	.ELSEIF (OptionPtr == OFFSET SettingsMiscLanguage)
 		print "misc/language", 13, 10
 		invoke RtlMoveMemory, \

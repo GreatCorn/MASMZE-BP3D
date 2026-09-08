@@ -7,9 +7,10 @@ HBD			BPEnum HBD_NONE
 HBDAnimPlr	BPAnimPlayer <>
 HBDCell		Vector2 <>
 HBDPos		Vector3 <>
-HBDPosT		Vector2 <>	; Target position (in target cell)
+HBDPosT		Vector3 <>	; Target position (in target cell)
 HBDRot		REAL4 0.0, 0.0	; Displayed rotation, functional rotation
 HBDTimer	REAL4 0.0
+HBDSpeed	REAL4 1.0
 
 .CODE
 HBD_Spawn PROC EXPORT State:BPEnum
@@ -35,6 +36,14 @@ HBD_Spawn PROC EXPORT State:BPEnum
 		.ELSE
 			mov HBDTimer, rv(flRandRange, f(5), f(8))
 		.ENDIF
+		
+		.IF (MazeLayer < 22)
+			mov HBDSpeed, FLT_1
+		.ELSEIF (MazeLayer < 43)
+			bpMEM32 HBDSpeed, f(1.5)
+		.ELSE
+			bpMEM32 HBDSpeed, f(3)
+		.ENDIF
 	.ENDIF
 	ret
 HBD_Spawn ENDP
@@ -54,35 +63,54 @@ HBD_Draw PROC EXPORT
 	ret
 HBD_Draw ENDP
 
+; Programming warcrimes
 HBD_Process PROC EXPORT
 	LOCAL movePool:BYTE, v3Val:Vector3, hbdFwd:Vector3
 	
-	fld HBDTimer
-	fsub deltaTime
+	fld deltaTime
+	fmul HBDSpeed
+	fsubr HBDTimer
 	fstp HBDTimer
 	
 	.IF (HBDTimer & FLT_NEG)
 		.IF (HBD == HBD_SLEEP)			
 			.IF (NetSock && !NetHosting)
-			
+				; oughhh    i donr knoe ???
 			.ELSE
 				; Choose direction to go
 				mov movePool, 0
 				.IF (HBDCell.Y > 0)		; Up
 					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
-						or movePool, MAZE_FREE_UP
+						mov eax, HBDCell.X
+						mov ecx, HBDCell.Y
+						dec ecx
+						.IF !(MazeCrevice) || (eax != MazeCreviceCell[0]) || \
+						(ecx != MazeCreviceCell[4])
+							or movePool, MAZE_FREE_UP
+						.ENDIF						
 					.ENDIF
 				.ENDIF
 				.IF (HBDCell.X > 0)		; Left
 					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
-						or movePool, MAZE_FREE_LEFT
+						mov eax, HBDCell.X
+						mov ecx, HBDCell.Y
+						dec eax
+						.IF !(MazeCrevice) || (eax != MazeCreviceCell[0]) || \
+						(ecx != MazeCreviceCell[4])
+							or movePool, MAZE_FREE_LEFT
+						.ENDIF	
 					.ENDIF
 				.ENDIF
 				mov eax, HBDCell.Y
 				.IF (eax < MazeSize[12]); Down
 					inc HBDCell.Y
 					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
-						or movePool, MAZE_FREE_DOWN
+						mov eax, HBDCell.X
+						mov ecx, HBDCell.Y
+						.IF !(MazeCrevice) || (eax != MazeCreviceCell[0]) || \
+						(ecx != MazeCreviceCell[4])
+							or movePool, MAZE_FREE_DOWN
+						.ENDIF	
 					.ENDIF
 					dec HBDCell.Y
 				.ENDIF
@@ -90,7 +118,12 @@ HBD_Process PROC EXPORT
 				.IF (eax < MazeSize[8])	; Right
 					inc HBDCell.X
 					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
-						or movePool, MAZE_FREE_RIGHT
+						mov eax, HBDCell.X
+						mov ecx, HBDCell.Y
+						.IF !(MazeCrevice) || (eax != MazeCreviceCell[0]) || \
+						(ecx != MazeCreviceCell[4])
+							or movePool, MAZE_FREE_RIGHT
+						.ENDIF	
 					.ENDIF
 					dec HBDCell.X
 				.ENDIF
@@ -132,10 +165,10 @@ HBD_Process PROC EXPORT
 					inc HBDCell.X		
 				.ENDIF
 				
-				invoke Vector2Copy, ADDR HBDPosT, ADDR HBDCell
-				invoke Vector2F, ADDR HBDPosT
-				invoke Vector2MulF, ADDR HBDPosT, f(2)
-				invoke Vector2Add, ADDR HBDPosT, ADDR Vector2One
+				invoke Vector32DSet, ADDR HBDPosT, HBDCell.X, HBDCell.Y
+				invoke Vector32DF, ADDR HBDPosT
+				invoke Vector32DMulF, ADDR HBDPosT, f(2)
+				invoke Vector32DAdd, ADDR HBDPosT, ADDR Vector3One
 				
 				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 			.ENDIF
@@ -152,7 +185,7 @@ HBD_Process PROC EXPORT
 			mov HBD, HBD_SLEEP
 			bpMEM32 HBDTimer, f(4)
 			
-			invoke Vector32DSet, ADDR HBDPos, HBDPosT.X, HBDPosT.Y
+			invoke Vector32DCopy, ADDR HBDPos, ADDR HBDPosT
 			invoke alSourceStop, SndHBD
 			
 			mov HBDAnimPlr.Speed, FLT_1
@@ -164,14 +197,51 @@ HBD_Process PROC EXPORT
 	mov movePool, al
 	
 	.IF (HBD == HBD_MOVE)
-		mov HBDRot[0], rv(flLerpAngle, HBDRot[0], HBDRot[4], delta10)
+		fld delta10
+		fmul HBDSpeed
+		fstp v3Val.X
+		mov HBDRot[0], rv(flLerpAngle, HBDRot[0], HBDRot[4], v3Val.X)
 		fcmp HBDTimer, f(1)
 		.IF (Carry?)
-			mov HBDPos.X, rv(flMove, HBDPos.X, HBDPosT.X, delta2)
-			mov HBDPos.Z, rv(flMove, HBDPos.Z, HBDPosT.Y, delta2)
+			fld delta2
+			fmul HBDSpeed
+			fstp v3Val.X
+			invoke Vector32DMove, ADDR HBDPos, ADDR HBDPosT, v3Val.X
 			invoke SndSetPos, SndHBD, ADDR HBDPos
 			.IF (rv(SndPlaying, SndHBD) != AL_PLAYING)
 				invoke alSourcePlay, SndHBD
+			.ENDIF
+			
+			mov v3Val.X, rv(Vector32DDistanceSqr, OFFSET HBDPos, OFFSET HBDPosT)
+			invoke Maze_GetCellI, HBDCell.X, HBDCell.Y
+			and al, MAZE_CELL_PROPS
+			.IF (al == MAZE_PROP_ARCH)
+				fcmp v3Val.X, f(0.8)
+				.IF (Carry?)
+					invoke Maze_SetPropI, HBDCell.X, HBDCell.Y, 0, FALSE
+					invoke SndSetPos, SndBreak, ADDR HBDPos
+					invoke alSourcePlay, SndBreak
+					.IF (SettingsGraphicsParticles)
+						invoke Vector32DCopy, ADDR MazePartDust.Position, \
+						ADDR HBDPos
+						invoke Particles_Spawn, ADDR MazePartDust, 32
+					.ENDIF
+				.ENDIF
+			.ELSE
+				.IF (rv(SndPlaying, SndBreak) == AL_PLAYING)
+					mov v3Val.Y, \
+					rv(Vector32DDistanceSqr, OFFSET HBDPos, OFFSET CamPos)
+					fcmp v3Val.Y, f(1)
+					.IF (Carry?)
+						mov v3Val.Y, FLT_1
+					.ENDIF
+					fld v3Val.X
+					fmul f(0.3)
+					fdiv v3Val.Y
+					fstp v3Val.X
+					print real4$(v3Val.X), 13, 10
+					invoke Plr_Shake, v3Val.X
+				.ENDIF
 			.ENDIF
 	
 			.IF (movePool) && (PlrState == PLAYER_STATE_GAME)

@@ -325,6 +325,13 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 				.ENDIF
 			.ENDIF
 			
+			; Key jape
+			.IF ([pbx].MazeLocked == MAZE_LOCK_LOCKED_JAPE) && \
+			([pbx].MazeKeyPos.Y) && !(MazeKeyPos.Y)
+				invoke SndSetPos, SndKeyJape, ADDR MazeKeyPos
+				invoke alSourcePlay, SndKeyJape
+			.ENDIF
+			
 			; Glyphs
 			mov eax, [pbx].PlrGlyphs
 			.IF (PlrGlyphs != eax)
@@ -354,7 +361,9 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		
 		
 		mbm MazeCheck, [pbx].MazeCheck
+		mbm MazeElevator, [pbx].MazeElevator
 		mbm MazeItems, [pbx].MazeItems
+		invoke Vector3Copy, ADDR MazeKeyPos, ADDR [pbx].MazeKeyPos
 		mbm MazeLocked, [pbx].MazeLocked
 		mbm MazeShop, [pbx].MazeShop
 		mbm MazeSlam, [pbx].MazeSlam
@@ -516,7 +525,9 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		invoke RtlMoveMemory, ADDR [pbx].PlrGlyphRot, ADDR PlrGlyphRot, \
 		SIZEOF PlrGlyphRot
 		mbm [pbx].MazeCheck, MazeCheck
+		mbm [pbx].MazeElevator, MazeElevator
 		mbm [pbx].MazeItems, MazeItems
+		invoke Vector3Copy, ADDR [pbx].MazeKeyPos, ADDR MazeKeyPos
 		mbm [pbx].MazeLocked, MazeLocked
 		mbm [pbx].MazeShop, MazeShop
 		mbm [pbx].MazeSlam, MazeSlam
@@ -599,6 +610,7 @@ Net_FormSend ENDP
 
 ; For players joining when a game is in progress
 Net_GameInit PROC EXPORT
+	call Plr_Reset
 	call GameInit
 	invoke alSourceStop, SndMus[20]
 	call Net_LeaderboardClear
@@ -749,6 +761,8 @@ Net_LeaderboardClear PROC EXPORT
 Net_LeaderboardClear ENDP
 
 Net_LobbyInit PROC EXPORT
+	call Plr_Reset
+
 	mov UITextPopupStr, 0
 	
 	.IF (rv(SndPlaying, SndMus[20]) != AL_PLAYING)
@@ -1033,12 +1047,7 @@ Net_Draw PROC EXPORT
 			; Draw scarf
 			invoke glDisable, GL_CULL_FACE
 			invoke glBindTexture, GL_TEXTURE_2D, TexPlrBody
-			.IF !(SettingsGraphicsInterpolation)
-				call glPushMatrix
-				invoke glRotatefr, NetPlayersVL[pbx].BodyRot, 0, f(1), 0
-				invoke glCallList, MdlPlrScarfStatic	; Draw static scarf
-				call glPopMatrix
-			.ELSE
+			.IF (SettingsGraphicsInterpolation)
 				mov pax, pbx
 				shr pax, NetPlayerShift
 				shl pax, BPPtrShift
@@ -1047,6 +1056,11 @@ Net_Draw PROC EXPORT
 				invoke glTexCoordPointer, 2, GL_FLOAT, 0, MeshPlrScarf.TexCoords
 				invoke glNormalPointer, GL_FLOAT, 0, MeshPlrScarf.Normals
 				invoke glDrawArrays, GL_TRIANGLES, 0, MeshPlrScarf.Count
+			.ELSE
+				call glPushMatrix
+				invoke glRotatefr, NetPlayersVL[pbx].BodyRot, 0, f(1), 0
+				invoke glCallList, MdlPlrScarfStatic	; Draw static scarf
+				call glPopMatrix
 			.ENDIF
 			invoke glEnable, GL_CULL_FACE
 			

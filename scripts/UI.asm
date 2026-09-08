@@ -2149,6 +2149,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	.IF (al)
 		fld resEnum
 		fistp SettingsGraphicsMazeCull
+		mov SettingsChanged, TRUE
 	.ENDIF
 	invoke UI_ShowTextPopupHint, StrMenuHintMazeCull, TRUE
 	mov UISliderZeros, TRUE
@@ -2628,6 +2629,7 @@ UI_DrawPopupMenu PROC EXPORT
 			invoke UI_Button, StrMenuOK, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER
 			.IF (al)
+				invoke Settings_SaveEnum, ADDR SettingsRegGameTips,ADDR GameTips
 				call UI_HandleMenuEscape
 			.ENDIF
 			
@@ -3227,7 +3229,7 @@ UI_Draw PROC EXPORT
 		sub ecx, UI_BTN_H*2
 		; Input hint subtitles
 		SWITCH UISubtitlesStr
-			CASE StrCCCheckpoint, StrCCSaveErase, StrCCShop
+			CASE StrCCCheckpoint, StrCCElevator, StrCCSaveErase, StrCCShop
 				invoke UI_TextInput, UISubtitlesStr, IBConfirm, JBConfirm, \
 				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			CASE StrCCFightBack, StrNetCCSwitch

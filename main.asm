@@ -253,6 +253,8 @@ AsmTime		DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), \
 clAmbient	REAL4 0.2, 0.2, 0.2, 1.0
 clSky		REAL4 0.24, 0.24, 0.22, 1.0
 
+FogMinLn	REAL4 4.605170186	; -ln(0.01), when GL_EXP
+
 MenuLight	Vector3 <0.0, -8.0, -2.2>
 
 .DATA
@@ -371,7 +373,9 @@ InputPlayers			BPPtr FALSE
 
 CapsLock		BPBool FALSE
 ClearBuffers	BPBool TRUE
-FogDensity		REAL4 0.5
+FogDensity		REAL4 0.5, 0.0	; Current, previous
+FogEndDist		REAL4 ?
+FogEndDistSqr	REAL4 ?
 
 PollProcPtr		BPPtr (-1)
 PollProcStack	BPPtr 8 dup (0)
@@ -390,6 +394,7 @@ GameState		DWORD GAME_STATE_MENU
 
 GAME_COMPLETE_WASTELAND	EQU 1
 GAME_COMPLETE_CROA		EQU 2
+GAME_COMPLETE_SPLASH	EQU 4
 GameComplete	BPEnum 0
 GAME_TIP_PLACE_GLYPH	EQU 1
 GAME_TIP_CROUCH			EQU 2
@@ -435,9 +440,11 @@ include scripts\Maze.asm
 
 include scripts\Player.asm
 
+include scripts\EBD.asm
 include scripts\HBD.asm
 include scripts\Kubale.asm
 include scripts\Vebra.asm
+include scripts\WBBK.asm
 include scripts\Wmblyk.asm
 
 SAVEGAME_REG	EQU <1>
@@ -511,6 +518,9 @@ DrawScene PROC EXPORT
 		.ENDIF
 	ENDIF
 	call Maze_Draw
+	.IF (EBD)
+		call EBD_Draw
+	.ENDIF
 	.IF (HBD)
 		call HBD_Draw
 	.ENDIF
@@ -519,6 +529,9 @@ DrawScene PROC EXPORT
 	.ENDIF
 	.IF (Vebra)
 		call Vebra_Draw
+	.ENDIF
+	.IF (WBBK)
+		call WBBK_Draw
 	.ENDIF
 	.IF (Wmblyk)
 		call Wmblyk_Draw
@@ -571,6 +584,7 @@ GameInit ENDP
 
 GameStart PROC EXPORT
 	mov PlrCanControl, TRUE
+	mov PlrHealth, FLT_1
 	mov PlrStateCallback, 0
 	bpMEM32 CamBaseFOV, f(75)
 	
@@ -615,13 +629,16 @@ GameStart PROC EXPORT
 GameStart ENDP
 
 GameStartNew PROC EXPORT
-	invoke alSourceStop, SndMus[20]
+	.IF !(NetSock)
+		invoke alSourceStop, SndMus[20]
+	.ENDIF
 	call GameInit
-	mov PlrGlyphs, 7
+	call Plr_Reset
 	mov PlrState, PLAYER_STATE_INTRO_DARK
+	mov MazeLayer, 1
+	invoke Vector2Set, ADDR MazeSize, 5, 5
 	mov MazeState, MAZE_STATE_SAFE
 	mov MazeStateTimer, 0
-	mov MazeLayer, 1
 	mov UIFade, UI_FADE_NONE
 	mov UIFadeVal, 0
 	mov GameState, GAME_STATE_GAME
@@ -953,6 +970,9 @@ PauseGame ENDP
 ProcessScene PROC EXPORT
 	call Plr_Process
 	call Maze_Process
+	.IF (EBD)
+		call EBD_Process
+	.ENDIF
 	.IF (HBD)
 		call HBD_Process
 	.ENDIF
@@ -961,6 +981,9 @@ ProcessScene PROC EXPORT
 	.ENDIF
 	.IF (Vebra)
 		call Vebra_Process
+	.ENDIF
+	.IF (WBBK)
+		call WBBK_Process
 	.ENDIF
 	.IF (Wmblyk)
 		call Wmblyk_Process
@@ -997,7 +1020,7 @@ OnCreate PROC EXPORT
 OnCreate ENDP
 
 OnFixed PROC EXPORT
-	.IF (deltaScale)
+	.IF (deltaScale) || ((MazeMotryaSeen) && (MazeMotrya))
 		call FixedScene
 	.ENDIF
 	ret
@@ -1032,7 +1055,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 		mov al, [pbx].Pressed
 		mov pcx, [pbx].Keycode
 		
-		.IF (pcx < 256)
+		.IF (pcx < 256) && ([pbx].Keycode != VK_MWHEEL_DOWN) && \
+		([pbx].Keycode != VK_MWHEEL_UP)
 			.IF (Keys[pcx] == al)
 				ret
 			.ENDIF
@@ -1103,9 +1127,9 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputUIConfirm, TRUE
 					mov InputUIConfirmT, TRUE
 				CASE VK_MWHEEL_DOWN
-					sub UIScroll, 12
+					sub UIScroll, UI_BTN_H + UI_BTN_M
 				CASE VK_MWHEEL_UP
-					add UIScroll, 12
+					add UIScroll, UI_BTN_H + UI_BTN_M
 					
 				IFDEF MODE_DEBUG
 				CASE 'C'
@@ -1156,6 +1180,9 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					.ENDIF
 				CASE 'X'
 					mov PlrState, PLAYER_STATE_ENTER
+				CASE 'Z'
+					mov MazeMotrya, 0
+					mov MazeMotryaTimer, 0
 				CASE VK_OEM_PLUS
 					.IF (Keys[VK_SHIFT])
 						add MazeLayer, 5
@@ -1458,6 +1485,16 @@ OnRender PROC EXPORT
 	invoke Vector3Negate, ADDR CamPosL
 	invoke glTranslate3fv, ADDR CamPosL
 	Vector3Pop CamPosL
+	
+	mov eax, FogDensity
+	.IF (FogDensity[4] != eax)
+		mov FogDensity[4], eax
+		fld FogMinLn
+		fdiv FogDensity
+		fst FogEndDist
+		fmul st, st
+		fstp FogEndDistSqr
+	.ENDIF
 	
 	; Drawing
 	invoke glColor4fv, OFFSET clWhite

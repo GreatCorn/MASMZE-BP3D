@@ -64,7 +64,9 @@ NetMazeElements STRUCT
 	PlrGlyphPos		Vector3 7 DUP (<?,?,?>)
 	PlrGlyphRot		REAL4 7 DUP (?)
 	MazeCheck		BYTE ?
+	MazeElevator	BYTE ?
 	MazeItems		BYTE ?
+	MazeKeyPos		Vector3 <?,?,?>
 	MazeLocked		BYTE ?
 	MazeShop		BYTE ?
 	MazeSlam		BYTE ?

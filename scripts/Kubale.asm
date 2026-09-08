@@ -232,7 +232,7 @@ Kubale_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 		.IF (al)
-			.IF (Maze) && (KubaleAction & KUBALE_ACT_MOVE)	; Just in case
+			.IF (Maze) ;&& (KubaleAction & KUBALE_ACT_MOVE)	; Just in case
 				invoke Maze_CollideLayout, ADDR KubalePos, f(1.6), FALSE
 			.ENDIF
 			

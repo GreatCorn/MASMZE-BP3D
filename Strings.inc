@@ -112,6 +112,7 @@ SV	StrCCCheckpoint
 SV	StrCCClose
 SV	StrCCCompass
 SV	StrCCCrouch
+SV	StrCCElevator
 SV	StrCCFightBack
 SV	StrCCGlyphs
 SV	StrCCGlyphsNone
