@@ -33,6 +33,7 @@ WBBK_Spawn PROC EXPORT State:BPEnum
 		mov PlrStepPitch, FLT_1
 		invoke alSourcef, SndAmbT, AL_PITCH, FLT_1
 		invoke alSourceStop, SndAmbT
+		invoke alSourceStop, SndWBBK
 		
 		invoke glLightf, GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0
 		
@@ -65,6 +66,8 @@ WBBK_Draw PROC EXPORT
 WBBK_Draw ENDP
 
 WBBK_Process PROC EXPORT
+	LOCAL v3Val:Vector3
+	
 	.IF (WBBK == WBBK_ABSTRACTED)		
 		fld WBBKTimer
 		fsub deltaTime
@@ -78,7 +81,7 @@ WBBK_Process PROC EXPORT
 			.ENDIF
 			mov WBBKDist, rv(flMove, WBBKDist, 0, deltaTime)
 			.IF !(WBBKDist)
-				bpMEM32 WBBKTimer, f(10)
+				bpMEM32 WBBKTimer, f(20)
 				invoke alSourceStop, SndWBBK
 			.ENDIF
 		.ELSE
@@ -105,6 +108,25 @@ WBBK_Process PROC EXPORT
 		fstp WBBKPos.X
 	.ELSE
 	
+	.ENDIF
+	
+	fld MazeNoiseTimer
+	fsub deltaTime
+	fstp MazeNoiseTimer
+	
+	.IF (MazeNoiseTimer & FLT_NEG)
+		mov MazeNoiseTimer, \
+		rv(flRandRange, MazeNoiseTimer[4], MazeNoiseTimer[8])
+		fld MazeNoiseTimer
+		fmul f(0.5)
+		fstp MazeNoiseTimer
+		
+		mov v3Val.X, rv(flRandRange, f(-4), f(4))
+		mov v3Val.Z, rv(flRandRange, f(-4), f(4))
+		vinvoke Vector32DAdd, ADDR v3Val, OFFSET CamPos
+		invoke PlayRandomSnd, ADDR SndAmbW, (SIZEOF SndAmbW)/4
+		mov pcx, pax
+		invoke SndSetPos, DWORD PTR [pcx], ADDR v3Val
 	.ENDIF
 	ret
 WBBK_Process ENDP

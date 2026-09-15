@@ -296,6 +296,8 @@ Wmblyk_Process PROC EXPORT
 			fstp PlrHealth
 			
 			mov Wmblyk, WMBLYK_JUMPSCARE
+			
+			;vinvoke HDL_Alert, OFFSET WmblykPos, f(10)
 		.ELSE
 			fcmp flVal, f(0.65)
 			.IF (Carry?)

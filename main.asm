@@ -246,7 +246,7 @@ ENUM	BIND_NONE, \
 		BIND_JOYSTICK
 
 AppName 	DB "MASMZE-3D", 0	; App name & caption
-AppVersion	DB "0.8.2", 0
+AppVersion	DB "0.8.5", 0
 AsmTime		DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), \
 13, 10, 0
 
@@ -314,6 +314,7 @@ IBUIRight	BPPtr VK_RIGHT
 IBUIConfirm	BPPtr VK_RETURN
 
 IBPlayers	BPPtr VK_TAB
+IBPowerup	BPPtr VK_SHIFT
 
 ; Gamepad axes
 GAMEPAD_NEG		EQU 128
@@ -338,6 +339,8 @@ JBGlyph		BPPtr 0
 JBAction	BPPtr 1
 JBConfirm	BPPtr 8
 
+JBPlayers	BPPtr 3
+JBPowerup	BPPtr 2
 
 JBMenu		BPPtr 9
 JBCancel	BPPtr 2
@@ -370,6 +373,7 @@ InputUIConfirm			BPPtr FALSE
 InputUIConfirmT			BPPtr FALSE
 
 InputPlayers			BPPtr FALSE
+InputPowerup			BPPtr FALSE
 
 CapsLock		BPBool FALSE
 ClearBuffers	BPBool TRUE
@@ -377,10 +381,13 @@ FogDensity		REAL4 0.5, 0.0	; Current, previous
 FogEndDist		REAL4 ?
 FogEndDistSqr	REAL4 ?
 
+DrawWireframe	BPBool FALSE
+FreezeTime		BPBool FALSE
+
 PollProcPtr		BPPtr (-1)
 PollProcStack	BPPtr 8 dup (0)
 
-PollProc MACRO ProcPtr:REQ
+poll MACRO ProcPtr:REQ
 	inc PollProcPtr
 	mov pax, PollProcPtr
 	mov PollProcStack[pax*SIZEOF BPPtr], OFFSET ProcPtr
@@ -432,6 +439,8 @@ AUDIO_OPENAL	EQU <1>
 include scripts\SndUtils.asm
 include scripts\Resources.asm
 
+include scripts\HeapStack.asm
+
 include scripts\FX.asm
 include scripts\Collide.asm
 PARTICLES_DOT_CULL	EQU <1>
@@ -442,6 +451,7 @@ include scripts\Player.asm
 
 include scripts\EBD.asm
 include scripts\HBD.asm
+include scripts\HDL.asm
 include scripts\Kubale.asm
 include scripts\Vebra.asm
 include scripts\WBBK.asm
@@ -511,18 +521,20 @@ DrawMenuScene PROC EXPORT
 DrawMenuScene ENDP
 
 DrawScene PROC EXPORT
-	IFDEF MODE_DEBUG	; Wireframe
-		.IF (Keys[VK_MBUTTON])
-			invoke glPolygonMode, GL_FRONT_AND_BACK, GL_LINE
-			invoke glDisable, GL_TEXTURE_2D
-		.ENDIF
-	ENDIF
+	.IF (DrawWireframe)
+		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_LINE
+		invoke glDisable, GL_TEXTURE_2D
+	.ENDIF
+	
 	call Maze_Draw
 	.IF (EBD)
 		call EBD_Draw
 	.ENDIF
 	.IF (HBD)
 		call HBD_Draw
+	.ENDIF
+	.IF (HDL)
+		call HDL_Draw
 	.ENDIF
 	.IF (Kubale)
 		call Kubale_Draw
@@ -544,10 +556,10 @@ DrawScene PROC EXPORT
 	.IF (GameState == GAME_STATE_MENU) && (UIMenuSplash >= 2)
 		call DrawMenuScene
 	.ENDIF
-	IFDEF MODE_DEBUG	; Wireframe cancel
+	.IF (DrawWireframe)
 		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
 		invoke glEnable, GL_TEXTURE_2D
-	ENDIF
+	.ENDIF
 	ret
 DrawScene ENDP
 
@@ -573,7 +585,7 @@ GameInit PROC EXPORT
 	
 	bpMEM32 ListParticle, MdlParticle
 	
-	PollProc LockMouse
+	poll LockMouse
 	
 	.IF (NetSock)
 		mov NetScore, 0
@@ -950,7 +962,7 @@ MenuInit PROC EXPORT
 	mov MazeStateCallback, 0
 	mov NetUnformed, TRUE
 	
-	PollProc UnlockMouse
+	poll UnlockMouse
 	ret
 MenuInit ENDP
 
@@ -970,23 +982,28 @@ PauseGame ENDP
 ProcessScene PROC EXPORT
 	call Plr_Process
 	call Maze_Process
-	.IF (EBD)
-		call EBD_Process
-	.ENDIF
-	.IF (HBD)
-		call HBD_Process
-	.ENDIF
-	.IF (Kubale)
-		call Kubale_Process
-	.ENDIF
-	.IF (Vebra)
-		call Vebra_Process
-	.ENDIF
-	.IF (WBBK)
-		call WBBK_Process
-	.ENDIF
-	.IF (Wmblyk)
-		call Wmblyk_Process
+	.IF !(FreezeTime)
+		.IF (EBD)
+			call EBD_Process
+		.ENDIF
+		.IF (HBD)
+			call HBD_Process
+		.ENDIF
+		.IF (HDL)
+			call HDL_Process
+		.ENDIF
+		.IF (Kubale)
+			call Kubale_Process
+		.ENDIF
+		.IF (Vebra)
+			call Vebra_Process
+		.ENDIF
+		.IF (WBBK)
+			call WBBK_Process
+		.ENDIF
+		.IF (Wmblyk)
+			call Wmblyk_Process
+		.ENDIF
 	.ENDIF
 	.IF (NetSock)
 		call Net_Process
@@ -1136,9 +1153,20 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					.IF (Keys[VK_SHIFT])
 						xor PlrItems, MAZE_ITEM_COMPASS
 					.ENDIF
+				CASE 'E'
+					invoke EBD_Spawn, EBD_ACTIVE
+				
 				CASE 'F'
 					bpMEM32 deltaScale, f(4)
 					invoke MulSoundPitch, f(4)
+				CASE 'H'
+					.IF (Keys[VK_SHIFT])
+						mov HDLState, 0
+						mov HDLTimer, 0
+					.ELSE
+						invoke HDL_Spawn, HDL_WANDER
+						invoke Vector32DSet, ADDR HDLPos, f(1), f(1)
+					.ENDIF
 				CASE 'I'
 					mov MazeState, MAZE_STATE_WAIT_IMPACT
 					mov MazeStateTimer, 0
@@ -1164,12 +1192,21 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'K'
 					.IF (Keys[VK_SHIFT])
 						invoke Kubale_Spawn, KUBALE_EVENT
+					.ELSEIF (Keys[VK_CONTROL])
+						call Maze_ResetEntities
 					.ELSE
 						invoke Kubale_Spawn, KUBALE_ACTIVE
 					.ENDIF
 				CASE 'M'
 					call Maze_GenerateLayoutTex
 					xor PlrItems, MAZE_ITEM_MAP
+				CASE 'P'
+					mov PlrPowerupDur, FLT_1
+					mov PlrPowerupVal, 0
+					inc PlrPowerup
+					.IF (PlrPowerup > 4)
+						mov PlrPowerup, MAZE_POWERUP_NONE
+					.ENDIF
 				CASE 'B'
 					.IF (Keys[VK_SHIFT])
 						invoke Wmblyk_Spawn, WMBLYK_STEALTH_WAIT
@@ -1181,11 +1218,23 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE 'X'
 					mov PlrState, PLAYER_STATE_ENTER
 				CASE 'Z'
-					mov MazeMotrya, 0
-					mov MazeMotryaTimer, 0
+					.IF (Keys[VK_SHIFT])
+						mov MazeShn, MAZE_SHN_INEVITABLE
+						mov MazeShnTimer, 0
+					.ELSE
+						mov MazeMotrya, 0
+						mov MazeMotryaTimer, 0
+					.ENDIF
 				CASE VK_OEM_PLUS
 					.IF (Keys[VK_SHIFT])
 						add MazeLayer, 5
+					.ELSEIF (Keys[VK_CONTROL])
+						.IF (Maze)
+							inc MazeSize[0]
+							inc MazeSize[4]
+							call Maze_Free
+							invoke Maze_Generate, nRandSeed
+						.ENDIF
 					.ELSE
 						inc MazeLayer
 					.ENDIF
@@ -1195,6 +1244,13 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				CASE VK_OEM_MINUS
 					.IF (Keys[VK_SHIFT])
 						sub MazeLayer, 5
+					.ELSEIF (Keys[VK_CONTROL])
+						.IF (Maze)
+							dec MazeSize[0]
+							dec MazeSize[4]
+							call Maze_Free
+							invoke Maze_Generate, nRandSeed
+						.ENDIF
 					.ELSE
 						dec MazeLayer
 					.ENDIF
@@ -1203,6 +1259,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 
 				CASE VK_F3
 					not UIDebug
+				CASE VK_MBUTTON
+					not DrawWireframe
 				CASE '0'
 					bpMEM32 MazeCurWallMDL, MdlWall
 				CASE '1'
@@ -1250,6 +1308,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputConfirm, 1
 				CASE IBPlayers
 					mov InputPlayers, 1
+				CASE IBPowerup
+					mov InputPowerup, 1
 			ENDSW
 		.ELSE
 			SWITCH [pbx].Keycode
@@ -1304,6 +1364,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputConfirm, 0
 				CASE IBPlayers
 					mov InputPlayers, 0
+				CASE IBPowerup
+					mov InputPowerup, 0
 			ENDSW
 		.ENDIF
 	.ELSEIF (BPInType == BP_INPUT_JOY_AXIS) || (BPInType == BP_INPUT_JOY_BUTTON)		
@@ -1381,6 +1443,9 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 			invoke GPadInput, BPInType, pbx, JBGlyph, ADDR InputGlyph
 			invoke GPadInput, BPInType, pbx, JBAction, ADDR InputAction
 			invoke GPadInput, BPInType, pbx, JBConfirm, ADDR InputConfirm
+			
+			invoke GPadInput, BPInType, pbx, JBPlayers, ADDR InputPlayers
+			invoke GPadInput, BPInType, pbx, JBPowerup, ADDR InputPowerup
 		.ENDIF
 	.ENDIF
 	

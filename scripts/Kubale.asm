@@ -232,12 +232,21 @@ Kubale_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 		.IF (al)
+			; Player collision
+			invoke Collide_Distance, ADDR CamPos, ADDR KubalePos, f(0.5), dist
+			.IF (al)
+				invoke Vector32DCopy, ADDR dot, ADDR CamForward
+				invoke Vector32DMulF, ADDR dot, deltaTime
+				invoke Vector32DAdd, ADDR KubalePos, ADDR dot
+				
+				.IF (NetSock)
+					mov NetEntitiesClient, TRUE
+				.ENDIF
+			.ENDIF
+			
 			.IF (Maze) ;&& (KubaleAction & KUBALE_ACT_MOVE)	; Just in case
 				invoke Maze_CollideLayout, ADDR KubalePos, f(1.6), FALSE
 			.ENDIF
-			
-			; Player collision
-			invoke Collide_Distance, ADDR CamPos, ADDR KubalePos, f(0.5), dist
 			
 			; Wmblyk
 			.IF (Wmblyk == WMBLYK_STILL)
@@ -271,8 +280,7 @@ Kubale_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 		
-		mov pax, SIZEOF TexKubaleV
-		shr pax, 2
+		mov pax, SIZEOF TexKubaleV shr 2
 		mov KubaleInkblot, rv(nRand, pax)
 		shl KubaleInkblot, 2
 		invoke SndSetGain, ADDR SndKubaleV, KubaleVision

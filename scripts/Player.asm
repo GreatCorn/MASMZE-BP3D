@@ -50,9 +50,15 @@ PlrCrouch		REAL4 0.0
 PlrForward		Vector3 <>
 PlrUp			Vector3 <0.0, 1.0, 0.0>	; Up vector for AL_ORIENTATION
 PlrHeightOffset	REAL4 0.0
+PlrPowerup		BPEnum MAZE_POWERUP_NONE
+PlrPowerupDur	REAL4 1.0
+PlrPowerupRot	REAL4 0.0
+PlrPowerupPos	Vector2 <>
+PlrPowerupVal	REAL4 0.0	; Random utility val
 PlrRight		Vector3 <>
 PlrSpeed		REAL4 0.0	; Current absolute player speed
 PlrSpeedScaled	REAL4 0.0	; Current scaled player speed (0.0 - PlrSpeedWalk)
+PlrSpeedMul		REAL4 1.0
 
 CamAnimPlr		BPAnimPlayer <>
 CamBillboard	Vector2 <>
@@ -87,6 +93,7 @@ PlrPartRain		ParticleSystem	<>
 PlrPartRainB	ParticleSystem	<>
 
 .CODE
+Plr_FreezeTime PROTO :BPBool, :DWORD
 Plr_Shake PROTO :REAL4
 
 Plr_CalculateAxes PROC EXPORT
@@ -165,6 +172,10 @@ Plr_Control PROC EXPORT
 		bpMEM32 movSpd, PlrSpeedWalk
 	.ENDIF
 	
+	fld movSpd
+	fmul PlrSpeedMul
+	fstp movSpd
+	
 	; Move
 	fld InputMovementClamped.X
 	fmul movSpd
@@ -202,6 +213,187 @@ Plr_Control PROC EXPORT
 		.ENDIF
 		
 		mov InputGlyph, 0
+	.ENDIF
+	
+	mov PlrSpeedMul, FLT_1
+	
+	; Powerups
+	.IF (PlrPowerup)
+		.IF (InputPowerup) && (PlrPowerupDur) && (PlrState == PLAYER_STATE_GAME)
+			.IF (PlrPowerup == MAZE_POWERUP_SLEDGEHAMMER)
+				; No auto retrigger
+				mov InputPowerup, FALSE
+				
+				; velocity is stand-in for cell position, later global world pos
+				invoke Vector32DSet, ADDR velocity, MazePlrPos.X, MazePlrPos.Y
+				
+				; Determine direction
+				xor pdx, pdx
+				
+				mov eax, PlrForward.X
+				and eax, not FLT_NEG
+				mov ecx, PlrForward.Z
+				and ecx, not FLT_NEG
+				fcmp eax, ecx
+				.IF (Carry?)	; Abs(Fwd.X) < Abs(Fwd.Z)
+					.IF (PlrForward.Z & FLT_NEG)
+						mov dl, MAZE_FREE_UP
+					.ELSE
+						mov dl, MAZE_FREE_DOWN
+					.ENDIF
+				.ELSE
+					.IF (PlrForward.X & FLT_NEG)
+						mov dl, MAZE_FREE_LEFT
+					.ELSE
+						mov dl, MAZE_FREE_RIGHT
+					.ENDIF
+				.ENDIF
+				
+				mov eax, MazeSize[8]
+				mov ecx, MazeSize[12]
+				push pdx
+				.IF (dl == MAZE_FREE_DOWN) && (SDWORD PTR velocity.Z < ecx)
+					inc velocity.Z
+				.ELSEIF (dl == MAZE_FREE_RIGHT) && (SDWORD PTR velocity.X < eax)
+					inc velocity.X
+				.ELSEIF ((dl != MAZE_FREE_UP) || (SDWORD PTR velocity.Z <= 0)) \
+				&& ((dl != MAZE_FREE_LEFT) || (SDWORD PTR velocity.X <= 0))
+					; Edge walls, can't break
+					invoke alSourcePlay, SndMistake
+					vinvoke UI_ShowSubtitles, StrCCWallCantBreak, UISubDur
+					pop pdx
+					jmp plrControlPowerupSkip
+				.ENDIF
+				invoke Maze_GetCellI, velocity.X, velocity.Z
+				pop flVal
+				
+				Vector32DPush velocity
+				
+				shl velocity.X, 1
+				shl velocity.Z, 1
+				
+				.IF (flVal == MAZE_FREE_RIGHT) || (flVal == MAZE_FREE_LEFT)
+					and al, MAZE_CELL_PASSLEFT
+					inc velocity.Z
+				.ELSE
+					and al, MAZE_CELL_PASSTOP
+					inc velocity.X
+				.ENDIF
+				
+				.IF !(al)
+					invoke Vector32DF, ADDR velocity
+					invoke SndSetPos, SndBreak, ADDR velocity
+					invoke alSourcePlay, SndBreak
+					bpMEM32 PlrPowerupVal, f(0.05)
+					
+					fld PlrPowerupDur
+					fsub f(0.51)
+					fstp PlrPowerupDur
+					
+					.IF (SettingsGraphicsParticles)
+						invoke Vector32DCopy, ADDR MazePartDust.Position, \
+						ADDR velocity
+						invoke Particles_Spawn, ADDR MazePartDust, 32
+					.ENDIF
+					Vector32DPop velocity
+					print str$(velocity.X), 9
+					print str$(velocity.Z), 13, 10
+					
+					invoke Maze_GetCellI, velocity.X, velocity.Z
+					.IF (flVal == MAZE_FREE_RIGHT) || (flVal == MAZE_FREE_LEFT)
+						or al, MAZE_CELL_PASSLEFT
+					.ELSE
+						or al, MAZE_CELL_PASSTOP
+					.ENDIF
+					invoke Maze_SetCellPublicI, velocity.X, velocity.Z, al
+				.ELSE
+					Vector32DPop velocity
+				.ENDIF
+			.ELSEIF (PlrPowerup == MAZE_POWERUP_CAMERA)
+				fcmp PlrPowerupVal, f(0.2)
+				.IF (Carry?)
+					mov PlrPowerupVal, FLT_1
+					
+					fld PlrPowerupDur
+					fsub f(0.21)
+					fstp PlrPowerupDur
+					
+					invoke alSourcePlay, SndCamera
+					mov DrawWireframe, TRUE
+				.ENDIF
+				mov InputPowerup, FALSE
+				ret
+			.ELSEIF (PlrPowerup == MAZE_POWERUP_BARBARETKI)
+				bpMEM32 PlrSpeedMul, f(2)
+				fld PlrSpeedScaled
+				fmul deltaTime
+				fmul f(0.05)
+				fsubr PlrPowerupDur
+				fstp PlrPowerupDur
+			.ELSEIF (PlrPowerup == MAZE_POWERUP_METHYLPHENIDATE)
+				.IF (FreezeTime)
+					mov al, FALSE
+				.ELSE
+					mov al, TRUE
+				.ENDIF
+				invoke Plr_FreezeTime, al, NetSock
+				
+				mov InputPowerup, FALSE
+			.ENDIF
+		.ENDIF
+		
+		plrControlPowerupSkip:
+		
+		.IF (PlrPowerup == MAZE_POWERUP_SLEDGEHAMMER) && (PlrPowerupVal)
+			fld deltaTime
+			fmul f(0.1)
+			fsubr PlrPowerupVal
+			fstp PlrPowerupVal
+			invoke Plr_Shake, PlrPowerupVal
+			
+			.IF (PlrPowerupVal & FLT_NEG)
+				mov PlrPowerupVal, 0
+			.ENDIF
+		.ELSEIF (PlrPowerup == MAZE_POWERUP_CAMERA) && (PlrPowerupVal)
+			; Camera
+			fld deltaTime
+			fmul f(0.5)
+			fsubr PlrPowerupVal
+			fstp PlrPowerupVal
+			
+			.IF (PlrPowerupVal & FLT_NEG)
+				mov PlrPowerupVal, 0
+			.ENDIF
+			
+			.IF (FXReadPixelsTest == FX_RP_BROKEN)
+				.IF !(PlrPowerupVal)
+					mov DrawWireframe, FALSE
+				.ENDIF
+			.ELSE
+				.IF (DrawWireframe)
+					mov DrawWireframe, FALSE
+					;invoke FX_ScreenTexture, ADDR TexFlash
+				.ENDIF
+			.ENDIF
+		.ELSEIF (PlrPowerup == MAZE_POWERUP_METHYLPHENIDATE) && (FreezeTime)
+			fld deltaTime
+			fmul f(0.09)
+			fsubr PlrPowerupDur
+			fstp PlrPowerupDur
+		.ENDIF
+		
+		fcmp PlrPowerupDur
+		.IF (Carry?) || (Zero?)
+			mov PlrPowerupDur, 0
+			
+			.IF !(PlrPowerupVal)
+				.IF (PlrPowerup == MAZE_POWERUP_METHYLPHENIDATE)
+					invoke Plr_FreezeTime, FALSE, NetSock
+				.ENDIF
+				
+				mov PlrPowerup, MAZE_POWERUP_NONE
+			.ENDIF
+		.ENDIF
 	.ENDIF
 	ret
 Plr_Control ENDP
@@ -506,9 +698,8 @@ Plr_LateProcess PROC EXPORT
 	;invoke Vector3LerpAngle, ADDR CamRotL, ADDR v3Val, flVal
 	
 	.IF (PlrCanControl)
-		mov flVal, rv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET CamPosP)
+		mov flVal, rv(Vector32DDistance, OFFSET CamPos, OFFSET CamPosP)
 		fld flVal
-		fsqrt
 		fdiv deltaTime
 		fst PlrSpeed
 		fdiv PlrSpeedWalk
@@ -526,6 +717,8 @@ Plr_PlaceGlyph PROC EXPORT PosPtr:BPPtr, Angle:REAL4, Sock:DWORD
 	
 	invoke SndSetPos, SndScribble, PosPtr
 	invoke alSourcePlay, SndScribble
+	
+	vinvoke HDL_Alert, OFFSET CamPos, f(1)
 
 	dec PlrGlyphs
 			
@@ -1059,6 +1252,7 @@ Plr_Progress ENDP
 Plr_Reset PROC EXPORT
 	mov PlrGlyphs, 7
 	mov PlrItems, 0
+	mov PlrPowerup, MAZE_POWERUP_NONE
 	ret
 Plr_Reset ENDP
 
@@ -1092,6 +1286,11 @@ Plr_Step PROC EXPORT HalfStep:BPBool
 		fstp v2Val.X
 		invoke SndSetGain, pax, v2Val.X
 		
+		vinvoke HDL_Alert, OFFSET CamPos, v2Val.X
+		.IF !(NetHosting)
+			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+		.ENDIF
+		
 		fld PlrStepPitch
 		fsub f(0.1)
 		fstp v2Val.X
@@ -1111,6 +1310,18 @@ Plr_Teleport PROC EXPORT X:REAL4, Y:REAL4
 	invoke Vector32DCopy, ADDR CamPosP, ADDR CamPos
 	ret
 Plr_Teleport ENDP
+
+Plr_FreezeTime PROC EXPORT Freeze:BPBool, Sock:DWORD
+	mbm FreezeTime, Freeze
+	mov UIWhiteFade, UI_FADE_IN
+	mov UIWhiteFadeVal, FLT_1
+	invoke alSourcePlay, SndDistress
+	
+	.IF (NetSock) && (Sock)
+		invoke Net_FormSend, NET_GAME_STATES, Sock
+	.ENDIF
+	ret
+Plr_FreezeTime ENDP
 
 
 Plr_Create PROC EXPORT
@@ -1136,7 +1347,7 @@ Plr_Create PROC EXPORT
 	;mov PlrPartRainB.VelocityAffects, PARTICLE_VELOCITY_POSITION
 	invoke Vector2Set, ADDR PlrPartRainB.Lifetime, f(0.2), f(0.3)
 	mov PlrPartRainB.Gravity, TRUE
-	invoke Vector2Set, ADDR PlrPartRainB.Scale, f(0.06), f(0.08)
+	invoke Vector2Set, ADDR PlrPartRainB.Scale, f(0.08), f(0.12)
 	;invoke Vector2Set, ADDR PlrPartRainB.Velocity, f(0.1), f(0.2)
 	;bpMEM32 PlrPartRainB.Position.Y, f(0.05)
 	invoke Particles_Create, ADDR PlrPartRainB

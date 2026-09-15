@@ -22,7 +22,7 @@ EBD_DrawHair PROC EXPORT
 	
 	call glPushMatrix
 	invoke glRotatef, CamBillboard.Y, 0, FLT_1, 0
-	invoke glScalef, f(0.25), FLT_1, FLT_1
+	invoke glScalef, f(0.2), f(1.2), FLT_1
 	
 	mov v2Val.Y, 0
 	invoke glBegin, GL_QUADS
@@ -121,6 +121,9 @@ EBD_Draw PROC EXPORT
 	invoke glDisable, GL_FOG
 	
 	call glPushMatrix
+	.IF (MazeHeight != FLT_1)
+		invoke glScalef, FLT_1, MazeHeight, FLT_1
+	.ENDIF
 	invoke glTranslate3fv, ADDR EBDPos
 	
 	invoke glBindTexture, GL_TEXTURE_2D, TexEBDShadow

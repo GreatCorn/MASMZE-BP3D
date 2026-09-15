@@ -25,6 +25,8 @@ SettingsIniIBCrouch			DB "IBCrouch", 0
 SettingsIniIBGlyph			DB "IBGlyph", 0
 SettingsIniIBAction			DB "IBAction", 0
 SettingsIniIBConfirm		DB "IBConfirm", 0
+SettingsIniIBPlayers		DB "IBPlayers", 0
+SettingsIniIBPowerup		DB "IBPowerup", 0
 
 SettingsIniJBUp				DB "JBUp", 0
 SettingsIniJBDown			DB "JBDown", 0
@@ -38,6 +40,8 @@ SettingsIniJBCrouch			DB "JBCrouch", 0
 SettingsIniJBGlyph			DB "JBGlyph", 0
 SettingsIniJBAction			DB "JBAction", 0
 SettingsIniJBConfirm		DB "JBConfirm", 0
+SettingsIniJBPlayers		DB "JBPlayers", 0
+SettingsIniJBPowerup		DB "JBPowerup", 0
 
 SettingsIniGraphics			DB "Graphics", 0
 SettingsIniAfterimage		DB "Afterimage", 0
@@ -496,6 +500,12 @@ Settings_LoadBindings PROC EXPORT
 	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
 	ADDR SettingsIniIBConfirm, IBConfirm, ADDR SettingsIniPathAbs
 	mov IBConfirm, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBPlayers, IBPlayers, ADDR SettingsIniPathAbs
+	mov IBPlayers, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBPowerup, IBPowerup, ADDR SettingsIniPathAbs
+	mov IBPowerup, eax
 	
 	; Joystick
 	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
@@ -534,6 +544,12 @@ Settings_LoadBindings PROC EXPORT
 	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
 	ADDR SettingsIniJBConfirm, JBConfirm, ADDR SettingsIniPathAbs
 	mov JBConfirm, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBPlayers, JBPlayers, ADDR SettingsIniPathAbs
+	mov JBPlayers, eax
+	invoke GetPrivateProfileInt, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBPowerup, JBPowerup, ADDR SettingsIniPathAbs
+	mov JBPowerup, eax
 	ret
 Settings_LoadBindings ENDP
 
@@ -815,6 +831,10 @@ Settings_SaveBindings PROC EXPORT
 	ADDR SettingsIniIBAction, str$(IBAction), ADDR SettingsIniPathAbs
 	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
 	ADDR SettingsIniIBConfirm, str$(IBConfirm), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBPlayers, str$(IBPlayers), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniIBPowerup, str$(IBPowerup), ADDR SettingsIniPathAbs
 	
 	; Joystick
 	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
@@ -841,6 +861,10 @@ Settings_SaveBindings PROC EXPORT
 	ADDR SettingsIniJBAction, str$(JBAction), ADDR SettingsIniPathAbs
 	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
 	ADDR SettingsIniJBConfirm, str$(JBConfirm), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBPlayers, str$(JBPlayers), ADDR SettingsIniPathAbs
+	invoke WritePrivateProfileStringA, ADDR SettingsIniControls, \
+	ADDR SettingsIniJBPowerup, str$(JBPowerup), ADDR SettingsIniPathAbs
 	
 	ret
 Settings_SaveBindings ENDP
@@ -968,8 +992,10 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 			mov cl, BP_INTERPOLATE_LINEAR
 		.ELSE
 			mov al, BP_INTERPOLATE_CONSTANT
+			mov cl, BP_INTERPOLATE_CONSTANT
 		.ENDIF
 		mov HBDAnimPlr.Interpolation, al
+		mov HDLAnimPlr.Interpolation, al
 		mov KubaleAnimPlr.Interpolation, al
 		mov MotryaAnimPlr.Interpolation, al
 		mov VebraAnimPlr.Interpolation, cl

@@ -16,6 +16,9 @@ AnimCamEnter		BPAnimTrack <>
 AnimCamExit			BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
 AnimHBDBlink		BPAnimTrack <>
+AnimHDLAttack		BPAnimTrack <>
+AnimHDLIdle			BPAnimTrack <>
+AnimHDLWalk			BPAnimTrack <>
 AnimKoluplykDig		BPAnimTrack <>	
 AnimKoluplykShop	BPAnimTrack <>	
 AnimKubaleMove		BPAnimTrack <>	
@@ -97,6 +100,8 @@ MdlPlrAcc			DWORD ?
 MdlPlrScarfStatic	DWORD ?
 MdlPodiumFloor		DWORD ?
 MdlPodiumTiles		DWORD ?
+MdlPosters			DWORD ?
+MdlPowerups			DWORD ?, ?, ?, ?
 MdlRubble			DWORD ?
 MdlRubbleFacade		DWORD ?
 MdlShop				DWORD ?
@@ -146,6 +151,7 @@ MdlWmblykBodyG		DWORD ?
 MdlWmblykHead		DWORD ?
 
 MeshHBD				BPMesh?
+MeshHDL				BPMesh?
 MeshKoluplyk		BPMesh?
 MeshKubale			BPMesh?
 MeshMotrya			BPMesh?
@@ -176,6 +182,7 @@ TexDust				DWORD ?
 TexEBD				DWORD ?, ?, ?
 TexEBDShadow		DWORD ?
 TexFacade			DWORD ?
+TexFlash			DWORD ?
 TexFloor			DWORD ?
 TexFloorLinoleum	DWORD ?
 TexFloorParquet		DWORD ?
@@ -184,6 +191,7 @@ TexGamma			DWORD ?
 TexGlyph			DWORD 7 DUP(?)
 TexGlyphs			DWORD ?
 TexHBD				DWORD ?
+TexHDL				DWORD ?
 TexHedge			DWORD ?
 TexIcon				DWORD ?
 TexKey				DWORD ?
@@ -221,6 +229,8 @@ TexPlrFace5			DWORD ?, ?, ?, ?
 TexPlrFace6			DWORD ?, ?, ?, ?
 TexPlrWounded		DWORD ?
 
+TexPosters			DWORD ?, ?, ?, ?
+TexPowerups			DWORD ?
 TexRain				DWORD ?
 TexRaindrop			DWORD ?
 TexRainsplash		DWORD ?
@@ -258,7 +268,6 @@ TexWalkwaySmall		DWORD ?
 TexWall				DWORD ?
 TexWallpaper		DWORD ?
 TexWallPainted		DWORD ?
-TexWB				DWORD ?
 TexWBBK				DWORD ?
 TexWBBKP			DWORD ?
 TexWBBK1			DWORD ?
@@ -279,6 +288,7 @@ SndAmbHeavy		DWORD ?, ?, ?
 SndAmbPlain		DWORD ?, ?, ?
 SndAmbW			DWORD ?, ?, ?, ?
 SndBreak		DWORD ?
+SndCamera		DWORD ?
 SndCheckpoint	DWORD ?
 SndCreak		DWORD ?
 SndCrumble		DWORD ?
@@ -303,6 +313,7 @@ SndKeyJape		DWORD ?
 SndKubale		DWORD ?
 SndKubaleAppear	DWORD ?
 SndKubaleV		DWORD ?
+SndLockin		DWORD ?
 SndMistake		DWORD ?
 SndRain			DWORD ?
 SndRand			DWORD ?, ?, ?, ?, ?, ?, ?, ?, ?
@@ -318,10 +329,10 @@ SndTramAnn		DWORD ?, ?, ?
 SndTramClose	DWORD ?
 SndTramOpen		DWORD ?
 SndVirdya		DWORD ?
-SndWBAlarm		DWORD ?
-SndWBAttack		DWORD ?
-SndWBIdle		DWORD ?, ?
-SndWBStep		DWORD ?, ?, ?, ?
+SndHDLAlarm		DWORD ?
+SndHDLAttack	DWORD ?
+SndHDLIdle		DWORD ?, ?
+SndHDLStep		DWORD ?, ?, ?, ?
 SndWBBK			DWORD ?
 SndWmblyk		DWORD ?
 SndWmblykB		DWORD ?
@@ -384,6 +395,11 @@ LoadResources PROC EXPORT
 		mov AnimCamWalk.Looping, TRUE
 		
 		LoadBPA OFFSET AnimHBDBlink,		"assets\anim\hbdBlink.bpa"
+		
+		LoadBPA OFFSET AnimHDLAttack,		"assets\anim\hdlAttack.bpa"
+		LoadBPA OFFSET AnimHDLIdle,			"assets\anim\hdlIdle.bpa"
+		LoadBPA OFFSET AnimHDLWalk,			"assets\anim\hdlWalk.bpa"
+		mov AnimHDLWalk.Looping, TRUE
 		
 		LoadBPA OFFSET AnimKoluplykDig,		"assets\anim\koluplykDig.bpa"
 		LoadBPA OFFSET AnimKoluplykShop,	"assets\anim\koluplykShop.bpa"
@@ -487,6 +503,11 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlPlrScarfStatic,	"assets\models\plrScarfStatic.bpl"
 		LoadBPL OFFSET MdlPodiumFloor,		"assets\models\podiumFloor.bpl"
 		LoadBPL OFFSET MdlPodiumTiles,		"assets\models\podiumTiles.bpl"
+		LoadBPL OFFSET MdlPosters,			"assets\models\posters.bpl"
+		LoadBPL OFFSET MdlPowerups[0],		"assets\models\powerup1.bpl"
+		LoadBPL OFFSET MdlPowerups[4],		"assets\models\powerup2.bpl"
+		LoadBPL OFFSET MdlPowerups[8],		"assets\models\powerup3.bpl"
+		LoadBPL OFFSET MdlPowerups[12],		"assets\models\powerup4.bpl"
 		LoadBPL OFFSET MdlRubble,			"assets\models\rubble.bpl"
 		LoadBPL OFFSET MdlRubbleFacade,		"assets\models\rubbleFacade.bpl"
 		LoadBPL OFFSET MdlShop,				"assets\models\shop.bpl"
@@ -556,11 +577,6 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlWbAttack[4],		"assets\models\wbAttack2.bpl"
 		LoadBPL OFFSET MdlWbAttack[8],		"assets\models\wbAttack3.bpl"
 		LoadBPL OFFSET MdlWbbk,				"assets\models\wbbk.bpl"
-		LoadBPL OFFSET MdlWbIdle[0],		"assets\models\wbIdle1.bpl"
-		LoadBPL OFFSET MdlWbIdle[4],		"assets\models\wbIdle2.bpl"
-		LoadBPL OFFSET MdlWbWalk[0],		"assets\models\wbWalk1.bpl"
-		LoadBPL OFFSET MdlWbWalk[4],		"assets\models\wbWalk2.bpl"
-		LoadBPL OFFSET MdlWbWalk[8],		"assets\models\wbWalk3.bpl"
 		LoadBPL OFFSET MdlWindow,			"assets\models\window.bpl"
 		LoadBPL OFFSET MdlWires,			"assets\models\wires.bpl"
 		LoadBPL OFFSET MdlWmblykBody,		"assets\models\wmblykBody.bpl"
@@ -568,6 +584,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlWmblykHead,		"assets\models\wmblykHead.bpl"
 		
 		LoadBPM OFFSET MeshHBD,				"assets\models\hbd.bpm"
+		LoadBPM OFFSET MeshHDL,				"assets\models\hdl.bpm"
 		LoadBPM OFFSET MeshKoluplyk,		"assets\models\koluplyk.bpm"
 		LoadBPM OFFSET MeshKubale,			"assets\models\kubale.bpm"
 		LoadBPM OFFSET MeshMotrya,			"assets\models\motrya.bpm"
@@ -659,6 +676,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexEBD[8],		"assets\textures\EBD3.bpt"
 		LoadBPT OFFSET TexEBDShadow,	"assets\textures\EBDShadow.bpt"
 		LoadBPT OFFSET TexFacade,		"assets\textures\facade.bpt"
+		invoke glGenTextures, 1, ADDR TexFlash
 		LoadBPT OFFSET TexFloor,		"assets\textures\floor.bpt"
 		LoadBPT OFFSET TexFloorLinoleum,"assets\textures\floorLinoleum.bpt"
 		LoadBPT OFFSET TexFloorParquet,	"assets\textures\floorParquet.bpt"
@@ -675,6 +693,7 @@ LoadResources PROC EXPORT
 		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexGlyphs,		"assets\textures\glyphs.bpt"
 		LoadBPT OFFSET TexHBD,			"assets\textures\hbd.bpt"
+		LoadBPT OFFSET TexHDL,			"assets\textures\hdl.bpt"
 		LoadBPT OFFSET TexHedge,		"assets\textures\hedge.bpt"
 		LoadBPT OFFSET TexIcon,			"assets\textures\icon.bpt"
 		LoadBPT OFFSET TexKey,			"assets\textures\key.bpt"
@@ -741,6 +760,11 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexPlrFace6[8],	"assets\textures\plrRRight.bpt"
 		LoadBPT OFFSET TexPlrFace6[12],	"assets\textures\plrRSquish.bpt"
 		LoadBPT OFFSET TexPlrWounded,	"assets\textures\plrWounded.bpt"
+		LoadBPT OFFSET TexPosters[0],	"assets\textures\posters1.bpt"
+		LoadBPT OFFSET TexPosters[4],	"assets\textures\posters2.bpt"
+		LoadBPT OFFSET TexPosters[8],	"assets\textures\posters3.bpt"
+		LoadBPT OFFSET TexPosters[12],	"assets\textures\posters4.bpt"
+		LoadBPT OFFSET TexPowerups,		"assets\textures\powerups.bpt"
 		LoadBPT OFFSET TexRain,			"assets\textures\rain.bpt"
 		;mov bpTextureFiltering, TRUE
 		LoadBPT OFFSET TexRaindrop,		"assets\textures\raindrop.bpt"
@@ -784,7 +808,6 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexWall,			"assets\textures\wall.bpt"
 		LoadBPT OFFSET TexWallpaper,	"assets\textures\wallpaper.bpt"
 		LoadBPT OFFSET TexWallPainted,	"assets\textures\wallPainted.bpt"
-		LoadBPT OFFSET TexWB,			"assets\textures\WB.bpt"
 		LoadBPT OFFSET TexWBBK,			"assets\textures\WBBK.bpt"
 		LoadBPT OFFSET TexWBBK1,		"assets\textures\WBBK1.bpt"
 		LoadBPT OFFSET TexWBBKP,		"assets\textures\WBBKP.bpt"
@@ -848,6 +871,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndAmbW[12],		"assets\sounds\ambW4.bps"
 		LoadBPS OFFSET SndBreak,		"assets\sounds\break.bps"
 		invoke alSourcef, SndBreak, AL_ROLLOFF_FACTOR, f(0.6)
+		LoadBPS OFFSET SndCamera,		"assets\sounds\camera.bps"
 		LoadBPS OFFSET SndCheckpoint,	"assets\sounds\checkpoint.bps"
 		LoadBPS OFFSET SndCreak,		"assets\sounds\creak.bps"
 		LoadBPS OFFSET SndCrumble,		"assets\sounds\crumble.bps"
@@ -869,6 +893,25 @@ LoadResources PROC EXPORT
 		invoke alSourcei, SndHBD, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndHBD, AL_ROLLOFF_FACTOR, f(3)
 		LoadBPS OFFSET SndHBDO,			"assets\sounds\hbdO.bps"
+		LoadBPS OFFSET SndHDLAlarm,		"assets\sounds\hdlAlarm.bps"
+		invoke alSourcef, SndHDLAlarm, AL_ROLLOFF_FACTOR, f(1.5)
+		LoadBPS OFFSET SndHDLAttack,	"assets\sounds\hdlAttack.bps"
+		LoadBPS OFFSET SndHDLIdle[0],	"assets\sounds\hdlIdle1.bps"
+		invoke alSourcef, SndHDLIdle[0], AL_ROLLOFF_FACTOR, f(4)
+		LoadBPS OFFSET SndHDLIdle[4],	"assets\sounds\hdlIdle2.bps"
+		invoke alSourcef, SndHDLIdle[4], AL_ROLLOFF_FACTOR, f(4)
+		LoadBPS OFFSET SndHDLStep[0],	"assets\sounds\hdlStep1.bps"
+		invoke alSourcef, SndHDLStep[0], AL_ROLLOFF_FACTOR, f(3)
+		invoke SndSetGain, ADDR SndHDLStep[0], f(0.5)
+		LoadBPS OFFSET SndHDLStep[4],	"assets\sounds\hdlStep2.bps"
+		invoke alSourcef, SndHDLStep[4], AL_ROLLOFF_FACTOR, f(3)
+		invoke SndSetGain, ADDR SndHDLStep[4], f(0.5)
+		LoadBPS OFFSET SndHDLStep[8],	"assets\sounds\hdlStep3.bps"
+		invoke alSourcef, SndHDLStep[8], AL_ROLLOFF_FACTOR, f(3)
+		invoke SndSetGain, ADDR SndHDLStep[8], f(0.5)
+		LoadBPS OFFSET SndHDLStep[12],	"assets\sounds\hdlStep4.bps"
+		invoke alSourcef, SndHDLStep[12], AL_ROLLOFF_FACTOR, f(3)
+		invoke SndSetGain, ADDR SndHDLStep[12], f(0.5)
 		LoadBPS OFFSET SndHurt,			"assets\sounds\hurt.bps"
 		LoadBPS OFFSET SndImpact,		"assets\sounds\impact.bps"
 		LoadBPS OFFSET SndIntro,		"assets\sounds\intro.bps"
@@ -881,6 +924,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndKubaleV,		"assets\sounds\kubaleV.bps"
 		invoke SndSetGain, ADDR SndKubaleV, 0
 		invoke alSourcei, SndKubaleV, AL_LOOPING, AL_TRUE
+		LoadBPS OFFSET SndLockin,		"assets\sounds\lockin.bps"
 		LoadBPS OFFSET SndMistake,		"assets\sounds\mistake.bps"
 		LoadBPS OFFSET SndMus[0],		"assets\sounds\mus1.bps"
 		invoke SndSetGain, ADDR SndMus[0], f(0.5)
@@ -945,24 +989,9 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndVirdya,		"assets\sounds\virdya.bps"
 		invoke SndSetGain, ADDR SndVirdya, 0
 		invoke alSourcei, SndVirdya, AL_LOOPING, AL_TRUE
-		LoadBPS OFFSET SndWBAlarm,		"assets\sounds\wbAlarm.bps"
-		invoke alSourcef, SndWBAlarm, AL_ROLLOFF_FACTOR, f(1.5)
-		LoadBPS OFFSET SndWBAttack,		"assets\sounds\wbAttack.bps"
 		LoadBPS OFFSET SndWBBK,			"assets\sounds\wbbk.bps"
 		invoke alSourcei, SndWBBK, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndWBBK, AL_ROLLOFF_FACTOR, f(10)
-		LoadBPS OFFSET SndWBIdle[0],	"assets\sounds\wbIdle1.bps"
-		invoke alSourcef, SndWBIdle[0], AL_ROLLOFF_FACTOR, f(4)
-		LoadBPS OFFSET SndWBIdle[4],	"assets\sounds\wbIdle2.bps"
-		invoke alSourcef, SndWBIdle[4], AL_ROLLOFF_FACTOR, f(4)
-		LoadBPS OFFSET SndWBStep[0],	"assets\sounds\wbStep1.bps"
-		invoke alSourcef, SndWBStep[0], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS OFFSET SndWBStep[4],	"assets\sounds\wbStep2.bps"
-		invoke alSourcef, SndWBStep[4], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS OFFSET SndWBStep[8],	"assets\sounds\wbStep3.bps"
-		invoke alSourcef, SndWBStep[8], AL_ROLLOFF_FACTOR, f(3)
-		LoadBPS OFFSET SndWBStep[12],	"assets\sounds\wbStep4.bps"
-		invoke alSourcef, SndWBStep[12], AL_ROLLOFF_FACTOR, f(3)
 		LoadBPS OFFSET SndWmblyk,		"assets\sounds\wmblyk.bps"
 		LoadBPS OFFSET SndWmblykB,		"assets\sounds\wmblykB.bps"
 		invoke alSourcei, SndWmblykB, AL_LOOPING, AL_TRUE

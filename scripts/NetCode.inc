@@ -38,7 +38,7 @@ ENUML 127
 	;	Report all volatile maze elements and their volatile attributes (useful
 	; for players joining in the middle of the round which generate the same
 	; elements, the state of which could have been changed throughout the round)
-	;	See NetMazeElements STRUCT
+	;	See NetMazeElements struct
 	E NET_MAZE_ELEMENTS
 	
 	;	Report all volatile entity states and their state-defining attributes
@@ -50,11 +50,26 @@ ENUML 127
 	;	PlayersAlive:	DWORD
 	E NET_LEADERBOARD
 	
+	;	Send maze cell assignment
+	;	MazePublicPos:	Vector2 (8)
+	;	MazePublicVal:	BYTE
+	E NET_MAZE_CHANGES
+	
+	;	Send various game state data
+	;	See NetGameStates struct
+	E NET_GAME_STATES
+	
 	;	Send text message
 	;	Message:	BYTE[256] (256)
 	E NET_MESSAGE
 	
 NET_PLAYER_FACES EQU 6
+
+NetGameStates STRUCT
+	NetMsgType		BYTE ?
+	
+	FreezeTime BPBool ?
+NetGameStates ENDS
 	
 NetMazeElements STRUCT
 	NetMsgType		BYTE ?
@@ -68,6 +83,7 @@ NetMazeElements STRUCT
 	MazeItems		BYTE ?
 	MazeKeyPos		Vector3 <?,?,?>
 	MazeLocked		BYTE ?
+	MazePowerup		BYTE ?
 	MazeShop		BYTE ?
 	MazeSlam		BYTE ?
 	MazeTeleport	BYTE ?
@@ -80,6 +96,15 @@ NetMazeEntities STRUCT
 	HBDPos			Vector2 <?,?>
 	HBDRot			REAL4 ?
 	HBDTimer		REAL4 ?
+	HDL				BYTE ?
+	HDLCloseT		Vector3 <?,?,?>
+	HDLPos			Vector3 <?,?,?>
+	HDLRot			REAL4 ?
+	HDLSpeed		REAL4 ?
+	HDLStackPtr		BPPtr ?
+	HDLState		SDWORD ?
+	HDLTarget		REAL4 ?
+	HDLTimer		REAL4 ?
 	Kubale			BYTE ?
 	KubalePos		Vector3 <?,?,?>
 	KubaleRot		REAL4 ?
@@ -91,9 +116,16 @@ NetMazeEntities STRUCT
 	WmblykStrPlr	DWORD ?
 NetMazeEntities ENDS
 	
-NPS_WOUNDED EQU 1
-NPS_CROUCH	EQU 2
-	
+NPS_WOUNDED 		EQU 1
+NPS_CROUCH			EQU 2
+NPS_POWERUPS		EQU 1110000000000000b
+NPS_POWERUP_SHIFT	EQU 13
+NPS_SLEDGEHAMMER	EQU 1 shl NPS_POWERUP_SHIFT
+NPS_CAMERA			EQU 2 shl NPS_POWERUP_SHIFT
+NPS_BARBARETKI		EQU 3 shl NPS_POWERUP_SHIFT
+NPS_METHYLPHENIDATE	EQU 4 shl NPS_POWERUP_SHIFT
+
+
 NET_BUFFER_SIZE	EQU 320
 NET_MAX_PLAYERS	EQU 8
 
@@ -166,6 +198,8 @@ NetPlayersVL	NetPlayerLocal NET_MAX_PLAYERS dup (<>)	; Local interpolated
 NetPlayersCount DWORD 0
 NetPlayerID		DWORD -1
 NetUnformed		BPBool TRUE
+
+NetEntitiesClient	BPBool FALSE
 
 NetPlayersAnim	BPAnimPlayer NET_MAX_PLAYERS dup (<>)
 NetPlayersMesh	BPMesh NET_MAX_PLAYERS dup (<>)

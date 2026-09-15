@@ -42,6 +42,7 @@ UI_TXT_H	EQU 8*UI_SCALE				; Text height
 UI_TXT_M	EQU 4*UI_SCALE				; Text margin
 
 UI_LOAD_S	EQU 48*UI_SCALE
+UI_POWERUP	EQU 48*UI_SCALE
 
 ENUM	UI_NONE, \
 		UI_BUTTON, \
@@ -202,8 +203,9 @@ UI_DrawDebug PROC EXPORT
 	.ENDIF
 	RenderText real4$(PlrSpeed), 16, 56
 	RenderText real4$(PlrSpeedScaled), 112, 56
-	RenderText real4$(PlrHealth), 16, 80
-	RenderText str$(PlrState), 112, 80
+	RenderText real4$(CamForward.X), 16, 80
+	RenderText real4$(CamForward.Y), 112, 80
+	RenderText real4$(CamForward.Z), 208, 80
 	
 	RenderText str$(FXAfterimageNow), 16, 104
 	RenderText " AFTERIMAGE FRAMES", 32, 104
@@ -217,6 +219,10 @@ UI_DrawDebug PROC EXPORT
 	RenderText "FPU:", 16, 176
 	RenderText str$(rv(fpuGetStackTop)), 112, 176
 	RenderText str$(PlrState), 16, 200
+	.IF (Maze)
+		invoke Maze_GetCellI, MazePlrPos.X, MazePlrPos.Y
+		RenderText xbyte$(al), 16, 224
+	.ENDIF
 	
 	
 	pop bpFontHeight
@@ -1835,7 +1841,7 @@ UI_DrawMenuSettingsControlsBindings PROC EXPORT
 	LOCAL leftPos:REAL4, rightPos:REAL4
 	
 	UI_MENU_BINDINGS_WIDTH	EQU UI_BTN_WS*3 + UI_BTN_M*2
-	UI_MENU_BINDINGS_HEIGHT	EQU UI_BTN_H*14 + UI_BTN_M*11 + UI_HR_H*2
+	UI_MENU_BINDINGS_HEIGHT	EQU UI_BTN_H*16 + UI_BTN_M*13 + UI_HR_H*2
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_BINDINGS_HEIGHT/2
@@ -1954,6 +1960,22 @@ UI_DrawMenuSettingsControlsBindings PROC EXPORT
 	StrMenuInConfirm
 	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBConfirm, \
 	StrMenuInConfirm
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Powerup
+	invoke UI_Text, StrMenuInPowerup, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBPowerup, \
+	StrMenuInPowerup
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBPowerup, \
+	StrMenuInPowerup
+	add ebx, UI_BTN_H + UI_BTN_M
+	
+	; Players
+	invoke UI_Text, StrMenuInPlayers, leftPos, ebx, BP_ALIGN_LEFT, 0
+	invoke UI_KeyMapper, BIND_KEY_MOUSE, ScreenHalf.X, ebx,	ADDR IBPlayers, \
+	StrMenuInPlayers
+	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBPlayers, \
+	StrMenuInPlayers
 	add ebx, UI_BTN_H
 	
 	
@@ -2880,6 +2902,17 @@ UI_Draw PROC EXPORT
 	; Full-screen effects
 	.IF !(Loading)
 		invoke glScalei, FXRenderSize.X, FXRenderSize.Y, 1
+		
+		; Flash
+		.IF (PlrPowerup == MAZE_POWERUP_CAMERA) && (PlrPowerupVal) && \
+		!(DrawWireframe)
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+			invoke glBindTexture, GL_TEXTURE_2D, TexFlash
+			invoke glColor4f, FLT_1, FLT_1, FLT_1, PlrPowerupVal
+			invoke glCallList, ScreenQuad
+			invoke glDisable, GL_BLEND
+		.ENDIF
 			
 		; Kubale inkblot
 		.IF (KubaleVision)
@@ -3005,7 +3038,10 @@ UI_Draw PROC EXPORT
 	call glLoadIdentity
 	invoke glScalef, ScreenSizeF.X, ScreenSizeF.Y, f(1)
 	
-	
+	.IF ((FXReadPixelsTest != FX_RP_BROKEN) && (PlrPowerup == MAZE_POWERUP_CAMERA) \
+	&& (PlrPowerupVal) && (DrawWireframe))
+		invoke FX_ScreenTexture, ADDR TexFlash
+	.ENDIF
 	.IF (SettingsGraphicsAfterimage) || (SettingsGraphicsPixelization) || \
 	(SettingsGraphicsPosterization)
 		invoke FX_ScreenTexture, FXAfterimage
@@ -3030,6 +3066,78 @@ UI_Draw PROC EXPORT
 	.IF (SettingsGraphicsUIScale != FLT_1)
 		invoke glTranslatef, UIScreenCntAcc.X, UIScreenCntAcc.Y, 0
 		invoke glScalef, SettingsGraphicsUIScale, SettingsGraphicsUIScale, f(1)
+	.ENDIF
+	
+	; Powerup display
+	.IF (PlrPowerup) && (PlrState == PLAYER_STATE_GAME) && \
+	(GameState == GAME_STATE_GAME)
+		call glPushMatrix
+		
+		invoke glTranslate2fv, ADDR PlrPowerupPos
+		
+		fld FMain.Aspect
+		fmul f(%UI_POWERUP)
+		fstp flVal
+		
+		call glPushMatrix
+		invoke glScalef, flVal, flVal, f(1)
+		invoke glEnable, GL_BLEND
+		invoke glColor3fv, ADDR clGray
+		invoke glBlendFunc, GL_ONE, GL_ONE
+		invoke glBindTexture, GL_TEXTURE_2D, TexLight
+		invoke glCallList, ScreenQuad
+		invoke glColor3fv, ADDR clWhite
+		invoke glDisable, GL_BLEND
+		call glPopMatrix
+		
+		
+		call glPushMatrix
+		invoke glFrontFace, GL_CW
+		invoke glDepthMask, GL_TRUE
+		invoke glEnable, GL_DEPTH_TEST
+		
+		push 0
+		sub psp, SIZEOF BPPtr*2
+		fld PlrPowerupRot
+		fsin
+		fmul f(8)
+		fadd flVal
+		fstp REAL4 PTR [psp+SIZEOF BPPtr]
+		fld flVal
+		fmul f(0.5)
+		fstp REAL4 PTR [psp]
+		call glTranslatef
+		
+		invoke glScalef, flVal, flVal, f(1)
+		
+		invoke glRotatef, f(180), 0, 0, f(1)
+		invoke glRotatefr, PlrPowerupRot, 0, f(1), 0
+		
+		invoke glBindTexture, GL_TEXTURE_2D, TexPowerups
+		movzx pax, PlrPowerup
+		dec pax
+		shl pax, 2
+		invoke glCallList, MdlPowerups[pax]
+		
+		invoke glFrontFace, GL_CCW
+		invoke glDepthMask, GL_FALSE
+		invoke glDisable, GL_DEPTH_TEST
+		call glPopMatrix
+		
+		invoke glTranslatef, 0, flVal, 0
+		invoke UI_TextInput, s("_ "), IBPowerup, JBPowerup, 0, \
+		-UI_TXT_H-UI_TXT_M, BP_ALIGN_LEFT, BP_ALIGN_LEFT
+		
+		invoke glBindTexture, GL_TEXTURE_2D, 0
+		invoke glColor3fv, ADDR clBlack
+		;invoke glTranslatef, 0, flVal, 0
+		invoke glScalef, flVal, f(%UI_SLD_H), f(1)
+		invoke glCallList, ScreenQuad
+		invoke glColor3fv, ADDR clWhite
+		invoke glScalef, PlrPowerupDur, f(1), f(1)
+		invoke glCallList, ScreenQuad	
+		
+		call glPopMatrix
 	.ENDIF
 	
 	FontSize 4, 8
@@ -3584,7 +3692,7 @@ UI_Process PROC EXPORT
 	
 	.IF (PlrState == PLAYER_STATE_COMPLETED)
 		fcmp UILoadTimer, f(4)
-		.IF (!Sign?)
+		.IF (!Carry?)
 			fld UILoadTimer
 			fsub f(4)
 			fstp UILoadTimer
@@ -3593,6 +3701,23 @@ UI_Process PROC EXPORT
 		fmul f(3)
 		fadd UILoadTimer
 		fstp UILoadTimer
+	.ENDIF
+	
+	.IF (PlrPowerup)		
+		fild UIScreenScaled.W
+		fld FMain.Aspect
+		fmul f(%UI_POWERUP+UI_BTN_M)
+		fsub
+		fstp PlrPowerupPos.Y
+		fild UIScreenScaled.X
+		fadd f(%UI_BTN_M)
+		fstp PlrPowerupPos.X
+		
+		
+		fld PlrPowerupRot
+		fadd delta2
+		fstp PlrPowerupRot
+		mov PlrPowerupRot, rv(flAngle, PlrPowerupRot)
 	.ENDIF
 	ret
 	

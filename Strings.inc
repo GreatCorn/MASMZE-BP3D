@@ -88,6 +88,8 @@ SV	StrMenuInCrouch
 SV	StrMenuInGlyph
 SV	StrMenuInAction
 SV	StrMenuInConfirm
+SV	StrMenuInPlayers
+SV	StrMenuInPowerup
 SV	StrMenuHintCameraBobbing
 SV	StrMenuHintDisplayMode
 SV	StrMenuHintDisplayDev
@@ -122,6 +124,11 @@ SV	StrCCKey
 SV	StrCCKneel
 SV	StrCCLoad
 SV	StrCCPlaceGlyph
+SV	StrCCPowerup1
+SV	StrCCPowerup2
+SV	StrCCPowerup3
+SV	StrCCPowerup4
+SV	StrCCPowerupReplace
 SV	StrCCRandom1
 SV	StrCCRandom2
 SV	StrCCRandom3
@@ -132,6 +139,9 @@ SV	StrCCRandom7
 SV	StrCCSave
 SV	StrCCSaveErase
 SV	StrCCSaved
+SV	StrCCShn1
+SV	StrCCShn2
+SV	StrCCShn3
 SV	StrCCShop
 SV	StrCCShopBuy
 SV	StrCCShopNo
@@ -139,6 +149,7 @@ SV	StrCCTeleport
 SV	StrCCTeleportBad
 SV	StrCCTrench
 SV	StrCCWaitPlayers
+SV	StrCCWallCantBreak
 SV	StrTipEBD
 SV	StrTipHBD
 SV	StrTipKubale

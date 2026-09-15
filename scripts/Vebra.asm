@@ -66,9 +66,8 @@ Vebra_Process PROC EXPORT
 		print "Vebra went", 13, 10
 		invoke bpAnimPlay, ADDR VebraAnimPlr, ADDR AnimVebraGo
 		mov Vebra, VEBRA_GOING
-		.IF (NetSock)
-			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
-		.ENDIF
+		
+		invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 	.ELSEIF (Vebra == VEBRA_GOING)
 		fcmp VebraAnimPlr.Timer, f(28)
 		.IF (!Carry?)

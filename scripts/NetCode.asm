@@ -32,7 +32,7 @@ Net_Close PROC EXPORT
 	;	vinvoke PauseGame, TRUE
 	;.ENDIF
 	call Net_PlayersClear
-	PollProc MenuInit
+	poll MenuInit
 	ret
 Net_Close ENDP
 
@@ -182,6 +182,7 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 			.ELSEIF (GameState == GAME_STATE_GAME)
 				invoke Net_FormSend, NET_MAZE_ELEMENTS, 0
 				invoke Net_FormSend, NET_MAZE_ENTITIES, 0
+				invoke Net_FormSend, NET_MAZE_CHANGES, 0
 			.ENDIF
 		.ENDIF
 	.ELSEIF (BYTE PTR [pbx] == NET_PLAYERS_RESPONSE)
@@ -274,7 +275,7 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		invoke Net_FormSend, NET_START_GAME, 0
 	.ELSEIF (BYTE PTR [pbx] == NET_RESTART)
 		print "NET_RESTART", 13, 10
-		PollProc Maze_Exit
+		poll Maze_Exit
 	.ELSEIF (BYTE PTR [pbx] == NET_MAZE_STARTING)
 		print "NET_MAZE_STARTING", 13, 10
 		mov MazeState, MAZE_STATE_LOBBY_CREAK
@@ -285,7 +286,7 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		fstp REAL4 PTR [pbx+1]
 		invoke alSourcef, SndCreak, AL_SEC_OFFSET, REAL4 PTR [pbx+1]
 	.ELSEIF (BYTE PTR [pbx] == NET_MAZE_PROGRESS)
-		PollProc Plr_Progress
+		poll Plr_Progress
 	.ELSEIF (BYTE PTR [pbx] == NET_MAZE_ELEMENTS)
 		print "NET_MAZE_ELEMENTS", 13, 10
 		
@@ -344,7 +345,7 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 					invoke Plr_PlaceGlyph, ADDR [pbx].PlrGlyphPos[pax], 0, 0
 				.ENDIF
 			.ENDIF
-		
+				
 			; Shop
 			mov al, [pbx].MazeShop
 			.IF (MazeShop == 1) && (al == 2)
@@ -365,6 +366,7 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		mbm MazeItems, [pbx].MazeItems
 		invoke Vector3Copy, ADDR MazeKeyPos, ADDR [pbx].MazeKeyPos
 		mbm MazeLocked, [pbx].MazeLocked
+		mbm MazePowerup, [pbx].MazePowerup
 		mbm MazeShop, [pbx].MazeShop
 		mbm MazeSlam, [pbx].MazeSlam
 		mbm MazeTeleport, [pbx].MazeTeleport
@@ -413,9 +415,24 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		.ENDIF
 		
 		mbm HBD, [pbx].HBD
-		invoke Vector2Copy, ADDR HBDPosT, ADDR [pbx].HBDPos
+		invoke Vector32DSet, ADDR HBDPosT, [pbx].HBDPos.X, [pbx].HBDPos.Y
 		bpMEM32 HBDRot[4], [pbx].HBDRot
 		bpMEM32 HBDTimer, [pbx].HBDTimer
+		
+		invoke Vector3Copy, ADDR HDLCloseT, ADDR [pbx].HDLCloseT
+		invoke Vector3Copy, ADDR HDLPos, ADDR [pbx].HDLPos
+		bpMEM32 HDLRot, [pbx].HDLRot
+		bpMEM32 HDLSpeed, [pbx].HDLSpeed
+		bpMPM HDLStackPtr, [pbx].HDLStackPtr
+		bpMEM32 HDLState, [pbx].HDLState
+		invoke Vector3Copy, ADDR HDLTarget, ADDR [pbx].HDLTarget
+		bpMEM32 HDLTimer, [pbx].HDLTimer
+		mov al, [pbx].HDL
+		.IF (al != HDL) && (al == HDL_RUSH)
+			invoke HDL_Solve, ADDR HDLTarget
+		.ENDIF
+		mbm HDL, [pbx].HDL
+		
 		
 		mbm Kubale, [pbx].Kubale
 		bpMEM32 KubaleRot, [pbx].KubaleRot
@@ -446,6 +463,56 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		
 		.IF (NetHosting)
 			invoke Net_FormSend, NET_LEADERBOARD, Sock
+		.ENDIF
+	.ELSEIF (BYTE PTR [pbx] == NET_MAZE_CHANGES)
+		bpMPM MazeChangesPtr, BPPtr PTR [pbx+1]
+		invoke RtlMoveMemory, ADDR MazeChanges, ADDR [pbx+1+SIZEOF BPPtr], \
+		SIZEOF MazeChanges
+		
+		.IF (NetUnformed)	; Just joined, load in only
+			call Maze_ApplyChanges
+		.ELSEIF (MazeChangesPtr)
+			mov pax, MazeChangesPtr
+			sub pax, SIZEOF MazeChange
+			mov pcx, MazeChanges[pax].CellOffset
+			add pcx, Maze
+			mov dl, MazeChanges[pax].CellVal
+			mov BYTE PTR [pcx], dl
+			
+			invoke bp2DArrayGetPosition, MazeChanges[pax].CellOffset, \
+			MazeSize[0], 1
+			shl edx, 1
+			inc edx
+			mov MazePartDust.Position.X, edx
+			shl eax, 1
+			inc eax
+			mov MazePartDust.Position.Z, eax
+			invoke Vector32DF, ADDR MazePartDust.Position
+			.IF (SettingsGraphicsParticles)
+				invoke Particles_Spawn, ADDR MazePartDust, 32
+			.ENDIF
+			invoke SndSetPos, SndBreak, ADDR MazePartDust.Position
+			invoke alSourcePlay, SndBreak
+		.ENDIF
+		
+		.IF (NetHosting)
+			invoke Net_FormSend, NET_MAZE_CHANGES, Sock
+		.ENDIF
+	.ELSEIF (BYTE PTR [pbx] == NET_GAME_STATES)
+		print "NET_GAME_STATES", 13, 10
+		ASSUME pbx:PTR NetGameStates
+		
+		.IF !(NetUnformed)	; Triggers
+			mov al, [pbx].FreezeTime
+			.IF (al != FreezeTime)
+				invoke Plr_FreezeTime, al, 0
+			.ENDIF
+		.ENDIF
+		
+		mbm FreezeTime, [pbx].FreezeTime
+		
+		.IF (NetHosting)
+			invoke Net_FormSend, NET_GAME_STATES, Sock
 		.ENDIF
 	.ENDIF
 	pop pbx
@@ -529,6 +596,7 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		mbm [pbx].MazeItems, MazeItems
 		invoke Vector3Copy, ADDR [pbx].MazeKeyPos, ADDR MazeKeyPos
 		mbm [pbx].MazeLocked, MazeLocked
+		mbm [pbx].MazePowerup, MazePowerup
 		mbm [pbx].MazeShop, MazeShop
 		mbm [pbx].MazeSlam, MazeSlam
 		mbm [pbx].MazeTeleport, MazeTeleport
@@ -546,9 +614,19 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		lea pbx, buf
 		
 		mbm [pbx].HBD, HBD
-		invoke Vector2Copy, ADDR [pbx].HBDPos, ADDR HBDPosT
+		invoke Vector2Set, ADDR [pbx].HBDPos, HBDPosT.X, HBDPosT.Z
 		bpMEM32 [pbx].HBDRot, HBDRot[4]
 		bpMEM32 [pbx].HBDTimer, HBDTimer
+		
+		mbm [pbx].HDL, HDL
+		invoke Vector3Copy, ADDR [pbx].HDLCloseT, ADDR HDLCloseT
+		invoke Vector3Copy, ADDR [pbx].HDLPos, ADDR HDLPos
+		bpMEM32 [pbx].HDLRot, HDLRot
+		bpMEM32 [pbx].HDLSpeed, HDLSpeed
+		bpMPM [pbx].HDLStackPtr, HDLStackPtr
+		bpMEM32 [pbx].HDLState, HDLState
+		invoke Vector3Copy, ADDR [pbx].HDLTarget, ADDR HDLTarget
+		bpMEM32 [pbx].HDLTimer, HDLTimer
 		
 		mbm [pbx].Kubale, Kubale
 		bpMEM32 [pbx].KubaleRot, KubaleRot
@@ -572,6 +650,28 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 	.ELSEIF (al == NET_LEADERBOARD)
 		invoke RtlMoveMemory, ADDR buf[1], ADDR NetLeaderboard, NET_MAX_PLAYERS
 		bpMEM32 DWORD PTR buf[1+NET_MAX_PLAYERS], NetPlayersAlive
+		.IF (NetHosting)
+			mov exclude, TRUE
+			mov globalMsg, TRUE
+		.ENDIF
+	.ELSEIF (al == NET_MAZE_CHANGES)
+		bpMPM BPPtr PTR buf[1], MazeChangesPtr
+		invoke RtlMoveMemory, ADDR buf[1+SIZEOF BPPtr], ADDR MazeChanges, \
+		SIZEOF MazeChanges
+		.IF (NetHosting)
+			mov exclude, TRUE
+			mov globalMsg, TRUE
+		.ENDIF
+	.ELSEIF (al == NET_GAME_STATES)
+		ASSUME pbx:PTR NetGameStates
+		push pbx
+		lea pbx, buf
+		
+		mbm [pbx].FreezeTime, FreezeTime
+		
+		pop pbx
+		ASSUME pbx:nothing
+		
 		.IF (NetHosting)
 			mov exclude, TRUE
 			mov globalMsg, TRUE
@@ -832,6 +932,11 @@ Net_PopulateVolatile PROC EXPORT NPVPtr:BPPtr
 	.IF (PlrCrouch)
 		or [pcx].NetState, NPS_CROUCH
 	.ENDIF
+	.IF (PlrPowerup)
+		movzx ax, PlrPowerup
+		shl ax, NPS_POWERUP_SHIFT
+		or [pcx].NetState, ax
+	.ENDIF
 	invoke RtlMoveMemory, ADDR [pcx].Position, ADDR CamPosL, 12
 	;invoke Vector3Copy, ADDR [pcx].Position, ADDR CamPosL
 	;bpMEM32 [pcx].Position.Y, PlrHeightOffset
@@ -1090,13 +1195,26 @@ Net_Draw PROC EXPORT
 			;invoke Net_SetColorBySkin, 0, FLT_1
 			invoke glColor4fv, ADDR clWhite
 			
+			invoke glTranslate3fv, ADDR headPos
+			invoke glRotatefr, NetPlayersVL[pbx].Rotation.Y, 0, FLT_1, 0
+			
+			.IF (NetPlayersV[pbx].NetState & NPS_POWERUPS)
+				call glPushMatrix
+				invoke glTranslatef, f(-0.12), f(-1.2), f(0.15)
+				invoke glBindTexture, GL_TEXTURE_2D, TexPowerups
+				movzx pax, NetPlayersV[pbx].NetState
+				shr pax, NPS_POWERUP_SHIFT-2
+				sub pax, 4
+				invoke glCallList, MdlPowerups[pax]
+				call glPopMatrix
+			.ENDIF
+			
 			; Draw face
+			invoke glRotatefr, NetPlayersVL[pbx].Rotation.X, FLT_1, 0, 0
 			invoke glEnable, GL_BLEND
 			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
-			invoke glTranslate3fv, ADDR headPos
 			movzx eax, NetPlayersVL[pbx].FaceTex
 			invoke glBindTexture, GL_TEXTURE_2D, eax
-			invoke glRotate2fvr, ADDR NetPlayersVL[pbx].Rotation
 			invoke glCallList, MdlPlrAcc
 			invoke glDisable, GL_BLEND
 			
@@ -1123,12 +1241,17 @@ Net_Process PROC EXPORT
 		fadd NetVolatileTimer[4]
 		fstp NetVolatileTimer[0]
 		
-		.IF (NetHosting)
-			invoke Net_FormSend, NET_PLAYERS_VOLATILE, 0
+		.IF (NetHosting) || (NetEntitiesClient)
+			mov NetEntitiesClient, FALSE
 			
 			; Continuously volatile entity states
-			.IF (Kubale == KUBALE_ACTIVE) || (Wmblyk == WMBLYK_WALK)
+			.IF (Kubale == KUBALE_ACTIVE) || (Wmblyk == WMBLYK_WALK) || \
+			(HDL)
 				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+			.ENDIF
+			
+			.IF (NetHosting)
+				invoke Net_FormSend, NET_PLAYERS_VOLATILE, 0
 			.ENDIF
 		.ELSE
 			invoke Net_FormSend, NET_PLAYER_VOLATILE, NetSock
@@ -1142,9 +1265,7 @@ Net_Process PROC EXPORT
 	
 	mov OpenDoor, 0
 	
-	IFDEF MODE_DEBUG
-	jmp skipDebugBullshit
-	
+	IFDEF DEBUG_BULLSHIT
 	.IF (Keys[VK_SPACE])
 	push pbx
 	mov pbx, SIZEOF NetPlayerVolatile
@@ -1284,9 +1405,6 @@ Net_Process PROC EXPORT
 	.ENDW
 	pop pbx
 	.ENDIF
-	ret
-	
-	skipDebugBullshit:
 	ENDIF
 	
 	push pbx
@@ -1630,7 +1748,7 @@ Net_Process PROC EXPORT
 		.IF (OpenDoor == 1)
 			mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-104), delta2)
 			fcmp MazeDoorRot, f(-100)
-			.IF (Sign?)
+			.IF (Carry?)
 				bpMEM32 MazeDoorRot, f(-100)
 			.ENDIF
 		.ELSEIF (OpenDoor == 2)
