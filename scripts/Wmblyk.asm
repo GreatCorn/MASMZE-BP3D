@@ -7,6 +7,7 @@ ENUM	WMBLYK_NONE, \
 		WMBLYK_WALK, \
 		WMBLYK_STRANGLE, \
 		WMBLYK_DEAD, \
+		WMBLYK_BLIND, \
 		WMBLYK_FROZEN
 
 .DATA
@@ -87,8 +88,7 @@ Wmblyk_Create ENDP
 Wmblyk_Draw PROC EXPORT
 	LOCAL flVal:REAL4
 	
-	.IF (Wmblyk != WMBLYK_NONE) && (Wmblyk != WMBLYK_JUMPSCARE) \
-	&& (Wmblyk != WMBLYK_STEALTH_WAIT)
+	.IF (Wmblyk != WMBLYK_JUMPSCARE) && (Wmblyk != WMBLYK_STEALTH_WAIT)
 		invoke glDisable, GL_FOG
 		invoke glDisable, GL_LIGHTING
 		
@@ -128,6 +128,16 @@ Wmblyk_Draw PROC EXPORT
 		.ELSEIF (Wmblyk >= WMBLYK_WALK)
 			.IF (Wmblyk == WMBLYK_DEAD)
 				invoke glColor4fv, ADDR clBlack
+			.ELSEIF (Wmblyk == WMBLYK_BLIND)
+				fld WmblykAnimPlr.Timer
+				fistp flVal
+				
+				.IF (flVal)
+					.IF (flVal < 43) || ((flVal > 73) && (flVal < 95)) || \
+					(flVal == 58) || (flVal == 66)
+						invoke glColor4fv, ADDR clBlack
+					.ENDIF
+				.ENDIF
 			.ELSEIF (Wmblyk == WMBLYK_FROZEN)
 				invoke flDistance, WmblykStateVal, f(3.6)
 				fcmp eax, f(0.05)	; blink
@@ -297,6 +307,11 @@ Wmblyk_Process PROC EXPORT
 			
 			mov Wmblyk, WMBLYK_JUMPSCARE
 			
+			; Scare Virdya
+			.IF (Virdya)
+				vinvoke Virdya_Scare, OFFSET WmblykPos, TRUE
+			.ENDIF
+			
 			;vinvoke HDL_Alert, OFFSET WmblykPos, f(10)
 		.ELSE
 			fcmp flVal, f(0.65)
@@ -440,6 +455,9 @@ Wmblyk_Process PROC EXPORT
 				.ENDIF
 				invoke SndSetPos, SndWmblykSpin, ADDR WmblykPos
 				mov WmblykRot, rv(flRandRange, PIN, PI)
+				fld EBDAnim
+				fadd delta2
+				fstp EBDAnim
 			.ELSE
 				.IF (rv(SndPlaying, SndWmblykSpin) == AL_PLAYING)
 					invoke alSourcePause, SndWmblykSpin
@@ -621,6 +639,11 @@ Wmblyk_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 		
+		; Scare Virdya
+		.IF (Virdya)
+			vinvoke Virdya_Scare, OFFSET WmblykPos, TRUE
+		.ENDIF
+		
 		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET CamPos)
 		fcmp flVal, f(0.75)
 		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME) && \
@@ -793,8 +816,14 @@ Wmblyk_Process PROC EXPORT
 		fistp flVal
 		invoke intClamp, flVal, 0, (SIZEOF TexWmblykStr)/4-2
 		bpMEM32 WmblykFace, TexWmblykStr[pax*4]
+		
+		; Scare Virdya
+		.IF (Virdya)
+			vinvoke Virdya_Scare, plrPosPtr, FALSE
+		.ENDIF
 	.ELSEIF (Wmblyk == WMBLYK_DEAD)		
 		.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykDead)
+			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykDead
 			mov WmblykAnimPlr.Speed, FLT_1
 			invoke alSourceStop, SndWmblykB
@@ -810,6 +839,16 @@ Wmblyk_Process PROC EXPORT
 			mov Wmblyk, WMBLYK_NONE
 			invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 		.ENDIF
+	
+	.ELSEIF (Wmblyk == WMBLYK_BLIND)
+		.IF (WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykBlind)
+			invoke bpAnimPlay, ADDR WmblykAnimPlr, ADDR AnimWmblykBlind
+			mov WmblykAnimPlr.Speed, FLT_1
+		.ENDIF
+		invoke bpProcessAnimPlayer, ADDR WmblykAnimPlr, deltaTime
+		.IF !(WmblykAnimPlr.TrackPtr)
+			mov Wmblyk, WMBLYK_WALK
+		.ENDIF		
 	.ELSEIF (Wmblyk == WMBLYK_FROZEN)
 		invoke Vector3Lerp, ADDR CamPosA, ADDR Vector3Zero, delta10
 		

@@ -9,6 +9,7 @@ ENUM \
 .DATA
 HDL			BPEnum HDL_NONE
 HDLAnimPlr	BPAnimPlayer <>
+HDLAttackTimer	REAL4 0.0
 HDLCell		Vector2 <>
 HDLCellT	Vector2 <>
 HDLCellNext	Vector2 <>
@@ -27,6 +28,7 @@ HDLState	SDWORD 0
 HDLStep		BPBool FALSE	; Step leg alternation
 HDLTarget	Vector3 <>		; Global target position
 HDLTimer	REAL4 0.0
+HDLVisible	BPBool FALSE
 
 .CODE
 HDL_Alert PROC EXPORT PosPtr:BPPtr, Amplitude:REAL4
@@ -255,22 +257,25 @@ HDL_Spawn ENDP
 
 
 HDL_Draw PROC EXPORT
-	call glPushMatrix
-	invoke glTranslate3fv, ADDR HDLPos
-	invoke glRotatefr, HDLRot, 0, FLT_1, 0	; why is he facing back??
-	.IF (HDLMirror)
-		invoke glCullFace, GL_FRONT
-		mov eax, f(-0.9)
-	.ELSE
-		mov eax, f(0.9)
+	.IF (HDLVisible)
+		call glPushMatrix
+		invoke glTranslate3fv, ADDR HDLPos
+		; facing back cuz i fuckin forgot to apply the 180 rotation
+		invoke glRotatefr, HDLRot, 0, FLT_1, 0
+		.IF (HDLMirror)
+			invoke glCullFace, GL_FRONT
+			mov eax, f(-0.9)
+		.ELSE
+			mov eax, f(0.9)
+		.ENDIF
+		invoke glScalef, eax, f(0.9), f(0.9)	; idiot
+		invoke glBindTexture, GL_TEXTURE_2D, TexHDL
+		invoke bpDrawMesh, ADDR MeshHDL
+		.IF (HDLMirror)
+			invoke glCullFace, GL_BACK
+		.ENDIF
+		call glPopMatrix
 	.ENDIF
-	invoke glScalef, eax, f(0.9), f(0.9)	; idiot
-	invoke glBindTexture, GL_TEXTURE_2D, TexHDL
-	invoke bpDrawMesh, ADDR MeshHDL
-	.IF (HDLMirror)
-		invoke glCullFace, GL_BACK
-	.ENDIF
-	call glPopMatrix
 	ret
 HDL_Draw ENDP
 
@@ -288,6 +293,12 @@ HDL_Process PROC EXPORT
 		ret
 	ENDM
 	
+	.IF (rv(Plr_Cull, OFFSET HDLPos))
+		mov HDLVisible, FALSE
+	.ELSE
+		mov HDLVisible, TRUE
+	.ENDIF
+	
 	invoke Vector2Set, ADDR HDLCell, HDLPos.X, HDLPos.Z
 	invoke fpuSetRounding, FPU_ROUND_TRUNC
 	invoke Vector2RoundInt, ADDR HDLCell
@@ -296,8 +307,8 @@ HDL_Process PROC EXPORT
 	shr HDLCell.Y, 1
 	Maze_ClampXYI HDLCell.X, HDLCell.Y
 	
-	print str$(HDLState), 9
-	print ubyte$(HDL), 13, 10
+	;print str$(HDLState), 9
+	;print ubyte$(HDL), 13, 10
 	
 	fld HDLTimer
 	fsub deltaTime
@@ -361,29 +372,31 @@ HDL_Process PROC EXPORT
 			invoke PlayRandomSnd, ADDR SndHDLIdle, SIZEOF SndHDLIdle/4
 			invoke SndSetPos, DWORD PTR [pax], ADDR HDLPos
 		.ENDIF
-	.ELSEIF (HDL == HDL_RUSH)		
-		fild HDLCellNext.X
-		fmul f(2)
-		fadd f(1)
-		fstp HDLCloseT.X
-		fild HDLCellNext.Y
-		fmul f(2)
-		fadd f(1)
-		fstp HDLCloseT.Z
+	.ELSEIF (HDL == HDL_RUSH)	
+		mov eax, HDLCellT.X
+		mov ecx, HDLCellT.Y
+		.IF (HDLCell.X == eax) && (HDLCell.Y == ecx)
+			mov v3Val.X, 1
+			invoke Vector32DCopy, ADDR HDLCloseT, ADDR HDLTarget
+		.ELSE
+			mov v3Val.X, 0
+			fild HDLCellNext.X
+			fmul f(2)
+			fadd f(1)
+			fstp HDLCloseT.X
+			fild HDLCellNext.Y
+			fmul f(2)
+			fadd f(1)
+			fstp HDLCloseT.Z
+		.ENDIF
 		
 		mov v3Val.Y, rv(Vector32DDistanceSqr, OFFSET HDLPos, ADDR HDLCloseT)
 		fcmp v3Val.Y, f(0.2)
-		.IF (Carry?)
-			mov eax, HDLCellT.X
-			mov ecx, HDLCellT.Y
-			.IF (HDLCell.X == eax) && (HDLCell.Y == ecx)
-				HDL_Arrive
-			.ENDIF
-			
+		.IF (Carry?)			
 			; Reverse stack combing
 			mov pax, HDLStack
 			mov pcx, HDLStackPtr
-			.IF (pcx < BPPtr PTR [pax])
+			.IF !(v3Val.X) && (pcx < BPPtr PTR [pax])
 				mov pax, HDLStack
 				add pax, HDLStackPtr
 				bpMPM HDLCellNext.X, BPPtr PTR [pax]
@@ -467,16 +480,27 @@ HDL_Process PROC EXPORT
 	; Player collision
 	.IF (PlrState == PLAYER_STATE_GAME)
 		invoke Collide_Distance, ADDR CamPos, ADDR HDLPos, f(0.3), 0
-		.IF (al) 
+		.IF (al)
 			.IF ((HDL != HDL_ATTACKING) && \
 			((InputMovement.X) || (InputMovement.Y))) || (HDL == HDL_SEARCH)
-				.IF (rv(nRand, 4))
+				fld HDLAttackTimer
+				fsub deltaTime
+				fstp HDLAttackTimer
+				
+				.IF (HDLAttackTimer & FLT_NEG)
 					invoke Vector32DCopy, ADDR HDLCloseT, ADDR CamPos
 					mov HDL, HDL_ATTACK
 					invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+					
+					mov HDLAttackTimer, rv(flRandRange, f(0.2), f(0.6))
 				.ENDIF
 			.ENDIF
 		.ENDIF
+	.ENDIF
+	
+	; Scare Virdya
+	.IF (Virdya)
+		vinvoke Virdya_Scare, OFFSET HDLPos, TRUE
 	.ENDIF
 	
 	; Walk animation
@@ -533,7 +557,7 @@ HDL_Process PROC EXPORT
 		(PlrState == PLAYER_STATE_GAME)
 			fcmp HDLAnimPlr.Timer, f(4)
 			.IF (!Carry?)
-				fcmp HDLAnimPlr.Timer, f(10)
+				fcmp HDLAnimPlr.Timer, f(6)
 				.IF (Carry?)
 					; Check if player in range
 					mov v3Val.Y, \
@@ -554,9 +578,17 @@ HDL_Process PROC EXPORT
 						fcmp v3Val.Y, f(-0.5)
 						.IF (Carry?)
 							.IF !(rv(Maze_Raycast, OFFSET HDLPos,OFFSET CamPos))
+								bpMPM UIDeadTipStr, StrTipHDL
 								invoke SndSetPos, SndHurt, ADDR HDLPos
 								invoke alSourcePlay, SndHurt
-								mov PlrState, PLAYER_STATE_DYING
+								;mov PlrState, PLAYER_STATE_DYING
+								fld PlrHealth
+								fsub f(0.8)
+								fstp PlrHealth
+								
+								fld PlrHeal
+								fmul f(0.4)
+								fstp PlrHeal
 							.ENDIF
 						.ENDIF
 					.ENDIF

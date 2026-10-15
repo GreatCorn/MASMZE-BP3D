@@ -3,6 +3,7 @@ Distance:REAL4
 	LOCAL dirAngle:REAL4
 	
 	.IF (Pos == OFFSET CamPos) && !(PlrCollide)
+		xor pax, pax
 		ret
 	.ENDIF
 	

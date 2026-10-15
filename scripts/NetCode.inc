@@ -59,6 +59,11 @@ ENUML 127
 	;	See NetGameStates struct
 	E NET_GAME_STATES
 	
+	;	Send play sound request at position
+	;	Sound:	DWORD
+	; 	Position: Vector3
+	E NET_SOUND
+	
 	;	Send text message
 	;	Message:	BYTE[256] (256)
 	E NET_MESSAGE
@@ -89,35 +94,45 @@ NetMazeElements STRUCT
 	MazeTeleport	BYTE ?
 NetMazeElements ENDS
 
-NetMazeEntities STRUCT
+NetMazeEntities STRUCT	; 163
 	NetMsgType		BYTE ?
 	
-	HBD				BYTE ?
-	HBDPos			Vector2 <?,?>
-	HBDRot			REAL4 ?
-	HBDTimer		REAL4 ?
-	HDL				BYTE ?
-	HDLCloseT		Vector3 <?,?,?>
-	HDLPos			Vector3 <?,?,?>
-	HDLRot			REAL4 ?
-	HDLSpeed		REAL4 ?
-	HDLStackPtr		BPPtr ?
-	HDLState		SDWORD ?
-	HDLTarget		REAL4 ?
-	HDLTimer		REAL4 ?
-	Kubale			BYTE ?
-	KubalePos		Vector3 <?,?,?>
-	KubaleRot		REAL4 ?
-	Vebra			BYTE ?
-	Wmblyk			BYTE ?
-	WmblykPos		Vector3 <?,?,?>
-	WmblykRot		REAL4 ?
-	WmblykStateVal	REAL4 ?
-	WmblykStrPlr	DWORD ?
+	HBD					BYTE ?
+	HBDCell				Vector2 <?,?>
+	HBDPos				Vector2 <?,?>
+	HBDRot				REAL4 ?
+	HBDTimer			REAL4 ?
+	HDL					BYTE ?
+	HDLCloseT			Vector3 <?,?,?>
+	HDLPos				Vector3 <?,?,?>
+	HDLRot				REAL4 ?
+	HDLSpeed			REAL4 ?
+	HDLStackPtr			BPPtr ?
+	HDLState			SDWORD ?
+	HDLTarget			REAL4 ?
+	HDLTimer			REAL4 ?
+	Kubale				BYTE ?
+	KubalePos			Vector3 <?,?,?>
+	KubaleRot			REAL4 ?
+	Vebra				BYTE ?
+	Virdya				BYTE ?
+	VirdyaBlinkTimer	REAL4 ?
+	VirdyaLookPos		Vector3 <>
+	VirdyaPos			Vector3 <>
+	VirdyaRot			REAL4 0.0
+	VirdyaSpeed			REAL4 0.0
+	VirdyaStrafe		SDWORD 0
+	Wmblyk				BYTE ?
+	WmblykPos			Vector3 <?,?,?>
+	WmblykRot			REAL4 ?
+	WmblykStateVal		REAL4 ?
+	WmblykStrPlr		DWORD ?
 NetMazeEntities ENDS
 	
 NPS_WOUNDED 		EQU 1
 NPS_CROUCH			EQU 2
+NPS_COMPASS			EQU 4
+NPS_MAP				EQU 8
 NPS_POWERUPS		EQU 1110000000000000b
 NPS_POWERUP_SHIFT	EQU 13
 NPS_SLEDGEHAMMER	EQU 1 shl NPS_POWERUP_SHIFT
@@ -220,6 +235,9 @@ NetUIScoreL	REAL4 0.0
 NetVolatileTimer	REAL4 0.0, 0.064	; Send volatile info timer, interval
 
 NetSpectateID	DWORD 0
+NetSpectateFP	BPBool FALSE
 
 .DATA?
 MeshPlrHeadPtr		BPPtr ?
+NetSound		DWORD ?
+NetSoundPos		Vector3 <?,?,?>

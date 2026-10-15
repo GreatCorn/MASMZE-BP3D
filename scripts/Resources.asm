@@ -12,6 +12,7 @@ ENUM	LOADING_TEXT, \
 .DATA
 ; ----- ANIMATIONS -----
 ANIM_INTERPOLATION	EQU BP_INTERPOLATE_LINEAR_S 
+
 AnimCamEnter		BPAnimTrack <>
 AnimCamExit			BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
@@ -26,6 +27,8 @@ AnimMotryaIdle		BPAnimTrack <>
 AnimMotryaLook		BPAnimTrack <>
 AnimMotryaSave		BPAnimTrack <>
 AnimMotryaSit		BPAnimTrack <>
+AnimMotryaTurn		BPAnimTrack <>
+AnimMotryaWalk		BPAnimTrack <>
 AnimPlrCrouch		BPAnimTrack <>
 AnimPlrCrouchWalk	BPAnimTrack <>
 AnimPlrDead			BPAnimTrack <>
@@ -35,6 +38,17 @@ AnimPlrWalk			BPAnimTrack <>
 AnimVasFloat		BPAnimTrack <>
 AnimVebraGo			BPAnimTrack <>
 AnimVebraSit		BPAnimTrack <>
+AnimVirdyaAttack	BPAnimTrack <>
+AnimVirdyaBack		BPAnimTrack <>
+AnimVirdyaBlind		BPAnimTrack <>
+AnimVirdyaCornered	BPAnimTrack <>
+AnimVirdyaCover		BPAnimTrack <>
+AnimVirdyaIdle		BPAnimTrack <>
+AnimVirdyaRest		BPAnimTrack <>
+AnimVirdyaSit		BPAnimTrack <>
+AnimVirdyaWalk		BPAnimTrack <>
+AnimVirdyaWave		BPAnimTrack <>
+AnimWmblykBlind		BPAnimTrack <>
 AnimWmblykCrawl		BPAnimTrack <>
 AnimWmblykDead		BPAnimTrack <>
 AnimWmblykStrangle	BPAnimTrack <>
@@ -71,6 +85,7 @@ MdlCompassArrow		DWORD ?
 MdlCompassWorld		DWORD ?
 MdlCrevice			DWORD ?
 MdlCube				DWORD ?
+MdlDebris			DWORD ?
 MdlDoor				DWORD ?
 MdlDoorFrame		DWORD ?
 MdlDoorFrameLock	DWORD ?
@@ -80,6 +95,8 @@ MdlFshnada			DWORD ?
 MdlGlyphs			DWORD ?
 MdlKey				DWORD ?
 MdlLamp				DWORD ?
+MdlLampAbajour		DWORD ?
+MdlLampCase			DWORD ?
 MdlLightPost		DWORD ?
 MdlMotrya			DWORD ?, ?, ?, ?
 MdlNeqaotor			DWORD ?
@@ -90,6 +107,7 @@ MdlOutskirtsTrees	DWORD ?
 MdlPadlock			DWORD ?
 MdlParticle			DWORD ?
 MdlPipe				DWORD ?
+MdlPl				DWORD ?, ?, ?, ?
 MdlPlane			DWORD ?
 MdlPlaneC			DWORD ?
 MdlPlaneG			DWORD ?
@@ -122,14 +140,8 @@ MdlUpFloor			DWORD ?
 MdlUpRoof			DWORD ?
 MdlUpWalls			DWORD ?
 MdlVasPlane			DWORD ?
-MdlVirdyaBack		DWORD ?, ?, ?, ?, ?, ?
-MdlVirdyaBody		DWORD ?
-MdlVirdyaH			DWORD ?, ?
+MdlVirdyaHairStatic	DWORD ?
 MdlVirdyaHead		DWORD ?
-MdlVirdyaRest		DWORD ?
-MdlVirdyaWalk		DWORD ?, ?, ?, ?, ?, ?, ?, ?
-; Vertex animations create abominations
-MdlVirdyaWave		DWORD ?, ?, ?, ?, ?, ?, ?, ?, ?
 MdlWall				DWORD ?
 MdlWallArch			DWORD ?
 MdlWallClerestory	DWORD ?
@@ -159,11 +171,16 @@ MeshPlr				BPMesh?
 MeshPlrScarf		BPMesh?	; Non-volatile
 MeshVas				BPMesh?
 MeshVebra			BPMesh?
+MeshVirdya			BPMesh?
+MeshVirdyaHair		BPMesh?
+MeshVirdyaHairD		BPMesh?
 MeshWmblyk			BPMesh?
 
 ScreenQuad	DWORD ?
 
 ; ----- TEXTURES -----
+TexSectionStart		BYTE ?
+
 TexAmbient			DWORD ?
 TexBricks			DWORD ?
 TexCompass			DWORD ?
@@ -188,6 +205,7 @@ TexFloorLinoleum	DWORD ?
 TexFloorParquet		DWORD ?
 TexFshnada			DWORD ?
 TexGamma			DWORD ?
+TexGlimpse			DWORD ?, ?, ?
 TexGlyph			DWORD 7 DUP(?)
 TexGlyphs			DWORD ?
 TexHBD				DWORD ?
@@ -213,6 +231,7 @@ TexMudDug			DWORD ?
 TexNoise			DWORD ?
 TexPaper			DWORD ?
 TexPipe				DWORD ?
+TexPl				DWORD ?, ?, ?, ?
 TexPlanks			DWORD ?
 TexPlaster			DWORD ?
 
@@ -220,7 +239,7 @@ TexPlrBlink			DWORD ?
 TexPlrBody			DWORD ?
 TexPlrDead			DWORD ?
 TexPlrHead			DWORD ?
-; Player face customization comes as Neutral, Look Left, Look Right
+; Player face customization comes as Neutral, Look Left, Look Right, squish
 TexPlrFace1			DWORD ?, ?, ?, ?
 TexPlrFace2			DWORD ?, ?, ?, ?
 TexPlrFace3			DWORD ?, ?, ?, ?
@@ -229,7 +248,7 @@ TexPlrFace5			DWORD ?, ?, ?, ?
 TexPlrFace6			DWORD ?, ?, ?, ?
 TexPlrWounded		DWORD ?
 
-TexPosters			DWORD ?, ?, ?, ?
+TexPosters			DWORD ?, ?, ?, ?, ?
 TexPowerups			DWORD ?
 TexRain				DWORD ?
 TexRaindrop			DWORD ?
@@ -258,10 +277,11 @@ TexVignette			DWORD ?
 TexVignetteRed		DWORD ?
 
 TexVirdyaBlink		DWORD ?
-TexVirdyaDown		DWORD ?
+TexVirdyaBlinkN		DWORD ?
 TexVirdyaN			DWORD ?
-TexVirdyaNeut		DWORD ?
-TexVirdyaUp			DWORD ?
+TexVirdyaNS			DWORD ?
+TexVirdyaNeut		DWORD ?, ?, ?, ?, ?, ?
+TexVirdyaSquint		DWORD ?
 
 TexWalkway			DWORD ?
 TexWalkwaySmall		DWORD ?
@@ -280,15 +300,18 @@ TexWmblykJumpscare	DWORD ?
 TexWmblykStr		DWORD ?, ?, ?, ?, ?, ?, ?
 TexWmblykWait		DWORD ?, ?, ?
 
+TexSectionEnd BYTE ?
+
 ; ----- SOUNDS -----
 SndSectionStart	BYTE ?
 
 SndAlarm		DWORD ?
 SndAmbHeavy		DWORD ?, ?, ?
+SndAmbMod		DWORD ?, ?
 SndAmbPlain		DWORD ?, ?, ?
 SndAmbW			DWORD ?, ?, ?, ?
 SndBreak		DWORD ?
-SndCamera		DWORD ?
+SndCamera		DWORD ?, ?
 SndCheckpoint	DWORD ?
 SndCreak		DWORD ?
 SndCrumble		DWORD ?
@@ -303,6 +326,7 @@ SndExit			DWORD ?
 SndExit1		DWORD ?
 SndExit2		DWORD ?
 SndExplosion	DWORD ?
+SndGlimpse		DWORD ?
 SndHBD			DWORD ?
 SndHBDO			DWORD ?
 SndHurt			DWORD ?
@@ -321,7 +345,9 @@ SndSave			DWORD ?
 SndScribble		DWORD ?
 SndSiren		DWORD ?
 SndSlam			DWORD ?
+SndSpeak		DWORD ?
 SndSplash		DWORD ?
+SndSqueak		DWORD ?
 SndStep			DWORD ?, ?, ?, ?
 SndStepDirt		DWORD ?, ?, ?, ?
 SndTram			DWORD ?
@@ -343,6 +369,8 @@ SndWmblykStrM	DWORD ?
 
 SndAmb			DWORD ?, ?, ?
 SndAmbT			DWORD ?
+SndDrone		DWORD ?
+SndJingle		DWORD ?
 SndMus			DWORD ?, ?, ?, ?, ?, ?
 SndOver			DWORD ?
 SndSurvive		DWORD ?
@@ -378,7 +406,18 @@ LoadResources PROC EXPORT
 	LOCAL pVal:BPPtr
 	mov Loading, TRUE
 	
+	mov bpErrorNotFound, TRUE
+	
 	.IF (LoadState == LOADING_TEXT)
+		comment *
+		print "Loading all resources. Total amount: "
+		amt = ((OFFSET AnimWmblykWalk - OFFSET AnimCamEnter) / SIZEOF BPAnimTrack)+\
+		((OFFSET MdlWmblykHead - OFFSET MdlArchRect) / 4) + \
+		((OFFSET MeshHBD - OFFSET MeshHDL) / SIZEOF BPMesh) + \
+		((OFFSET TexWmblykWait - OFFSET TexAmbient) / 4) + \
+		(OFFSET SndSectionEnd - (OFFSET SndSectionStart+1))/4
+		print str$(amt), 13, 10 *
+		
 		; ----- TEXT ESSENTIALS -----
 		print "Loading text...", 9
 		; Load language strings
@@ -415,6 +454,9 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimMotryaSave,		"assets\anim\motryaSave.bpa"
 		LoadBPA OFFSET AnimMotryaSit,		"assets\anim\motryaSit.bpa"
 		mov AnimMotryaSit.Looping, TRUE
+		LoadBPA OFFSET AnimMotryaTurn,		"assets\anim\motryaTurn.bpa"
+		LoadBPA OFFSET AnimMotryaWalk,		"assets\anim\motryaWalk.bpa"
+		mov AnimMotryaWalk.Looping, TRUE
 		
 		LoadBPA OFFSET AnimPlrCrouch,		"assets\anim\plrCrouch.bpa"
 		mov AnimPlrCrouch.Looping, TRUE
@@ -433,6 +475,23 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimVebraGo,		"assets\anim\vebraGo.bpa"
 		LoadBPA OFFSET AnimVebraSit,	"assets\anim\vebraSit.bpa"
 		
+		LoadBPA OFFSET AnimVirdyaAttack,"assets\anim\virdyaAttack.bpa"
+		LoadBPA OFFSET AnimVirdyaBack,	"assets\anim\virdyaBack.bpa"
+		mov AnimVirdyaBack.Looping, TRUE
+		LoadBPA OFFSET AnimVirdyaBlind,	"assets\anim\virdyaBlind.bpa"
+		LoadBPA OFFSET AnimVirdyaCornered,	"assets\anim\virdyaCornered.bpa"
+		mov AnimVirdyaCornered.Looping, TRUE
+		LoadBPA OFFSET AnimVirdyaCover,	"assets\anim\virdyaCover.bpa"
+		mov AnimVirdyaCover.Looping, TRUE
+		LoadBPA OFFSET AnimVirdyaIdle,	"assets\anim\virdyaIdle.bpa"
+		mov AnimVirdyaIdle.Looping, TRUE
+		LoadBPA OFFSET AnimVirdyaRest,	"assets\anim\virdyaRest.bpa"
+		LoadBPA OFFSET AnimVirdyaSit,	"assets\anim\virdyaSit.bpa"
+		LoadBPA OFFSET AnimVirdyaWalk,	"assets\anim\virdyaWalk.bpa"
+		mov AnimVirdyaWalk.Looping, TRUE
+		LoadBPA OFFSET AnimVirdyaWave,	"assets\anim\virdyaWave.bpa"
+		
+		LoadBPA OFFSET AnimWmblykBlind,		"assets\anim\wmblykBlind.bpa"
 		LoadBPA OFFSET AnimWmblykCrawl,		"assets\anim\wmblykCrawl.bpa"
 		mov AnimWmblykCrawl.Looping, TRUE
 		LoadBPA OFFSET AnimWmblykDead,		"assets\anim\wmblykDead.bpa"
@@ -471,6 +530,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlCompassWorld, 	"assets\models\compassWorld.bpl"
 		LoadBPL OFFSET MdlCrevice, 			"assets\models\crevice.bpl"
 		LoadBPL OFFSET MdlCube, 			"assets\models\cube.bpl"
+		LoadBPL OFFSET MdlDebris, 			"assets\models\debris.bpl"
 		LoadBPL OFFSET MdlDoor, 			"assets\models\door.bpl"
 		LoadBPL OFFSET MdlDoorFrame, 		"assets\models\doorFrame.bpl"
 		LoadBPL OFFSET MdlDoorFrameLock, 	"assets\models\doorFrameLock.bpl"
@@ -480,6 +540,8 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlGlyphs, 			"assets\models\glyphs.bpl"
 		LoadBPL OFFSET MdlKey, 				"assets\models\key.bpl"
 		LoadBPL OFFSET MdlLamp,				"assets\models\lamp.bpl"
+		LoadBPL OFFSET MdlLampAbajour,		"assets\models\lampAbajour.bpl"
+		LoadBPL OFFSET MdlLampCase,			"assets\models\lampCase.bpl"
 		LoadBPL OFFSET MdlLightPost,		"assets\models\lightPost.bpl"
 		LoadBPL OFFSET MdlMotrya[0],		"assets\models\motrya1.bpl"
 		LoadBPL OFFSET MdlMotrya[4],		"assets\models\motrya2.bpl"
@@ -493,6 +555,10 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlPadlock,			"assets\models\padlock.bpl"
 		LoadBPL OFFSET MdlParticle,			"assets\models\particle.bpl"
 		LoadBPL OFFSET MdlPipe,				"assets\models\pipe.bpl"
+		LoadBPL OFFSET MdlPl[0],			"assets\models\pl1.bpl"
+		LoadBPL OFFSET MdlPl[4],			"assets\models\pl2.bpl"
+		LoadBPL OFFSET MdlPl[8],			"assets\models\pl3.bpl"
+		LoadBPL OFFSET MdlPl[12],			"assets\models\pl4.bpl"
 		LoadBPL OFFSET MdlPlane,			"assets\models\plane.bpl"
 		LoadBPL OFFSET MdlPlaneC,			"assets\models\planeC.bpl"
 		LoadBPL OFFSET MdlPlaneG,			"assets\models\planeG.bpl"
@@ -535,34 +601,8 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlUpRoof,			"assets\models\upRoof.bpl"
 		LoadBPL OFFSET MdlUpWalls,			"assets\models\upWalls.bpl"
 		LoadBPL OFFSET MdlVasPlane,			"assets\models\vasPlane.bpl"
-		LoadBPL OFFSET MdlVirdyaBack[0],	"assets\models\virdyaBack1.bpl"
-		LoadBPL OFFSET MdlVirdyaBack[4],	"assets\models\virdyaBack2.bpl"
-		LoadBPL OFFSET MdlVirdyaBack[8],	"assets\models\virdyaBack3.bpl"
-		LoadBPL OFFSET MdlVirdyaBack[12],	"assets\models\virdyaBack4.bpl"
-		LoadBPL OFFSET MdlVirdyaBack[16],	"assets\models\virdyaBack5.bpl"
-		LoadBPL OFFSET MdlVirdyaBack[20],	"assets\models\virdyaBack6.bpl"
-		LoadBPL OFFSET MdlVirdyaBody,		"assets\models\virdyaBody.bpl"
-		LoadBPL OFFSET MdlVirdyaH[0],		"assets\models\virdyaH1.bpl"
-		LoadBPL OFFSET MdlVirdyaH[4],		"assets\models\virdyaH2.bpl"
+		LoadBPL OFFSET MdlVirdyaHairStatic,	"assets\models\virdyaHairStatic.bpl"
 		LoadBPL OFFSET MdlVirdyaHead,		"assets\models\virdyaHead.bpl"
-		LoadBPL OFFSET MdlVirdyaRest,		"assets\models\virdyaRest.bpl"
-		LoadBPL OFFSET MdlVirdyaWalk[0],	"assets\models\virdyaWalk1.bpl"
-		LoadBPL OFFSET MdlVirdyaWalk[4],	"assets\models\virdyaWalk2.bpl"
-		LoadBPL OFFSET MdlVirdyaWalk[8],	"assets\models\virdyaWalk3.bpl"
-		LoadBPL OFFSET MdlVirdyaWalk[12],	"assets\models\virdyaWalk4.bpl"
-		LoadBPL OFFSET MdlVirdyaWalk[16],	"assets\models\virdyaWalk5.bpl"
-		LoadBPL OFFSET MdlVirdyaWalk[20],	"assets\models\virdyaWalk6.bpl"
-		LoadBPL OFFSET MdlVirdyaWalk[24],	"assets\models\virdyaWalk7.bpl"
-		LoadBPL OFFSET MdlVirdyaWalk[28],	"assets\models\virdyaWalk8.bpl"
-		LoadBPL OFFSET MdlVirdyaWave[0],	"assets\models\virdyaWave1.bpl"
-		LoadBPL OFFSET MdlVirdyaWave[4],	"assets\models\virdyaWave2.bpl"
-		LoadBPL OFFSET MdlVirdyaWave[8],	"assets\models\virdyaWave3.bpl"
-		LoadBPL OFFSET MdlVirdyaWave[12],	"assets\models\virdyaWave4.bpl"
-		LoadBPL OFFSET MdlVirdyaWave[16],	"assets\models\virdyaWave5.bpl"
-		LoadBPL OFFSET MdlVirdyaWave[20],	"assets\models\virdyaWave4.bpl"	; Still lazy
-		LoadBPL OFFSET MdlVirdyaWave[24],	"assets\models\virdyaWave5.bpl"
-		LoadBPL OFFSET MdlVirdyaWave[28],	"assets\models\virdyaWave4.bpl"
-		LoadBPL OFFSET MdlVirdyaWave[32],	"assets\models\virdyaWave2.bpl"
 		LoadBPL OFFSET MdlWall,				"assets\models\wall.bpl"
 		LoadBPL OFFSET MdlWallArch,			"assets\models\wallArch.bpl"
 		LoadBPL OFFSET MdlWallClerestory,	"assets\models\wallClerestory.bpl"
@@ -591,10 +631,29 @@ LoadResources PROC EXPORT
 		LoadBPM OFFSET MeshPlrScarf,		"assets\models\plrScarf.bpm"
 		LoadBPM OFFSET MeshVas,				"assets\models\vas.bpm"
 		LoadBPM OFFSET MeshVebra,			"assets\models\vebra.bpm"
+		LoadBPM OFFSET MeshVirdya,			"assets\models\virdya.bpm"
+		; Find head pos
+		push pbx
+		xor pbx, pbx
+		.WHILE (pbx < MeshVirdya.V3Size)
+			mov pcx, pbx
+			add pcx, MeshVirdya.Vertices
+			fcmp REAL4 PTR [pcx+4], f(1.37)
+			.IF (Zero?)
+				mov VirdyaHeadPosPtr, pcx
+				print "Found Virdya head vertex", 13, 10
+				.BREAK
+			.ENDIF
+			add pbx, SIZEOF Vector3
+		.ENDW
+		LoadBPM OFFSET MeshVirdyaHair,		"assets\models\virdyaHair.bpm"
+		LoadBPM OFFSET MeshVirdyaHairD,		"assets\models\virdyaHair.bpm"
+		mov VirdyaHairVel, \
+		rv(bpMalloc, bpDefHeap, HEAP_ZERO_MEMORY, MeshVirdyaHair.V3Size)
+		
 		LoadBPM OFFSET MeshWmblyk,			"assets\models\wmblyk.bpm"
 		
 		; Load separate player models
-		push pbx
 		xor pbx, pbx
 		.WHILE (pbx < NET_MAX_PLAYERS)
 			mov pax, pbx
@@ -656,25 +715,33 @@ LoadResources PROC EXPORT
 	.ELSEIF (LoadState == LOADING_TEXTURES)
 		; ----- TEXTURES -----
 		print "Loading textures...", 9
+		.IF (SettingsGraphicsMipmaps)
+			mov bpTextureMipmaps, TRUE
+		.ENDIF
+		mov bpTextureClamp, TRUE
 		LoadBPT OFFSET TexAmbient,		"assets\textures\ambient.bpt"
+		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexBricks,		"assets\textures\bricks.bpt"
 		LoadBPT OFFSET TexCompass,		"assets\textures\compass.bpt"
 		LoadBPT OFFSET TexCompassWorld,	"assets\textures\compassWorld.bpt"
 		LoadBPT OFFSET TexConcrete,		"assets\textures\concrete.bpt"
 		LoadBPT OFFSET TexConcreteRoof,	"assets\textures\concreteRoof.bpt"
 		LoadBPT OFFSET TexCroa,			"assets\textures\croa.bpt"
-		LoadBPT OFFSET TexCursor,		"assets\textures\cursor.bpt"
 		LoadBPT OFFSET TexDiamond,		"assets\textures\diamond.bpt"
 		LoadBPT OFFSET TexDirt,			"assets\textures\dirt.bpt"
 		LoadBPT OFFSET TexDoor,			"assets\textures\door.bpt"
+		mov bpTextureClamp, TRUE
 		LoadBPT OFFSET TexDoorBlur,		"assets\textures\doorBlur.bpt"
+		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexDoorLift,		"assets\textures\doorLift.bpt"
 		LoadBPT OFFSET TexDugGlyph,		"assets\textures\dugGlyph.bpt"
+		mov bpTextureClamp, TRUE
 		LoadBPT OFFSET TexDust,			"assets\textures\dust.bpt"
 		LoadBPT OFFSET TexEBD[0],		"assets\textures\EBD1.bpt"
 		LoadBPT OFFSET TexEBD[4],		"assets\textures\EBD2.bpt"
 		LoadBPT OFFSET TexEBD[8],		"assets\textures\EBD3.bpt"
 		LoadBPT OFFSET TexEBDShadow,	"assets\textures\EBDShadow.bpt"
+		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexFacade,		"assets\textures\facade.bpt"
 		invoke glGenTextures, 1, ADDR TexFlash
 		LoadBPT OFFSET TexFloor,		"assets\textures\floor.bpt"
@@ -682,6 +749,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexFloorParquet,	"assets\textures\floorParquet.bpt"
 		LoadBPT OFFSET TexFshnada,		"assets\textures\fshnada.bpt"
 		LoadBPT OFFSET TexGamma,		"assets\textures\gamma.bpt"
+		LoadBPT OFFSET TexGlimpse[0],	"assets\textures\glimpse1.bpt"
+		LoadBPT OFFSET TexGlimpse[4],	"assets\textures\glimpse2.bpt"
+		LoadBPT OFFSET TexGlimpse[8],	"assets\textures\glimpse3.bpt"
 		mov bpTextureClamp, TRUE
 		LoadBPT OFFSET TexGlyph[0],		"assets\textures\glyph1.bpt"
 		LoadBPT OFFSET TexGlyph[4],		"assets\textures\glyph2.bpt"
@@ -696,7 +766,6 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexHDL,			"assets\textures\hdl.bpt"
 		LoadBPT OFFSET TexHedge,		"assets\textures\hedge.bpt"
 		LoadBPT OFFSET TexIcon,			"assets\textures\icon.bpt"
-		LoadBPT OFFSET TexKey,			"assets\textures\key.bpt"
 		LoadBPT OFFSET TexKoluplyk,		"assets\textures\koluplyk.bpt"
 		LoadBPT OFFSET TexKubale,		"assets\textures\kubale.bpt"
 		LoadBPT OFFSET TexKubaleV[0],	"assets\textures\kubaleV1.bpt"
@@ -726,11 +795,16 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexMotrya,		"assets\textures\motrya.bpt"
 		LoadBPT OFFSET TexMud,			"assets\textures\mud.bpt"
 		LoadBPT OFFSET TexMudDug,		"assets\textures\mudDug.bpt"
-		LoadBPT OFFSET TexNoise,		"assets\textures\noise.bpt"
 		LoadBPT OFFSET TexPaper,		"assets\textures\paper.bpt"
 		LoadBPT OFFSET TexPipe,			"assets\textures\pipe.bpt"
+		LoadBPT OFFSET TexPl[0],		"assets\textures\pl1.bpt"
+		LoadBPT OFFSET TexPl[4],		"assets\textures\pl2.bpt"
+		LoadBPT OFFSET TexPl[8],		"assets\textures\pl3.bpt"
+		LoadBPT OFFSET TexPl[12],		"assets\textures\pl4.bpt"
 		LoadBPT OFFSET TexPlanks,		"assets\textures\planks.bpt"
 		LoadBPT OFFSET TexPlaster,		"assets\textures\plaster.bpt"
+		;   Strange behaviour on Windows 2000 / default Windows opengl32.dll
+		; with mipmaps specifically of the player character.
 		LoadBPT OFFSET TexPlrBody,		"assets\textures\plrBody.bpt"
 		LoadBPT OFFSET TexPlrBlink,		"assets\textures\plrBlink.bpt"
 		LoadBPT OFFSET TexPlrDead,		"assets\textures\plrDead.bpt"
@@ -764,6 +838,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexPosters[4],	"assets\textures\posters2.bpt"
 		LoadBPT OFFSET TexPosters[8],	"assets\textures\posters3.bpt"
 		LoadBPT OFFSET TexPosters[12],	"assets\textures\posters4.bpt"
+		LoadBPT OFFSET TexPosters[16],	"assets\textures\posters5.bpt"
 		LoadBPT OFFSET TexPowerups,		"assets\textures\powerups.bpt"
 		LoadBPT OFFSET TexRain,			"assets\textures\rain.bpt"
 		;mov bpTextureFiltering, TRUE
@@ -789,20 +864,20 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexTree,			"assets\textures\tree.bpt"
 		LoadBPT OFFSET TexTutorial,		"assets\textures\tutorial.bpt"
 		LoadBPT OFFSET TexTutorialJ,	"assets\textures\tutorialJ.bpt"
-		LoadBPT OFFSET TexUIArrow,		"assets\textures\uiArrow.bpt"
-		LoadBPT OFFSET TexUICircle,		"assets\textures\uiCircle.bpt"
 		LoadBPT OFFSET TexVas,			"assets\textures\vas.bpt"
 		LoadBPT OFFSET TexVasPlane,		"assets\textures\vasPlane.bpt"
 		LoadBPT OFFSET TexVebra,		"assets\textures\vebra.bpt"
-		mov bpTextureFiltering, TRUE
-		LoadBPT OFFSET TexVignette,		"assets\textures\vignette.bpt"
-		mov bpTextureFiltering, FALSE
-		LoadBPT OFFSET TexVignetteRed,	"assets\textures\vignetteRed.bpt"
 		LoadBPT OFFSET TexVirdyaBlink,	"assets\textures\virdyaBlink.bpt"
-		LoadBPT OFFSET TexVirdyaDown,	"assets\textures\virdyaDown.bpt"
+		LoadBPT OFFSET TexVirdyaBlinkN,	"assets\textures\virdyaBlinkN.bpt"
 		LoadBPT OFFSET TexVirdyaN,		"assets\textures\virdyaN.bpt"
-		LoadBPT OFFSET TexVirdyaNeut,	"assets\textures\virdyaNeut.bpt"
-		LoadBPT OFFSET TexVirdyaUp,		"assets\textures\virdyaUp.bpt"
+		LoadBPT OFFSET TexVirdyaNS,		"assets\textures\virdyaNS.bpt"
+		LoadBPT OFFSET TexVirdyaNeut[0],"assets\textures\virdyaNeut1.bpt"
+		LoadBPT OFFSET TexVirdyaNeut[4],"assets\textures\virdyaNeut2.bpt"
+		LoadBPT OFFSET TexVirdyaNeut[8],"assets\textures\virdyaNeut3.bpt"
+		LoadBPT OFFSET TexVirdyaNeut[12],"assets\textures\virdyaNeut4.bpt"
+		LoadBPT OFFSET TexVirdyaNeut[16],"assets\textures\virdyaNeut5.bpt"
+		LoadBPT OFFSET TexVirdyaNeut[20],"assets\textures\virdyaNeut6.bpt"
+		LoadBPT OFFSET TexVirdyaSquint,	"assets\textures\virdyaSquint.bpt"
 		LoadBPT OFFSET TexWalkway,		"assets\textures\walkway.bpt"
 		LoadBPT OFFSET TexWalkwaySmall,	"assets\textures\walkwaySmall.bpt"
 		LoadBPT OFFSET TexWall,			"assets\textures\wall.bpt"
@@ -826,6 +901,16 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexWmblykWait[0],"assets\textures\wmblykWait1.bpt"
 		LoadBPT OFFSET TexWmblykWait[4],"assets\textures\wmblykWait2.bpt"
 		LoadBPT OFFSET TexWmblykWait[8],"assets\textures\wmblykWait3.bpt"
+		mov bpTextureMipmaps, FALSE
+		
+		LoadBPT OFFSET TexKey,			"assets\textures\key.bpt"
+		LoadBPT OFFSET TexNoise,		"assets\textures\noise.bpt"
+		LoadBPT OFFSET TexUIArrow,		"assets\textures\uiArrow.bpt"
+		LoadBPT OFFSET TexUICircle,		"assets\textures\uiCircle.bpt"
+		mov bpTextureFiltering, TRUE
+		LoadBPT OFFSET TexVignette,		"assets\textures\vignette.bpt"
+		mov bpTextureFiltering, FALSE
+		LoadBPT OFFSET TexVignetteRed,	"assets\textures\vignetteRed.bpt"
 		
 		;invoke glGenTextures, 1, ADDR TexIcon
 		;invoke glBindTexture, GL_TEXTURE_2D, TexIcon
@@ -854,6 +939,12 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndAmbHeavy[8],	"assets\sounds\ambHeavy3.bps"
 		invoke alSourcei, SndAmbHeavy[8], AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndAmbHeavy[8], AL_ROLLOFF_FACTOR, f(2)
+		LoadBPS OFFSET SndAmbMod[0],	"assets\sounds\ambMod1.bps"
+		invoke alSourcei, SndAmbMod[0], AL_LOOPING, AL_TRUE
+		invoke alSourcef, SndAmbMod[0], AL_ROLLOFF_FACTOR, f(2)
+		LoadBPS OFFSET SndAmbMod[4],	"assets\sounds\ambMod2.bps"
+		invoke alSourcei, SndAmbMod[4], AL_LOOPING, AL_TRUE
+		invoke alSourcef, SndAmbMod[4], AL_ROLLOFF_FACTOR, f(2)
 		LoadBPS OFFSET SndAmbPlain[0],	"assets\sounds\ambPlain1.bps"
 		invoke alSourcei, SndAmbPlain[0], AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndAmbPlain[0], AL_ROLLOFF_FACTOR, f(2)
@@ -871,13 +962,16 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndAmbW[12],		"assets\sounds\ambW4.bps"
 		LoadBPS OFFSET SndBreak,		"assets\sounds\break.bps"
 		invoke alSourcef, SndBreak, AL_ROLLOFF_FACTOR, f(0.6)
-		LoadBPS OFFSET SndCamera,		"assets\sounds\camera.bps"
+		LoadBPS OFFSET SndCamera[0],	"assets\sounds\camera.bps"
+		LoadBPS OFFSET SndCamera[4],	"assets\sounds\cameraM.bps"
 		LoadBPS OFFSET SndCheckpoint,	"assets\sounds\checkpoint.bps"
 		LoadBPS OFFSET SndCreak,		"assets\sounds\creak.bps"
 		LoadBPS OFFSET SndCrumble,		"assets\sounds\crumble.bps"
 		LoadBPS OFFSET SndDeath,		"assets\sounds\death.bps"
 		LoadBPS OFFSET SndDig,			"assets\sounds\dig.bps"
 		LoadBPS OFFSET SndDistress,		"assets\sounds\distress.bps"
+		LoadBPS OFFSET SndDrone,		"assets\sounds\drone.bps"
+		invoke SndSetGain, ADDR SndDrone, f(0.5)
 		LoadBPS OFFSET SndDoorClose,	"assets\sounds\doorClose.bps"
 		LoadBPS OFFSET SndEBD,			"assets\sounds\ebd.bps"
 		invoke alSourcei, SndEBD, AL_LOOPING, AL_TRUE
@@ -889,6 +983,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndExit1,		"assets\sounds\exit1.bps"
 		LoadBPS OFFSET SndExit2,		"assets\sounds\exit2.bps"
 		LoadBPS OFFSET SndExplosion,	"assets\sounds\explosion.bps"
+		LoadBPS OFFSET SndGlimpse,		"assets\sounds\glimpse.bps"
 		LoadBPS OFFSET SndHBD,			"assets\sounds\hbd.bps"
 		invoke alSourcei, SndHBD, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndHBD, AL_ROLLOFF_FACTOR, f(3)
@@ -915,6 +1010,7 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndHurt,			"assets\sounds\hurt.bps"
 		LoadBPS OFFSET SndImpact,		"assets\sounds\impact.bps"
 		LoadBPS OFFSET SndIntro,		"assets\sounds\intro.bps"
+		LoadBPS OFFSET SndJingle,		"assets\sounds\jingle.bps"
 		LoadBPS OFFSET SndKey,			"assets\sounds\key.bps"
 		LoadBPS OFFSET SndKeyJape,		"assets\sounds\keyJape.bps"
 		LoadBPS OFFSET SndKubale,		"assets\sounds\kubale.bps"
@@ -963,7 +1059,9 @@ LoadResources PROC EXPORT
 		invoke SndSetGain, ADDR SndSiren, 0
 		invoke alSourcei, SndSiren, AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndSlam,			"assets\sounds\slam.bps"
+		LoadBPS OFFSET SndSpeak,		"assets\sounds\speak.bps"
 		LoadBPS OFFSET SndSplash,		"assets\sounds\splash.bps"
+		LoadBPS OFFSET SndSqueak,		"assets\sounds\squeak.bps"
 		LoadBPS OFFSET SndStep[0],		"assets\sounds\step1.bps"
 		LoadBPS OFFSET SndStep[4],		"assets\sounds\step2.bps"
 		LoadBPS OFFSET SndStep[8],		"assets\sounds\step3.bps"
@@ -997,7 +1095,7 @@ LoadResources PROC EXPORT
 		invoke alSourcei, SndWmblykB, AL_LOOPING, AL_TRUE
 		invoke alSourcef, SndWmblykB, AL_ROLLOFF_FACTOR, f(4)
 		LoadBPS OFFSET SndWmblykSpin,	"assets\sounds\wmblykSpin.bps"
-		invoke alSourcef, SndWmblykSpin, AL_ROLLOFF_FACTOR, f(4)
+		invoke alSourcef, SndWmblykSpin, AL_ROLLOFF_FACTOR, f(8)
 		LoadBPS OFFSET SndWmblykStr,	"assets\sounds\wmblykStr.bps"
 		LoadBPS OFFSET SndWmblykStrM,	"assets\sounds\wmblykStrM.bps"
 		invoke SndSetGain, ADDR SndWmblykStrM, 0
@@ -1085,6 +1183,22 @@ LoadStrings PROC EXPORT FilePath:BPPtr
 	.IF (strAddr != OFFSET StrSectionEnd)
 		print "INSUFFICIENT STRINGS IN "
 		print FilePath, 13, 10
+		.DATA
+			ErrInsuffStr	DB "Insufficient strings in "
+		.CODE
+		mov strLen, vrv(StrLength, FilePath)
+		add pax, SIZEOF ErrInsuffStr+1
+		invoke bpMalloc, bpDefHeap, HEAP_ZERO_MEMORY, pax
+		mov pbx, pax
+		invoke RtlMoveMemory, pbx, ADDR ErrInsuffStr, SIZEOF ErrInsuffStr
+		mov pax, pbx
+		add pax, SIZEOF ErrInsuffStr
+		invoke RtlMoveMemory, pax, FilePath, strLen
+		invoke bpError, pbx, 0
+		invoke bpFree, bpDefHeap, 0, pbx
+		
+		
+		; Allocate blank
 		mov pbx, strAddr
 		.WHILE (pbx < OFFSET StrSectionEnd)
 			invoke bpMalloc, bpDefHeap, HEAP_ZERO_MEMORY, 1
@@ -1113,6 +1227,9 @@ ChrIsAlpha PROC EXPORT Chr:BYTE
 	ret
 ChrIsAlpha ENDP
 
+;   Stiffness governs how quick the velocity will gain momentum towards the 
+; target (higher Stiffness = more dense feel). Damping governs how quick the 
+; velocity is put to rest (0).
 DampedSpring PROC EXPORT Velocity:BPPtr, Val:REAL4, ValTarget:REAL4, \
 Stiffness:REAL4, Damping:REAL4, T:REAL4
 	fld ValTarget

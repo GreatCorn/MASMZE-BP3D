@@ -59,7 +59,9 @@ ENUM	UICB_NONE, \
 		UICB_RESOLUTION, \
 		UICB_DISPLAYMODE, \
 		UICB_DISPLAYDEV, \
-		UICB_MSAA
+		UICB_MSAA, \
+		UICB_PIXELIZATION, \
+		UICB_POSTERIZATION
 		
 ENUM	UIPP_NONE, \
 		UIPP_EXIT, \
@@ -71,7 +73,7 @@ ENUM	UIPP_NONE, \
 		UIPP_SERVDISC, \
 		UIPP_MULTIPLAYER
 .CONST
-UISubDur	REAL4 4.0
+UISubDur		REAL4 4.0
 
 
 .DATA
@@ -108,13 +110,14 @@ UIID				BYTE 0
 UIFade				BPEnum UI_FADE_NONE
 UIFadeCallback		BPPtr 0
 UIFadeVal			REAL4 0.0	; Raw fade value (0.0 - 1.0)
+UIFadeBase			REAL4 1.0	; Base fade val
 UIFadeDisp			REAL4 0.0	; Fade displayed alpha (UIFadeVal and PlrHealth)
 
 UIFocus				BYTE 0
-UIFocusPrev			BYTE 0
 UIFocusBeforePopup	BYTE 0
 UIFocusType			BPEnum UI_NONE
 UIPressed			BYTE 0
+UIPressedPrev		BYTE 0, 0
 
 UILoadTimer			REAL4 0.0
 UILoadTex			DWORD 0
@@ -129,6 +132,7 @@ UIScrollLimit		DWORD 0
 UIScrollPressed		BPBool FALSE
 UIScrollable		BPBool FALSE
 UIShadow			BPBool FALSE
+UISliderDispVal		BPPtr 0
 UISliderRange		REAL4 0.0, 1.0
 UISliderStep		REAL4 0.0
 UISliderZeros		BPBool TRUE
@@ -137,15 +141,37 @@ UIXFrom				SDWORD 0
 
 UIDeadTipStr		BPPtr 0
 
+UIPlush				BPEnum 0
+UIPlushPos			Vector3 <>
+UIPlushRot			REAL4 0.0
+UIPlushSqueak		REAL4 0.0, 0.0	; Val, velocity
+UIPlushSqueaked		BPBool FALSE
+UIPlushColor		Vector4 <1.0, 1.0, 1.0, 1.0>
+
 UITextPopup			BPEnum UI_FADE_NONE
 UITextPopupTimer	REAL4 0.0
 UITextPopupY		REAL4 0.0
 UITextPopupSmall	BPBool FALSE
 UITextPopupStr		BPPtr 0
 
+ENUM \
+	UI_CC_START_DURATION, \
+	UI_CC_START_END
+
 UISubtitlesStr		BPPtr 0
 UISubtitlesTimer	REAL4 0.0
 UISubLastRandom		BPPtr 0
+UISubPlayCount		DWORD 0
+UISubPlayMode		BPEnum UI_CC_START_DURATION
+UISubPlayPtr		BPPtr 0		; Expects a pointer to an array of [start - end]
+UISubPlaySnd		DWORD 0
+UISubPlayStrPtr		BPPtr 0
+UISubPlayTimer		REAL4 0.0
+UISubType			BPBool FALSE
+UISubTypeDur		REAL4 0.05
+UISubTypeLen		DWORD 0
+UISubTypeTimer		REAL4 0.0
+
 
 UISTTPos			SDWORD 0
 UISTTDir 			BPBool FALSE
@@ -160,6 +186,7 @@ UILangs				BPPtr 0	; Array of BYTE[32]
 UIPresets			BPPtr 0	; Array of BYTE[32]
 UIMSAA				BPPtr 0	; Array of DWORD
 UIResolutions		BPPtr 0 ; Array of Vector2
+UIScaleSnap			REAL4 0.5, 0.75, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0
 
 .DATA?
 UIResSize			BPPtr ?
@@ -167,6 +194,7 @@ UIMouseScaled		Vector2 <?, ?>
 UIScreenCntAcc		Vector2 <?, ?>
 UIScreenScaled		Vector4 <?, ?, ?, ?>
 UIScaleForMouse		REAL4 ?
+UIScaleReal			REAL4 ?
 
 .CODE
 UI_DrawRectangle PROTO :DWORD, :DWORD
@@ -219,9 +247,10 @@ UI_DrawDebug PROC EXPORT
 	RenderText "FPU:", 16, 176
 	RenderText str$(rv(fpuGetStackTop)), 112, 176
 	RenderText str$(PlrState), 16, 200
+	RenderText ubyte$(MazeState), 48, 200
 	.IF (Maze)
 		invoke Maze_GetCellI, MazePlrPos.X, MazePlrPos.Y
-		RenderText xbyte$(al), 16, 224
+		RenderText ubyte$(al), 16, 224
 	.ENDIF
 	
 	
@@ -571,6 +600,23 @@ UI_ComboboxChoose PROC EXPORT ItemID:BYTE
 			
 			invoke bpFree, bpDefHeap, 0, UIMSAA
 			mov UIMSAA, 0
+		CASE UICB_PIXELIZATION
+			.IF (ItemID == 0)
+				mov SettingsGraphicsPixelization, 0
+				invoke Settings_SetOption, OFFSET SettingsGraphicsPixelization
+			.ELSEIF (ItemID == 1)
+				mov SettingsGraphicsPixelization, 2
+				invoke Settings_SetOption, OFFSET SettingsGraphicsPixelization
+			.ELSEIF (ItemID == 2)
+				mov SettingsGraphicsPixelization, 3
+				invoke Settings_SetOption, OFFSET SettingsGraphicsPixelization
+			.ENDIF
+			call UI_HandleMenuEscape
+			
+		CASE UICB_POSTERIZATION
+			movzx eax, ItemID
+			bpMEM32 SettingsGraphicsPosterization, eax
+			call UI_HandleMenuEscape
 	ENDSW
 	ret
 UI_ComboboxChoose ENDP
@@ -764,7 +810,7 @@ UI_HR PROC EXPORT X:SDWORD, Y:SDWORD
 	invoke glTranslatei, X, Y, 0
 	invoke glScalei, UI_BTN_W, UI_HR_T, 1
 	invoke glBindTexture, GL_TEXTURE_2D, 0
-	invoke glColor4fv, OFFSET clDarkGray
+	invoke glColor4fv, OFFSET clGray
 	invoke glCallList, ScreenQuad
 	call glPopMatrix
 	invoke glColor4fv, OFFSET clWhite
@@ -810,6 +856,93 @@ ActionStrPtr:BPPtr
 	ret
 UI_KeyMapper ENDP
 
+UI_Scrollbar PROC EXPORT X:SDWORD, Y:SDWORD, Height:SDWORD
+	LOCAL yPos:SDWORD
+	
+	mov UIScroll, rv(intClamp, UIScroll, 0, UIScrollLimit)
+	
+	; fucking insanity down here I don't know what these calculations are
+	call glPushMatrix
+	invoke glTranslatei, X, Y, 0
+	invoke glColor4fv, OFFSET clDarkGray
+	mov eax, Height
+	sub eax, UI_BRD_M*2
+	invoke UI_DrawRectangle, UI_SLD_H, eax
+	invoke glColor4fv, OFFSET clWhite
+	
+	; Convert UIScroll into scrollbar tack position somehow???
+	.IF (UIScrollLimit)	; Check for 0 to not trigger c0000090...
+		fild UIScroll
+		fidiv UIScrollLimit
+		fild Height	; ...which gets triggered here??
+		push UI_SLD_T*3 + UI_BRD_M*2	; UI_SLD_T*3 is scroll tack height
+		fisub BPPtr PTR [psp]
+		pop pax
+		fmul
+		fistp yPos
+	.ENDIF
+	mov eax, -(UI_SLD_T/2 - UI_SLD_H/2)	; what the fuck
+	invoke glTranslatei, eax, yPos, 0
+	
+	; Check if mouse is in range of the scrollbar line
+	mov eax, X
+	sub eax, (UI_SLD_T/2 - UI_SLD_H/2)
+	mov ecx, eax
+	add ecx, UI_SLD_T
+	invoke intInRange, UIMouseScaled.X, eax, ecx
+	.IF (al)
+		mov eax, Y
+		;mov ecx, Height
+		;shr ecx, 1
+		;sub eax, ecx
+		;add eax, UI_BRD_M
+		mov ecx, eax
+		add ecx, Height
+		sub ecx, UI_BRD_M*2
+		invoke intInRange, UIMouseScaled.Y, eax, ecx
+		.IF (al)
+			.IF (!UIScrollPressed)
+				invoke glColor4fv, OFFSET clLightGray
+				.IF (Keys[VK_LBUTTON])
+					mov UIScrollPressed, TRUE
+				.ENDIF
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	
+	.IF (UIScrollPressed)
+		invoke glColor4fv, OFFSET clGray
+		
+		fild UIMouseScaled.Y
+		fisub Y
+		push (UI_SLD_T*3)/2 + UI_BRD_M
+		fisub BPPtr PTR [psp]
+		pop pax
+		;fild Height
+		;fmul f(0.5)
+		;fadd
+		fild Height
+		push UI_SLD_T*3 + UI_BRD_M*2	; UI_SLD_T*3 is scroll tack height
+		fisub BPPtr PTR [psp]
+		pop pax
+		fdiv
+		fimul UIScrollLimit
+		fistp UIScroll
+		; shut up. it works. don't fucking touch a thing
+		
+		.IF !(Keys[VK_LBUTTON])
+			mov UIScrollPressed, FALSE
+		.ENDIF
+	.ENDIF
+	
+	invoke UI_DrawRectangle, UI_SLD_T, UI_SLD_T*3
+	invoke glColor4fv, OFFSET clWhite
+	call glPopMatrix
+	
+	mov UIScroll, rv(intClamp, UIScroll, 0, UIScrollLimit)
+	ret
+UI_Scrollbar ENDP
+
 UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	LOCAL xFrom:SDWORD, yFrom:SDWORD, boolRet:BPPtr
 	
@@ -832,7 +965,12 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	invoke UI_Text, String, xFrom, yFrom, BP_ALIGN_LEFT, 0
 	
 	; Draw value text
-	mov pax, ValuePtr
+	.IF (UISliderDispVal)
+		mov pax, UISliderDispVal
+		mov UISliderDispVal, 0
+	.ELSE
+		mov pax, ValuePtr
+	.ENDIF
 	mov eax, REAL4 PTR [pax]
 	mov pcx, real4$(eax)
 	push pcx
@@ -1107,92 +1245,17 @@ UI_DrawComboboxMenu PROC EXPORT
 	.ENDIF
 	invoke UI_DrawRectangle, eax, UIComboboxHeight
 	invoke glColorMask, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE
-	
-	.IF (UIScrollable)	; Scrollbar
-		; fucking insanity down here I don't know what these calculations are
-		invoke glTranslatei, UI_MENU_CB_WIDTH, UI_BRD_M, 0
-		invoke glColor4fv, OFFSET clDarkGray
-		mov eax, UIComboboxHeight
-		sub eax, UI_BRD_M*2
-		invoke UI_DrawRectangle, UI_SLD_H, eax
-		invoke glColor4fv, OFFSET clWhite
-		
-		; Convert UIScroll into scrollbar tack position somehow???
-		.IF (UIScrollLimit)	; Check for 0 to not trigger c0000090...
-			fild UIScroll
-			fidiv UIScrollLimit
-			fild UIComboboxHeight	; ...which gets triggered here??
-			push UI_SLD_T*3 + UI_BRD_M*2	; UI_SLD_T*3 is scroll tack height
-			fisub BPPtr PTR [psp]
-			pop pax
-			fmul
-			fistp xOffset
-		.ENDIF
-		mov eax, -(UI_SLD_T/2 - UI_SLD_H/2)	; what the fuck
-		invoke glTranslatei, eax, xOffset, 0
-		
-		; Check if mouse is in range of the scrollbar line
-		mov eax, ScreenHalf.X
-		add eax, UI_MENU_CB_WIDTH - (UI_SLD_T/2 - UI_SLD_H/2)
-		mov ecx, eax
-		add ecx, UI_SLD_T
-		invoke intInRange, UIMouseScaled.X, eax, ecx
-		.IF (al)
-			mov eax, ScreenHalf.Y
-			mov ecx, UIComboboxHeight
-			shr ecx, 1
-			sub eax, ecx
-			add eax, UI_BRD_M
-			mov ecx, eax
-			add ecx, UIComboboxHeight
-			sub ecx, UI_BRD_M*2
-			invoke intInRange, UIMouseScaled.Y, eax, ecx
-			.IF (al)
-				.IF (!UIScrollPressed)
-					invoke glColor4fv, OFFSET clLightGray
-					.IF (Keys[VK_LBUTTON])
-						mov UIScrollPressed, TRUE
-					.ENDIF
-				.ENDIF
-			.ENDIF
-		.ENDIF
-		
-		.IF (UIScrollPressed)
-			invoke glColor4fv, OFFSET clGray
-			
-			fild UIMouseScaled.Y
-			fisub ScreenHalf.Y
-			push (UI_SLD_T*3)/2 + UI_BRD_M
-			fisub BPPtr PTR [psp]
-			pop pax
-			fild UIComboboxHeight
-			fmul f(0.5)
-			fadd
-			fild UIComboboxHeight
-			push UI_SLD_T*3 + UI_BRD_M*2	; UI_SLD_T*3 is scroll tack height
-			fisub BPPtr PTR [psp]
-			pop pax
-			fdiv
-			fimul UIScrollLimit
-			fistp UIScroll
-			; shut up. it works. don't fucking touch a thing
-			
-			.IF !(Keys[VK_LBUTTON])
-				mov UIScrollPressed, FALSE
-			.ENDIF
-		.ENDIF
-		
-		invoke UI_DrawRectangle, UI_SLD_T, UI_SLD_T*3
-		invoke glColor4fv, OFFSET clWhite
-	.ENDIF
 	call glPopMatrix
-	mov UIScroll, rv(intClamp, UIScroll, 0, UIScrollLimit)
-	
-	
 	
 	bpMEM32 xOffset, ScreenHalf.X
 	add xOffset, UI_BRD_M
 	add ebx, UI_BRD_M
+	
+	.IF (UIScrollable)	; Scrollbar
+		mov eax, ScreenHalf.X
+		add eax, UI_MENU_CB_WIDTH
+		invoke UI_Scrollbar, eax, ebx, UIComboboxHeight
+	.ENDIF
 	
 	invoke glStencilFunc, GL_EQUAL, 1, 0FFh
 	invoke glStencilMask, 0
@@ -1368,10 +1431,10 @@ UI_DrawMenuMain PROC EXPORT
 	
 	FontSize 8, 16
 	invoke UI_Text, ADDR AppName, ScreenHalf.X, ebx, BP_ALIGN_CENTER, 0
-	add ebx, 16*UI_SCALE
+	add ebx, 16*UI_SCALE + UI_HR_H
 	
-	invoke UI_HR, UIXFrom, ebx
-	add ebx, UI_HR_H
+	;invoke UI_HR, UIXFrom, ebx
+	;add ebx, UI_HR_H
 	
 	FontSize 4, 8
 	.IF !(HasSave)
@@ -1427,6 +1490,7 @@ UI_DrawMenuMain PROC EXPORT
 		.IF !(GameTips & GAME_TIP_MULTIPLAYER)
 			mov UIPopupMenu, UIPP_MULTIPLAYER
 			or GameTips, GAME_TIP_MULTIPLAYER
+			invoke Settings_SaveEnum, ADDR SettingsRegGameTips, ADDR GameTips
 		.ENDIF
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
@@ -1446,6 +1510,24 @@ UI_DrawMenuMain PROC EXPORT
 		mov UIState, UI_STATE_FADING
 		call UI_HandleMenuEscape
 	.ENDIF
+	
+	push bpFontWidth
+	push bpFontHeight
+	FontSize 3, 6
+	IFDEF MODE_DEBUG
+	
+	mov ebx, FMain.ScreenSize.y
+	sub ebx, 20*UI_SCALE+4
+	invoke UI_Text, s("DEBUG BUILD"), 4, ebx, 0, 0
+	add ebx, 7*UI_SCALE
+	invoke UI_Text, ADDR AsmTime, 4, ebx, 0, 0
+	ENDIF
+	
+	mov ebx, FMain.ScreenSize.y
+	sub ebx, 6*UI_SCALE+4
+	invoke UI_Text, ADDR AppVersion, 4, ebx, 0, 0
+	pop bpFontHeight
+	pop bpFontWidth
 	
 	ret
 	uiMenuContinue:
@@ -1612,6 +1694,10 @@ UI_DrawMenuPause PROC EXPORT
 		mov UIState, UI_STATE_MENU_SETTINGS
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
+	
+	bpMEM32 UITextPopupY, f(%UI_BTN_M)
+	bpMPM UITextPopupStr, StrLayerNumber
+	mov UITextPopupSmall, FALSE
 	
 	.IF (NetSock)
 		invoke UI_Button, StrMenuDisconnect, ScreenHalf.X, ebx, BP_ALIGN_CENTER
@@ -1838,10 +1924,12 @@ UI_DrawMenuSettingsControls PROC EXPORT
 UI_DrawMenuSettingsControls ENDP
 
 UI_DrawMenuSettingsControlsBindings PROC EXPORT
-	LOCAL leftPos:REAL4, rightPos:REAL4
+	LOCAL leftPos:REAL4, rightPos:REAL4, height:SDWORD
 	
+	;   idfk there's a button being pulled from outta my ass and some bullshit
+	; margins I just don't care don't make me align this any more
 	UI_MENU_BINDINGS_WIDTH	EQU UI_BTN_WS*3 + UI_BTN_M*2
-	UI_MENU_BINDINGS_HEIGHT	EQU UI_BTN_H*16 + UI_BTN_M*13 + UI_HR_H*2
+	UI_MENU_BINDINGS_HEIGHT	EQU UI_BTN_H*9 + UI_BTN_M*6 + UI_HR_H*2
 	
 	mov ebx, ScreenHalf.Y
 	sub ebx, UI_MENU_BINDINGS_HEIGHT/2
@@ -1864,7 +1952,34 @@ UI_DrawMenuSettingsControlsBindings PROC EXPORT
 	invoke UI_HR, UIXFrom, ebx
 	add ebx, UI_HR_H
 	
+	mov eax, ScreenHalf.X
+	add eax, UI_MENU_BINDINGS_WIDTH/2 + UI_BTN_M*3
+	mov height, UI_MENU_BINDINGS_HEIGHT - UI_BTN_H*3 - UI_BTN_M*2 - UI_HR_H*2
+	mov edx, ebx
+	add edx, UI_BTN_M
+	invoke UI_Scrollbar, eax, edx, height
+	
 	mov UISmallButtons, TRUE
+	
+	invoke glEnable, GL_STENCIL_TEST
+	invoke glStencilFunc, GL_ALWAYS, 1, 0FFh
+	invoke glStencilMask, 0FFh
+	invoke glClear, GL_STENCIL_BUFFER_BIT
+	
+	call glPushMatrix	; Bounding box
+	invoke glColorMask, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE
+	invoke glTranslatei, leftPos, ebx, 0
+	
+	invoke UI_DrawRectangle, UI_MENU_BINDINGS_WIDTH, height
+	
+	invoke glColorMask, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE
+	call glPopMatrix
+	
+	push pbx
+	sub ebx, UIScroll
+	
+	invoke glStencilFunc, GL_EQUAL, 1, 0FFh
+	invoke glStencilMask, 0
 	
 	; Up
 	invoke UI_Text, StrMenuInUp, leftPos, ebx, BP_ALIGN_LEFT, 0
@@ -1977,6 +2092,17 @@ UI_DrawMenuSettingsControlsBindings PROC EXPORT
 	invoke UI_KeyMapper, BIND_JOYSTICK, rightPos, ebx,		ADDR JBPlayers, \
 	StrMenuInPlayers
 	add ebx, UI_BTN_H
+	
+	invoke glDisable, GL_STENCIL_TEST
+	
+	add ebx, UIScroll
+	sub ebx, (UI_BTN_H*2 + UI_HR_H*2) + (UI_BTN_H*6 + UI_BTN_M*4)
+	add ebx, UI_MENU_BINDINGS_HEIGHT/2
+	sub ebx, ScreenHalf.Y
+	mov UIScrollLimit, ebx
+	
+	pop pbx
+	add ebx, UI_MENU_BINDINGS_HEIGHT - UI_BTN_H*3 - UI_BTN_M*2 - UI_HR_H*2
 	
 	
 	mov UISmallButtons, FALSE
@@ -2133,29 +2259,25 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 	add ebx, UI_BTN_H + UI_BTN_M
 	
 	invoke Vector2Set, ADDR UISliderRange, f(0.5), f(4)
-	invoke UI_Slider, StrMenuUIScale, UIXFrom,ebx,OFFSET SettingsGraphicsUIScale
+	mov UISliderDispVal, OFFSET SettingsGraphicsUIScale
+	invoke UI_Slider, StrMenuUIScale, UIXFrom, ebx, OFFSET UIScaleReal
+	mov ah, UIID
 	.IF (al)
-		invoke Settings_SetOption, OFFSET SettingsGraphicsUIScale
-	.ELSE
-		; 'Snap'
-		mov pcx, 4
-		bpMEM32 res.X, f(0.5)
-		.WHILE (pcx)
-			mov res.Y, rv(flDistance, SettingsGraphicsUIScale, res.X)
-			fcmp res.Y, f(0.05)
-			.IF (Carry?) && (res.Y)
-				bpMEM32 SettingsGraphicsUIScale, res.X
-				push pcx
-				invoke Settings_SetOption, OFFSET SettingsGraphicsUIScale
-				pop pcx
+		bpMEM32 SettingsGraphicsUIScale, UIScaleReal
+		xor pcx, pcx
+		.WHILE (pcx < SIZEOF UIScaleSnap)
+			mov res.X, rv(flDistance, UIScaleReal, UIScaleSnap[pcx])
+			fcmp res.X, f(0.05)
+			.IF (Carry?)
+				bpMEM32 SettingsGraphicsUIScale, UIScaleSnap[pcx]
+				.BREAK
 			.ENDIF
-			
-			fld res.X
-			fmul f(2)
-			fstp res.X
-			dec pcx
+			add pcx, 4
 		.ENDW
-
+		
+		mov ah, UIID
+		invoke Settings_SetOption, OFFSET SettingsGraphicsUIScale
+	.ELSEIF (UIPressedPrev == ah)
 		bpMEM32 UIScaleForMouse, SettingsGraphicsUIScale
 	.ENDIF
 	add ebx, UI_BTN_H + UI_BTN_M
@@ -2291,8 +2413,19 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	.IF (FXReadPixelsTest == FX_RP_BROKEN)
 		mov UIDisabled, TRUE
 	.ENDIF
-	invoke UI_Checkbox, StrMenuPixelization, UIXFrom, ebx, \
-	OFFSET SettingsGraphicsPixelization
+	invoke UI_Combobox, StrMenuPixelization, UIXFrom, ebx, UICB_PIXELIZATION
+	.IF (al)
+		invoke UI_ComboboxAdd, StrMenuOff
+		invoke UI_ComboboxAdd, StrMenuNormal
+		invoke UI_ComboboxAdd, StrMenuExtreme
+		.IF (SettingsGraphicsPixelization == 0)
+			mov UIComboboxSelected, 129
+		.ELSEIF (SettingsGraphicsPixelization == 2)
+			mov UIComboboxSelected, 130
+		.ELSEIF (SettingsGraphicsPixelization == 3)
+			mov UIComboboxSelected, 131
+		.ENDIF
+	.ENDIF
 	invoke UI_ShowTextPopupHint, StrMenuHintPixelization, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
@@ -2300,8 +2433,15 @@ UI_DrawMenuSettingsGraphicsEffects PROC EXPORT
 	.IF (FXReadPixelsTest == FX_RP_BROKEN)
 		mov UIDisabled, TRUE
 	.ENDIF
-	invoke UI_Checkbox, StrMenuPosterization, UIXFrom, ebx, \
-	OFFSET SettingsGraphicsPosterization
+	invoke UI_Combobox, StrMenuPosterization, UIXFrom, ebx, UICB_POSTERIZATION
+	.IF (al)
+		invoke UI_ComboboxAdd, StrMenuOff
+		invoke UI_ComboboxAdd, StrMenuNormal
+		invoke UI_ComboboxAdd, StrMenuExtreme
+		mov eax, SettingsGraphicsPosterization
+		add eax, 129
+		add UIComboboxSelected, al
+	.ENDIF
 	invoke UI_ShowTextPopupHint, StrMenuHintPosterization, TRUE
 	add ebx, UI_BTN_H + UI_BTN_M
 	
@@ -2381,9 +2521,16 @@ UI_DrawMenuSettingsGraphicsGamma PROC EXPORT
 	invoke UI_HR, UIXFrom, ebx
 	add ebx, UI_HR_H
 	
-	invoke UI_Button, StrMenuBack, UIXFrom, ebx, BP_ALIGN_CENTER
+	invoke UI_Button, StrMenuOK, UIXFrom, ebx, BP_ALIGN_CENTER
 	.IF (al)
-		call UI_HandleMenuEscape
+		.IF (GameTips & GAME_TIP_GAMMA_DISC)
+			call UI_HandleMenuEscape
+		.ELSE
+			invoke Settings_Save, OFFSET SettingsIniGraphics
+			mov UIState, UI_STATE_MENU_MAIN
+			or GameTips, GAME_TIP_GAMMA_DISC
+			invoke Settings_SaveEnum, ADDR SettingsRegGameTips, ADDR GameTips
+		.ENDIF
 	.ENDIF
 	ret
 UI_DrawMenuSettingsGraphicsGamma ENDP
@@ -2651,7 +2798,6 @@ UI_DrawPopupMenu PROC EXPORT
 			invoke UI_Button, StrMenuOK, ScreenHalf.X, ebx, \
 			BP_ALIGN_CENTER
 			.IF (al)
-				invoke Settings_SaveEnum, ADDR SettingsRegGameTips,ADDR GameTips
 				call UI_HandleMenuEscape
 			.ENDIF
 			
@@ -2771,7 +2917,7 @@ UI_HandleMenuEscape PROC EXPORT
 	.ELSEIF (MazeNote & 16)
 		bpMEM32 deltaScale, f(1)
 		mov MazeNote, 0
-	.ELSEIF (UIState == UI_STATE_GAME)
+	.ELSEIF (UIState == UI_STATE_GAME) && !(MazeMotryaHedge)
 		vinvoke PauseGame, TRUE
 		invoke bpSetMouseMode, ADDR FMain, BP_MOUSE_MODE_VISIBLE
 		
@@ -2802,9 +2948,11 @@ UI_HandleMenuEscape PROC EXPORT
 		mov UIState, UI_STATE_GAME
 	.ELSEIF (UIState == UI_STATE_MENU_MAIN)
 		.IF (UIMenuSplash < 2)
-			mov UIMenuSplashTimer, FLT_NEG
-			mov UIFade, UI_FADE_OUT
-			mov UIFadeVal, FLT_1
+			.IF (GameTips & GAME_TIP_GAMMA_DISC)	; not first time running
+				mov UIMenuSplashTimer, FLT_NEG
+				mov UIFade, UI_FADE_OUT
+				mov UIFadeVal, FLT_1
+			.ENDIF
 		.ENDIF
 	.ENDIF
 	ret
@@ -2840,9 +2988,23 @@ UI_MouseFocus PROC EXPORT X:SDWORD, Y:SDWORD, ID:BYTE
 	ret
 UI_MouseFocus ENDP
 
+UI_PlaySubtitles PROC EXPORT SubPtr:BPPtr, Count:DWORD, StrPtrPtr:BPPtr
+	bpMPM UISubPlayPtr, SubPtr
+	bpMEM32 UISubPlayCount, Count
+	bpMPM UISubPlayStrPtr, StrPtrPtr
+	mov UISubPlayTimer, 0
+	ret
+UI_PlaySubtitles ENDP
+
 UI_ShowSubtitles PROC EXPORT String:BPPtr, Duration:REAL4
 	bpMPM UISubtitlesStr, String
 	bpMEM32 UISubtitlesTimer, Duration
+	.IF (UISubType)
+		mov UISubTypeLen, 1
+		bpMEM32 UISubTypeTimer, UISubTypeDur
+	.ELSE
+		mov UISubTypeLen, 0
+	.ENDIF
 	ret
 UI_ShowSubtitles ENDP
 
@@ -2913,6 +3075,29 @@ UI_Draw PROC EXPORT
 			invoke glCallList, ScreenQuad
 			invoke glDisable, GL_BLEND
 		.ENDIF
+		
+		; Freeze
+		.IF (FreezeTime)
+			invoke glEnable, GL_COLOR_LOGIC_OP
+			invoke glLogicOp, GL_EQUIV
+			invoke glBindTexture, GL_TEXTURE_2D, 0
+			
+			fld1
+			fsub PlrPowerupDur
+			fmul st, st
+			fmul st, st
+			fld st
+			fmul f(100)
+			fsin
+			fmul
+			fmul f(0.01)
+			fadd f(0.3)
+			fstp flVal
+			
+			invoke glColor3f, flVal, flVal, flVal
+			invoke glCallList, ScreenQuad
+			invoke glDisable, GL_COLOR_LOGIC_OP
+		.ENDIF
 			
 		; Kubale inkblot
 		.IF (KubaleVision)
@@ -2964,7 +3149,7 @@ UI_Draw PROC EXPORT
 			invoke glDisable, GL_ALPHA_TEST
 			invoke glDisable, GL_BLEND
 		.ENDIF
-		
+			
 		; Fade
 		.IF (UIFadeDisp)
 			invoke glEnable, GL_BLEND
@@ -2975,11 +3160,42 @@ UI_Draw PROC EXPORT
 			invoke glDisable, GL_BLEND
 		.ENDIF
 		
+		; Motrya
+		.IF (MazeMotrya == MAZE_MOTRYA_UI)
+			call glPushMatrix
+			invoke glMatrixMode, GL_PROJECTION
+			call glPushMatrix
+			call glLoadIdentity
+			invoke gluPerspectivef, CamFOV, FMain.Aspect, f(0.01), f(1000)
+			invoke glMatrixMode, GL_MODELVIEW
+			call glLoadIdentity
+			
+			invoke glEnable, GL_DEPTH_TEST
+			invoke glDepthMask, GL_TRUE
+			invoke glEnable, GL_LIGHTING
+			invoke glEnable, GL_FOG
+			invoke glClear, GL_DEPTH_BUFFER_BIT
+			
+			invoke glTranslatef, f(-1), f(-1.2), f(-3)
+			invoke glColor4fv, ADDR clWhite
+			call Maze_DrawMotrya
+			invoke glDepthMask, GL_FALSE
+			invoke glDisable, GL_DEPTH_TEST
+			invoke glDisable, GL_LIGHTING
+			invoke glDisable, GL_FOG
+			
+			
+			invoke glMatrixMode, GL_PROJECTION
+			call glPopMatrix
+			invoke glMatrixMode, GL_MODELVIEW
+			call glPopMatrix
+		.ENDIF
+		
 		; Gamma
 		.IF !(SettingsGraphicsGammaBypass)
 			invoke FX_DrawGamma, SettingsGraphicsGamma
 		.ENDIF
-		
+			
 		; White save fade
 		.IF (UIWhiteFadeVal)
 			invoke glEnable, GL_BLEND
@@ -3140,6 +3356,69 @@ UI_Draw PROC EXPORT
 		call glPopMatrix
 	.ENDIF
 	
+	; Plushie
+	.IF (UIPlush)
+		invoke glEnable, GL_ALPHA_TEST
+			
+		call glPushMatrix
+		invoke glMatrixMode, GL_PROJECTION
+		call glPushMatrix
+		call glLoadIdentity
+		invoke gluPerspectivef, f(100), FMain.Aspect, f(0.01), f(100)
+		invoke glMatrixMode, GL_MODELVIEW
+		call glLoadIdentity
+		
+		invoke glEnable, GL_LIGHTING
+		invoke glEnable, GL_DEPTH_TEST
+		invoke glDepthMask, GL_TRUE
+		invoke glClear, GL_DEPTH_BUFFER_BIT
+		
+		invoke glColorMask, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE
+		
+		invoke glTranslate3fv, ADDR UIPlushPos
+		invoke glRotatef, UIPlushRot, 0, FLT_1, 0
+		invoke glRotatef, UIPlushPos.Z, 0, 0, FLT_1
+		fld1
+		fadd UIPlushSqueak
+		fstp flVal
+		fld1
+		fsub UIPlushSqueak
+		fstp flVal1
+		
+		invoke glScalef, flVal, flVal1, FLT_1
+		push pbx
+		movzx pbx, UIPlush
+		dec pbx
+		shl pbx, 2
+		invoke glBindTexture, GL_TEXTURE_2D, TexPl[pbx]
+		invoke glCallList, MdlPl[pbx]
+		
+		invoke glEnable, GL_BLEND
+		invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+		invoke glMaterialfv, GL_FRONT, GL_AMBIENT_AND_DIFFUSE, ADDR UIPlushColor
+		invoke glDepthMask, GL_FALSE
+		invoke glDepthFunc, GL_EQUAL
+		invoke glDisable, GL_ALPHA_TEST
+		invoke glColorMask, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE
+		invoke glCallList, MdlPl[pbx]
+		pop pbx
+		
+		invoke glDepthFunc, GL_LEQUAL
+		
+		invoke glDepthMask, GL_FALSE
+		invoke glDisable, GL_DEPTH_TEST
+		invoke glDisable, GL_LIGHTING
+		invoke glDisable, GL_BLEND
+		invoke glMaterialfv, GL_FRONT, GL_AMBIENT, ADDR clAmbient
+		invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR clWhite
+		
+		
+		invoke glMatrixMode, GL_PROJECTION
+		call glPopMatrix
+		invoke glMatrixMode, GL_MODELVIEW
+		call glPopMatrix
+	.ENDIF
+		
 	FontSize 4, 8
 	
 	.IF (Loading)
@@ -3305,6 +3584,8 @@ UI_Draw PROC EXPORT
 				
 				invoke glScalef, f(%UI_LOAD_S), f(%UI_LOAD_S), f(%UI_LOAD_S)
 				
+				print real4$(UILoadTimer), 13, 10
+				
 				fld UILoadTimer
 				frndint
 				fmul f(0.25)
@@ -3332,12 +3613,16 @@ UI_Draw PROC EXPORT
 	
 	mov UIShadow, TRUE
 	; Subtitles
+	.IF (UISubType)
+		bpMEM32 bpTextLength, UISubTypeLen
+	.ENDIF
 	.IF (UISubtitlesStr)
 		mov ecx, UIScreenScaled.W
 		sub ecx, UI_BTN_H*2
 		; Input hint subtitles
 		SWITCH UISubtitlesStr
-			CASE StrCCCheckpoint, StrCCElevator, StrCCSaveErase, StrCCShop
+			CASE StrCCCheckpoint, StrCCElevator, StrCCSaveErase, StrCCShop, \
+			StrCCPowerupReplace
 				invoke UI_TextInput, UISubtitlesStr, IBConfirm, JBConfirm, \
 				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			CASE StrCCFightBack, StrNetCCSwitch
@@ -3353,6 +3638,9 @@ UI_Draw PROC EXPORT
 				invoke UI_Text, UISubtitlesStr, ScreenHalf.X, ecx, \
 				BP_ALIGN_CENTER, BP_ALIGN_CENTER
 		ENDSW
+	.ENDIF
+	.IF (UISubType)
+		mov bpTextLength, 0
 	.ENDIF
 	
 	; Text popup
@@ -3439,6 +3727,9 @@ UI_Draw PROC EXPORT
 			.ENDIF
 		.ENDIF
 		
+		mbm UIPressedPrev, UIPressedPrev[1]
+		mbm UIPressedPrev[1], UIPressed
+		
 		invoke glEnable, GL_LIGHTING
 		invoke glEnable, GL_DEPTH_TEST
 		invoke glEnable, GL_FOG
@@ -3498,7 +3789,7 @@ UI_Process PROC EXPORT
 			.ENDIF
 		.ENDIF
 	.ENDIF
-	fld1
+	fld UIFadeBase
 	fsub UIFadeVal
 	fld PlrHealth
 	fmul
@@ -3512,16 +3803,19 @@ UI_Process PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
-	; Layer popup (at the start of layer)
+	; Text popup (layer, hint, etc)
 	.IF (UITextPopup)
+		fld deltaUnscaled
+		fmul f(10)
+		fstp flVal
 		.IF (UITextPopup == UI_FADE_IN)
-			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%UI_BTN_M), delta10)
+			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%UI_BTN_M), flVal)
 		.ELSEIF (UITextPopup == UI_FADE_OUT)
-			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%(-UI_BTN_H*2-UI_BTN_M)), delta10)
+			mov UITextPopupY, rv(flLerp, UITextPopupY, f(%(-UI_BTN_H*2-UI_BTN_M)), flVal)
 		.ENDIF
 		
 		fld UITextPopupTimer
-		fsub deltaTime
+		fsub deltaUnscaled
 		fstp UITextPopupTimer
 		
 		mov eax, UITextPopupTimer
@@ -3679,6 +3973,20 @@ UI_Process PROC EXPORT
 	.ENDIF
 	
 	.IF (UISubtitlesStr)
+		.IF (UISubType)
+			fld UISubTypeTimer
+			fsub deltaTime
+			fstp UISubTypeTimer
+			
+			.IF (UISubTypeTimer & FLT_NEG)
+				fld UISubTypeTimer
+				fadd UISubTypeDur
+				fstp UISubTypeTimer
+				
+				inc UISubTypeLen
+			.ENDIF
+		.ENDIF
+		
 		fld UISubtitlesTimer
 		fsub deltaTime
 		fstp UISubtitlesTimer
@@ -3687,6 +3995,35 @@ UI_Process PROC EXPORT
 		.IF (eax & FLT_NEG)
 			mov UISubtitlesStr, 0
 			mov UISubtitlesTimer, 0
+		.ENDIF
+	.ENDIF
+	
+	.IF (UISubPlayCount)
+		fld UISubPlayTimer
+		fadd deltaTime
+		fstp UISubPlayTimer
+		
+		mov pcx, UISubPlayPtr
+		fcmp REAL4 PTR [pcx], UISubPlayTimer
+		.IF (Carry?)
+			mov pax, UISubPlayStrPtr
+			.IF (UISubPlayMode == UI_CC_START_DURATION)
+				mov ecx, REAL4 PTR [pcx+4]
+			.ELSEIF (UISubPlayMode == UI_CC_START_END)
+				fld REAL4 PTR [pcx+4]
+				fsub REAL4 PTR [pcx]
+				fstp flVal
+				mov ecx, flVal
+			.ENDIF
+			invoke UI_ShowSubtitles, BPPtr PTR [pax], ecx
+			
+			.IF (UISubPlaySnd)
+				invoke alSourcePlay, UISubPlaySnd
+			.ENDIF
+		
+			dec UISubPlayCount
+			add UISubPlayPtr, 8	; REAL4*2
+			add UISubPlayStrPtr, SIZEOF BPPtr
 		.ENDIF
 	.ENDIF
 	
@@ -3701,6 +4038,44 @@ UI_Process PROC EXPORT
 		fmul f(3)
 		fadd UILoadTimer
 		fstp UILoadTimer
+	.ENDIF
+	
+	.IF (UIPlush)
+		fld UIPlushRot
+		fabs
+		fmul f(0.04)
+		fmul deltaTime
+		fadd deltaTime
+		fstp flVal
+		mov UIPlushRot, rv(flLerp, UIPlushRot, f(20), flVal)
+		mov UIPlushPos.Z, rv(flLerp, UIPlushPos.Z, f(-0.4), flVal)
+		
+		invoke DampedSpring, ADDR UIPlushSqueak[4], UIPlushSqueak[0], 0, \
+		f(2.0), f(0.9), delta10
+		fld UIPlushSqueak[4]
+		fmul delta10
+		fadd UIPlushSqueak
+		fstp UIPlushSqueak
+		
+		fcmp UIPlushRot, f(15)
+		.IF (!Carry?) && !(UIPlushSqueaked)
+			mov UIPlushSqueaked, TRUE
+			bpMEM32 UIPlushSqueak[4], f(0.5)
+			invoke alSourcePlay, SndSqueak
+		.ENDIF
+		
+		fcmp UIPlushRot, f(17.9)
+		.IF (!Carry?)
+			fld f(19.9)
+			fsub UIPlushRot
+			fmul f(0.5)
+			fstp UIPlushColor.W
+		.ENDIF
+		
+		fcmp UIPlushRot, f(19.9)
+		.IF (!Carry?)
+			mov UIPlush, 0
+		.ENDIF
 	.ENDIF
 	
 	.IF (PlrPowerup)		
@@ -3731,9 +4106,17 @@ UI_Process PROC EXPORT
 			
 			invoke alSourcePlay, SndMus[20]
 			invoke Vector3Copy, ADDR CamLightPos, ADDR MenuLight
+			
+			.IF !(GameTips & GAME_TIP_GAMMA_DISC)
+				poll uiMenuLogoGamma
+			.ENDIF
 		.ELSEIF (UIMenuSplash == 3)
 			mov UIFadeCallback, 0
 		.ENDIF
+		ret
+		
+	uiMenuLogoGamma:
+		mov UIState, UI_STATE_MENU_SETTINGS_GRAPHICS_GAMMA
 		ret
 UI_Process ENDP
 

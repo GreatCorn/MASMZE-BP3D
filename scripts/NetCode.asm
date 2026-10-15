@@ -275,6 +275,8 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		invoke Net_FormSend, NET_START_GAME, 0
 	.ELSEIF (BYTE PTR [pbx] == NET_RESTART)
 		print "NET_RESTART", 13, 10
+		mov MazeLayer, 0
+		add NetMagic, 6D2B79F5h
 		poll Maze_Exit
 	.ELSEIF (BYTE PTR [pbx] == NET_MAZE_STARTING)
 		print "NET_MAZE_STARTING", 13, 10
@@ -415,6 +417,7 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		.ENDIF
 		
 		mbm HBD, [pbx].HBD
+		invoke Vector2Copy, ADDR HBDCell, ADDR [pbx].HBDCell
 		invoke Vector32DSet, ADDR HBDPosT, [pbx].HBDPos.X, [pbx].HBDPos.Y
 		bpMEM32 HBDRot[4], [pbx].HBDRot
 		bpMEM32 HBDTimer, [pbx].HBDTimer
@@ -439,6 +442,14 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		invoke Vector3Copy, ADDR KubalePos, ADDR [pbx].KubalePos
 		
 		mbm Vebra, [pbx].Vebra
+		
+		mbm Virdya, [pbx].Virdya
+		bpMEM32 VirdyaBlinkTimer, [pbx].VirdyaBlinkTimer
+		invoke Vector3Copy, ADDR VirdyaLookPos, ADDR [pbx].VirdyaLookPos
+		invoke Vector3Copy, ADDR VirdyaPos, ADDR [pbx].VirdyaPos
+		bpMEM32 VirdyaRot, [pbx].VirdyaRot
+		bpMEM32 VirdyaSpeed, [pbx].VirdyaSpeed
+		bpMEM32 VirdyaStrafe, [pbx].VirdyaStrafe
 		
 		.IF ([pbx].Wmblyk != WMBLYK_STEALTH_WAIT) && \
 		([pbx].Wmblyk != WMBLYK_STEALTH_APPEAR)
@@ -477,22 +488,36 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 			mov pcx, MazeChanges[pax].CellOffset
 			add pcx, Maze
 			mov dl, MazeChanges[pax].CellVal
+			
+			; Sledgehammer compare
+			.IF !((BYTE PTR [pcx] & MAZE_CELL_PASSLEFT) && \
+			(dl & MAZE_CELL_PASSLEFT))
+				push MAZE_CELL_PASSLEFT
+			.ELSE
+				push MAZE_CELL_PASSTOP
+			.ENDIF
 			mov BYTE PTR [pcx], dl
 			
+			
+			; Sledgehammer act
 			invoke bp2DArrayGetPosition, MazeChanges[pax].CellOffset, \
 			MazeSize[0], 1
+			
+			pop pcx
+			
 			shl edx, 1
-			inc edx
+			.IF (pcx == MAZE_CELL_PASSTOP)
+				inc edx
+			.ENDIF
 			mov MazePartDust.Position.X, edx
 			shl eax, 1
-			inc eax
+			.IF (pcx == MAZE_CELL_PASSLEFT)
+				inc eax
+			.ENDIF
 			mov MazePartDust.Position.Z, eax
 			invoke Vector32DF, ADDR MazePartDust.Position
-			.IF (SettingsGraphicsParticles)
-				invoke Particles_Spawn, ADDR MazePartDust, 32
-			.ENDIF
-			invoke SndSetPos, SndBreak, ADDR MazePartDust.Position
-			invoke alSourcePlay, SndBreak
+			
+			invoke Plr_Sledgehammer, ADDR MazePartDust.Position
 		.ENDIF
 		
 		.IF (NetHosting)
@@ -510,6 +535,15 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		.ENDIF
 		
 		mbm FreezeTime, [pbx].FreezeTime
+		
+		.IF (NetHosting)
+			invoke Net_FormSend, NET_GAME_STATES, Sock
+		.ENDIF
+	.ELSEIF (BYTE PTR [pbx] == NET_SOUND)
+		print "NET_SOUND", 13, 10
+		
+		invoke SndSetPos, DWORD PTR [pbx+1], ADDR [pbx+5]
+		invoke alSourcePlay, DWORD PTR [pbx+1]
 		
 		.IF (NetHosting)
 			invoke Net_FormSend, NET_GAME_STATES, Sock
@@ -572,6 +606,7 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		
 		mov globalMsg, TRUE
 	.ELSEIF (al == NET_RESTART)
+		add NetMagic, 6D2B79F5h
 		call Maze_Exit
 		call Net_LobbyInit
 		
@@ -614,6 +649,7 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		lea pbx, buf
 		
 		mbm [pbx].HBD, HBD
+		invoke Vector2Copy, ADDR [pbx].HBDCell, ADDR HBDCell
 		invoke Vector2Set, ADDR [pbx].HBDPos, HBDPosT.X, HBDPosT.Z
 		bpMEM32 [pbx].HBDRot, HBDRot[4]
 		bpMEM32 [pbx].HBDTimer, HBDTimer
@@ -633,6 +669,14 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		invoke Vector3Copy, ADDR [pbx].KubalePos, ADDR KubalePos
 		
 		mbm [pbx].Vebra, Vebra
+		
+		mbm [pbx].Virdya, Virdya
+		bpMEM32 [pbx].VirdyaBlinkTimer, VirdyaBlinkTimer
+		invoke Vector3Copy, ADDR [pbx].VirdyaLookPos, ADDR VirdyaLookPos
+		invoke Vector3Copy, ADDR [pbx].VirdyaPos, ADDR VirdyaPos
+		bpMEM32 [pbx].VirdyaRot, VirdyaRot
+		bpMEM32 [pbx].VirdyaSpeed, VirdyaSpeed
+		bpMEM32 [pbx].VirdyaStrafe, VirdyaStrafe
 		
 		mbm [pbx].Wmblyk, Wmblyk
 		invoke Vector3Copy, ADDR [pbx].WmblykPos, ADDR WmblykPos
@@ -671,6 +715,14 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		
 		pop pbx
 		ASSUME pbx:nothing
+		
+		.IF (NetHosting)
+			mov exclude, TRUE
+			mov globalMsg, TRUE
+		.ENDIF
+	.ELSEIF (al == NET_SOUND)
+		bpMEM32 DWORD PTR buf[1], NetSound
+		invoke Vector32DCopy, ADDR buf[5], ADDR NetSoundPos
 		
 		.IF (NetHosting)
 			mov exclude, TRUE
@@ -874,7 +926,10 @@ Net_LobbyInit PROC EXPORT
 	mov PlrCanControl, TRUE
 	mov MazeCheck, MAZE_CHECK_SAVED
 	mov MazeState, MAZE_STATE_GAME
-	mov MazeLayer, 0
+	
+	.IF (NetHosting)
+		mov MazeLayer, 0
+	.ENDIF
 	
 	mov PlrState, PLAYER_STATE_GAME
 	
@@ -931,6 +986,12 @@ Net_PopulateVolatile PROC EXPORT NPVPtr:BPPtr
 	.ENDIF
 	.IF (PlrCrouch)
 		or [pcx].NetState, NPS_CROUCH
+	.ENDIF
+	.IF (PlrItems & MAZE_ITEM_COMPASS)
+		or [pcx].NetState, NPS_COMPASS
+	.ENDIF
+	.IF (PlrItems & MAZE_ITEM_MAP)
+		or [pcx].NetState, NPS_MAP
 	.ENDIF
 	.IF (PlrPowerup)
 		movzx ax, PlrPowerup
@@ -1100,6 +1161,7 @@ Net_Draw PROC EXPORT
 			call glPushMatrix
 			invoke glEnable, GL_BLEND
 			invoke glDisable, GL_FOG
+			;invoke glDisable, GL_LIGHTING
 			invoke glDepthMask, GL_FALSE
 			invoke glTranslatef, f(-0.5), f(0.01), f(-0.5)
 			invoke glScalef, f(0.5), FLT_1, f(0.5)
@@ -1108,6 +1170,7 @@ Net_Draw PROC EXPORT
 			invoke glCallList, MdlPlane
 			invoke glDisable, GL_BLEND
 			invoke glEnable, GL_FOG
+			;invoke glEnable, GL_LIGHTING
 			call glPopMatrix
 			
 			; Draw username
@@ -1198,6 +1261,7 @@ Net_Draw PROC EXPORT
 			invoke glTranslate3fv, ADDR headPos
 			invoke glRotatefr, NetPlayersVL[pbx].Rotation.Y, 0, FLT_1, 0
 			
+			; Draw items
 			.IF (NetPlayersV[pbx].NetState & NPS_POWERUPS)
 				call glPushMatrix
 				invoke glTranslatef, f(-0.12), f(-1.2), f(0.15)
@@ -1206,6 +1270,19 @@ Net_Draw PROC EXPORT
 				shr pax, NPS_POWERUP_SHIFT-2
 				sub pax, 4
 				invoke glCallList, MdlPowerups[pax]
+				call glPopMatrix
+			.ENDIF
+			.IF (NetPlayersV[pbx].NetState & NPS_COMPASS) || \
+			(NetPlayersV[pbx].NetState & NPS_MAP)
+				mov PlrProcessCompass, TRUE
+				
+				call glPushMatrix
+				invoke glTranslatef, 0, f(-0.4), f(0.3)
+				mov ax, NetPlayersV[pbx].NetState
+				mov cx, ax
+				and cl, NPS_COMPASS
+				and al, NPS_MAP
+				invoke Plr_DrawCompassMap, FALSE, al
 				call glPopMatrix
 			.ENDIF
 			
@@ -1230,6 +1307,87 @@ Net_Draw PROC EXPORT
 	ret
 Net_Draw ENDP
 
+Net_Fixed PROC EXPORT
+	LOCAL v3Val:Vector3
+	
+	; Animate players and their scarves
+	push pbx
+	xor pbx, pbx
+	ASSUME pbx:PTR NetPlayerVolatile	
+	.WHILE (pbx < SIZEOF NetPlayersV)
+		.IF (NetPlayersVL[pbx].Visible & NET_VISIBLE_LOCAL)
+			mov pax, pbx
+			shr pax, NetPlayerShift
+			mov pcx, SIZEOF BPAnimPlayer
+			mul pcx
+			invoke bpProcessAnimPlayer, ADDR NetPlayersAnim[pax], deltaFixed
+			
+			; Animate scarf
+			.IF (SettingsGraphicsInterpolation)
+				mov pcx, pbx
+				shr pcx, NetPlayerShift
+				shl pcx, BPPtrShift
+				xor pdx, pdx
+				.WHILE (pdx < MeshPlrScarf.V3Size)
+					mov pax, pdx
+					add pax, MeshPlrScarf.Vertices
+					invoke Vector3Copy, ADDR v3Val, pax
+					mov eax, NetPlayersVL[pbx].BodyRot
+					xor eax, FLT_NEG
+					invoke Rotate2DPoint, ADDR v3Val, eax
+					
+					fld v3Val.Y
+					fmul st, st
+					fdivr f(2)
+					fmul deltaFixed
+					fstp v3Val.Y
+					
+					fcmp v3Val.Y, f(1)	; Clamp
+					.IF (!Carry?) || (Zero?)
+						mov pax, NetPlayersScarf[pcx]
+						add pax, pdx
+						push v3Val.X
+						pop REAL4 PTR [pax]
+						push v3Val.Z
+						pop REAL4 PTR [pax+8]
+						
+						add pdx, SIZEOF Vector3
+						.CONTINUE
+					.ENDIF
+					
+					push pcx
+					push pdx
+					mov pax, NetPlayersScVel[pcx]
+					add pax, pdx
+					mov pcx, NetPlayersScarf[pcx]
+					add pcx, pdx
+					push pax
+					invoke DampedSpring, pax, REAL4 PTR [pcx], v3Val.X, f(0.9), f(0.7), v3Val.Y
+					pop pax
+					fld REAL4 PTR [pax]
+					fmul v3Val.Y
+					fadd REAL4 PTR [pcx]
+					fstp REAL4 PTR [pcx]
+					add pax, 8
+					invoke DampedSpring, pax, REAL4 PTR [pcx+8], v3Val.Z, f(0.9), f(0.7), v3Val.Y
+					fld REAL4 PTR [pax]
+					fmul v3Val.Y
+					fadd REAL4 PTR [pcx+8]
+					fstp REAL4 PTR [pcx+8]
+					
+					pop pdx
+					pop pcx
+					
+					add pdx, SIZEOF Vector3
+				.ENDW
+			.ENDIF
+		.ENDIF
+		
+		add pbx, SIZEOF NetPlayerVolatile
+	.ENDW
+	ret
+Net_Fixed ENDP
+
 Net_Process PROC EXPORT
 	LOCAL Dot:Vector3, ClPlr:BPPtr, Anim:BPPtr, OpenDoor:BYTE, Blink:BPBool
 	
@@ -1246,13 +1404,14 @@ Net_Process PROC EXPORT
 			
 			; Continuously volatile entity states
 			.IF (Kubale == KUBALE_ACTIVE) || (Wmblyk == WMBLYK_WALK) || \
-			(HDL)
+			(HDL) || (Virdya)
+				;print str$(SIZEOF NetMazeEntities), 13, 10
 				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 			.ENDIF
-			
-			.IF (NetHosting)
-				invoke Net_FormSend, NET_PLAYERS_VOLATILE, 0
-			.ENDIF
+		.ENDIF
+		
+		.IF (NetHosting)
+			invoke Net_FormSend, NET_PLAYERS_VOLATILE, 0
 		.ELSE
 			invoke Net_FormSend, NET_PLAYER_VOLATILE, NetSock
 		.ENDIF
@@ -1264,148 +1423,6 @@ Net_Process PROC EXPORT
 	.ENDIF
 	
 	mov OpenDoor, 0
-	
-	IFDEF DEBUG_BULLSHIT
-	.IF (Keys[VK_SPACE])
-	push pbx
-	mov pbx, SIZEOF NetPlayerVolatile
-	ASSUME pbx:PTR NetPlayerVolatile
-	.WHILE (pbx < SIZEOF NetPlayersV)
-		mov eax, ebx
-		shr eax, NetPlayerShift
-		mov Anim, eax
-		mov NetPlayers[pbx].PlayerID, eax
-		mov NetPlayers[pbx].SockOnServ, 0
-		mov cl, al
-		dec cl
-		shl cl, 4
-		or cl, al
-		mov NetPlayers[pbx].Skin, cl
-		
-		mov NetPlayersVL[pbx].Visible, NET_VISIBLE_LOCAL or NET_VISIBLE_GLOBAL
-		
-		
-		push pax
-		fild DWORD PTR [psp]
-		pop pax
-		fadd VebraTimer
-		fdiv f(7)
-		fmul PI2
-		fld st
-		fadd PI
-		fst NetPlayersVL[pbx].Rotation.Y
-		fstp NetPlayersVL[pbx].BodyRot
-		fsincos
-		;fmul f(2)
-		fadd CamPos.Z
-		fstp NetPlayersVL[pbx].Position.Z
-		;fmul f(2)
-		fadd CamPos.X
-		fstp NetPlayersVL[pbx].Position.X
-		
-		fld deltaTime
-		fmul f(0.3)
-		fadd VebraTimer
-		fstp VebraTimer
-		
-		mov pax, Anim
-		mov pcx, SIZEOF BPAnimPlayer
-		mul pcx
-		mov Anim, pax
-		.IF (NetPlayersAnim[pax].TrackPtr != OFFSET AnimPlrWalk)
-			invoke bpAnimPlay, ADDR NetPlayersAnim[pax], ADDR AnimPlrWalk 
-		.ENDIF
-		mov pax, Anim
-		bpMPM NetPlayersAnim[pax].Speed, PlrSpeedWalk
-		invoke bpProcessAnimPlayer, ADDR NetPlayersAnim[pax], deltaTime
-		
-		movzx pax, NetPlayers[pbx].Skin
-		and pax, 11110000b
-		add pax, OFFSET TexPlrFace1
-		mov eax, DWORD PTR [pax]
-		mov NetPlayersVL[pbx].FaceTex, ax
-		
-		; Animate scarf
-			.IF (SettingsGraphicsInterpolation)
-				mov pcx, pbx
-				shr pcx, NetPlayerShift
-				shl pcx, BPPtrShift
-				xor pdx, pdx
-				.WHILE (pdx < MeshPlrScarf.V3Size)
-					mov pax, pdx
-					add pax, MeshPlrScarf.Vertices
-					invoke Vector3Copy, ADDR Dot, pax
-					mov eax, NetPlayersVL[pbx].BodyRot
-					xor eax, FLT_NEG
-					invoke Rotate2DPoint, ADDR Dot, eax
-					
-					fld Dot.Y
-					fmul st, st
-					fdivr f(2)
-					fmul deltaTime
-					fstp Dot.Y
-					
-					fcmp Dot.Y, f(1)
-					.IF (!Carry?) || (Zero?)
-						mov pax, NetPlayersScarf[pcx]
-						add pax, pdx
-						push Dot.X
-						pop REAL4 PTR [pax]
-						push Dot.Z
-						pop REAL4 PTR [pax+8]
-						
-						add pdx, SIZEOF Vector3
-						.CONTINUE
-					.ENDIF
-					
-					push pcx
-					push pdx
-					mov pax, NetPlayersScVel[pcx]
-					add pax, pdx
-					mov pcx, NetPlayersScarf[pcx]
-					add pcx, pdx
-					lea pdx, Dot
-					push pax
-					invoke DampedSpring, pax, REAL4 PTR [pcx], Dot.X, f(0.9), f(0.7), Dot.Y
-					pop pax
-					fld REAL4 PTR [pax]
-					fmul Dot.Y
-					fadd REAL4 PTR [pcx]
-					fstp REAL4 PTR [pcx]
-					add pax, 8
-					invoke DampedSpring, pax, REAL4 PTR [pcx+8], Dot.Z, f(0.9), f(0.7), Dot.Y
-					fld REAL4 PTR [pax]
-					fmul Dot.Y
-					fadd REAL4 PTR [pcx+8]
-					fstp REAL4 PTR [pcx+8]
-					;invoke Vector32DLerp, pcx, pdx, Dot.Y
-					;mov pcx, NetPlayersScarf[pcx]
-					;add pcx, pdx
-					;invoke Vector32DLerp, pcx, ADDR Dot, Dot.Y
-					;push Dot.Y
-					;push f(0.7)
-					;push f(0.9)
-					;lea pax, Dot
-					;push pax
-					;mov pax, NetPlayersScarf[pcx]
-					;add pax, pdx
-					;push pax
-					;mov pax, NetPlayersScVel[pcx]
-					;add pax, pdx
-					;push pax
-					;call Vector32DDampedSpring
-					pop pdx
-					pop pcx
-					
-					add pdx, SIZEOF Vector3
-				.ENDW
-			.ENDIF
-		
-		add pbx, SIZEOF NetPlayerVolatile
-	.ENDW
-	pop pbx
-	.ENDIF
-	ENDIF
 	
 	push pbx
 	xor pbx, pbx
@@ -1433,11 +1450,15 @@ Net_Process PROC EXPORT
 				.ENDIF
 			.ENDIF
 			
+			mov eax, NetPlayers[pbx].PlayerID
 			; Get if the player is visible at all (not a spectator)
 			.IF (NetPlayersV[pbx].PlrState >= PLAYER_STATE_SPECTATE)
 				mov NetPlayersVL[pbx].Visible, 0
 				add pbx, SIZEOF NetPlayerVolatile
 				.CONTINUE
+			.ELSEIF (PlrState == PLAYER_STATE_SPECTATE) && (NetSpectateFP) && \
+			(NetSpectateID == eax)
+				mov NetPlayersVL[pbx].Visible, NET_VISIBLE_GLOBAL
 			.ELSE
 				mov NetPlayersVL[pbx].Visible, NET_VISIBLE_LOCAL \
 				or NET_VISIBLE_GLOBAL
@@ -1585,85 +1606,6 @@ Net_Process PROC EXPORT
 			NetPlayersV[pbx].BodyRot, delta10
 			mov NetPlayersVL[pbx].BodyRot, rv(flAngle, eax)
 			
-			mov pax, Anim
-			invoke bpProcessAnimPlayer, ADDR NetPlayersAnim[pax], deltaTime
-			
-			; Animate scarf
-			.IF (SettingsGraphicsInterpolation)
-				mov pcx, pbx
-				shr pcx, NetPlayerShift
-				shl pcx, BPPtrShift
-				xor pdx, pdx
-				.WHILE (pdx < MeshPlrScarf.V3Size)
-					mov pax, pdx
-					add pax, MeshPlrScarf.Vertices
-					invoke Vector3Copy, ADDR Dot, pax
-					mov eax, NetPlayersVL[pbx].BodyRot
-					xor eax, FLT_NEG
-					invoke Rotate2DPoint, ADDR Dot, eax
-					
-					fld Dot.Y
-					fmul st, st
-					fdivr f(2)
-					fmul deltaTime
-					fstp Dot.Y
-					
-					fcmp Dot.Y, f(1)
-					.IF (!Carry?) || (Zero?)
-						mov pax, NetPlayersScarf[pcx]
-						add pax, pdx
-						push Dot.X
-						pop REAL4 PTR [pax]
-						push Dot.Z
-						pop REAL4 PTR [pax+8]
-						
-						add pdx, SIZEOF Vector3
-						.CONTINUE
-					.ENDIF
-					
-					push pcx
-					push pdx
-					mov pax, NetPlayersScVel[pcx]
-					add pax, pdx
-					mov pcx, NetPlayersScarf[pcx]
-					add pcx, pdx
-					lea pdx, Dot
-					push pax
-					invoke DampedSpring, pax, REAL4 PTR [pcx], Dot.X, f(0.9), f(0.7), Dot.Y
-					pop pax
-					fld REAL4 PTR [pax]
-					fmul Dot.Y
-					fadd REAL4 PTR [pcx]
-					fstp REAL4 PTR [pcx]
-					add pax, 8
-					invoke DampedSpring, pax, REAL4 PTR [pcx+8], Dot.Z, f(0.9), f(0.7), Dot.Y
-					fld REAL4 PTR [pax]
-					fmul Dot.Y
-					fadd REAL4 PTR [pcx+8]
-					fstp REAL4 PTR [pcx+8]
-					;invoke Vector32DLerp, pcx, pdx, Dot.Y
-					;mov pcx, NetPlayersScarf[pcx]
-					;add pcx, pdx
-					;invoke Vector32DLerp, pcx, ADDR Dot, Dot.Y
-					;push Dot.Y
-					;push f(0.7)
-					;push f(0.9)
-					;lea pax, Dot
-					;push pax
-					;mov pax, NetPlayersScarf[pcx]
-					;add pax, pdx
-					;push pax
-					;mov pax, NetPlayersScVel[pcx]
-					;add pax, pdx
-					;push pax
-					;call Vector32DDampedSpring
-					pop pdx
-					pop pcx
-					
-					add pdx, SIZEOF Vector3
-				.ENDW
-			.ENDIF
-			
 			.IF !(NetPlayersVL[pbx].FaceTex)
 				mov pcx, pbx
 				shr pcx, NetPlayerShift
@@ -1742,7 +1684,6 @@ Net_Process PROC EXPORT
 	.ENDIF
 	invoke Vector3Copy, ADDR NetPlayersVL[pbx].Position, ADDR CamPosL
 	invoke Vector2Copy, ADDR NetPlayersVL[pbx].Rotation, ADDR CamRotL
-	pop pbx
 	
 	.IF (PlrState != PLAYER_STATE_EXITING)
 		.IF (OpenDoor == 1)
@@ -1760,11 +1701,18 @@ Net_Process PROC EXPORT
 	.ENDIF
 	
 	.IF (PlrState == PLAYER_STATE_SPECTATE)
-		mov pax, NetSpectateID
-		shl pax, NetPlayerShift
-		invoke Vector3Copy, ADDR CamPos, ADDR NetPlayersVL[pax].Position
-		invoke Vector3Sub, ADDR CamPos, ADDR CamForward
-		invoke Vector3Copy, ADDR CamPosL, ADDR CamPos
+		mov pbx, NetSpectateID
+		shl pbx, NetPlayerShift
+		invoke Vector3Copy, ADDR CamPos, ADDR NetPlayersVL[pbx].Position
+		.IF (NetSpectateFP)
+			invoke Vector3Copy, ADDR CamPosL, ADDR CamPos
+			invoke Vector2Copy, ADDR CamRot, ADDR NetPlayersVL[pbx].Rotation
+			invoke Vector2Copy, ADDR CamRotL, ADDR CamRot
+		.ELSE
+			invoke Vector3Sub, ADDR CamPos, ADDR CamForward
+			invoke Vector3Copy, ADDR CamPosL, ADDR CamPos
+		.ENDIF
 	.ENDIF
+	pop pbx
 	ret
 Net_Process ENDP

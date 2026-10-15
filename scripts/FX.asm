@@ -1,5 +1,4 @@
-FX_AFTERIMAGE_AMOUNT	EQU 10
-FX_PIXEL_SIZE			EQU 3
+FX_AFTERIMAGE_AMOUNT	EQU 11
 
 ENUM	FX_RP_UNTESTED, \
 		FX_RP_WORKING, \
@@ -33,24 +32,25 @@ FXScreenTextureBuffer	BPPtr ?
 FX_DrawAfterimage PROC EXPORT
 	LOCAL Alpha:REAL4, NowMulF:REAL4
 	
-	.IF (FPS > 70)	; Cheap pandering to 60+ Hz displayfags
-		.IF (!FXAfterimageHighFPS)
-			dec FXAfterimageFPSTimer	; Use timer for 10 frames
-			.IF (!FXAfterimageFPSTimer)
+	; Cheap pandering to 60+ Hz displayfags
+	.IF (bpDisplayDevices[0].RefreshRate > 100) || !(SettingsGraphicsVSync)
+		;.IF (!FXAfterimageHighFPS)
+		;	dec FXAfterimageFPSTimer	; Use timer for 10 frames
+		;	.IF (!FXAfterimageFPSTimer)
 				mov FXAfterimageHighFPS, TRUE
-			.ENDIF
-		.ELSE
-			mov FXAfterimageFPSTimer, 10
-		.ENDIF
+		;	.ENDIF
+		;.ELSE
+		;	mov FXAfterimageFPSTimer, 10
+		;.ENDIF
 	.ELSE
-		.IF (FXAfterimageHighFPS)
-			dec FXAfterimageFPSTimer
-			.IF (!FXAfterimageFPSTimer)
+		;.IF (FXAfterimageHighFPS)
+		;	dec FXAfterimageFPSTimer
+		;	.IF (!FXAfterimageFPSTimer)
 				mov FXAfterimageHighFPS, FALSE
-			.ENDIF
-		.ELSE
-			mov FXAfterimageFPSTimer, 10
-		.ENDIF
+		;	.ENDIF
+		;.ELSE
+		;	mov FXAfterimageFPSTimer, 10
+		;.ENDIF
 	.ENDIF
 	
 	invoke glEnable, GL_BLEND
@@ -171,8 +171,10 @@ FX_SetAfterimage ENDP
 FX_ScreenTexture PROC EXPORT GLTexturePtr:BPPtr
 	LOCAL endAddr:BPPtr, colorMode:DWORD
 	
-	.IF (SettingsGraphicsPosterization)
+	.IF (SettingsGraphicsPosterization == 1)
 		mov colorMode, GL_UNSIGNED_SHORT_5_6_5
+	.ELSEIF (SettingsGraphicsPosterization == 2)
+		mov colorMode, GL_UNSIGNED_BYTE_3_3_2
 	.ELSE
 		mov colorMode, GL_UNSIGNED_BYTE
 	.ENDIF
@@ -185,8 +187,8 @@ FX_ScreenTexture PROC EXPORT GLTexturePtr:BPPtr
 	.IF (FXReadPixelsTest == FX_RP_UNTESTED)
 		.IF (rv(glGetError))
 			mov FXReadPixelsTest, FX_RP_BROKEN
-			mov SettingsGraphicsPixelization, FALSE
-			mov SettingsGraphicsPosterization, FALSE
+			mov SettingsGraphicsPixelization, 0
+			mov SettingsGraphicsPosterization, 0
 			mov SettingsGraphicsAfterimage, FALSE
 			vinvoke Settings_SetOption, OFFSET SettingsGraphicsPixelization
 			vinvoke Settings_SetOption, OFFSET SettingsGraphicsAfterimage
@@ -239,15 +241,21 @@ FX_Resize PROC EXPORT
 	.IF (SettingsGraphicsPixelization)
 		mov eax, FMain.ScreenSize.y
 		.IF (eax > 2160)
-			mov ecx, FX_PIXEL_SIZE * 5
+			mov ecx, SettingsGraphicsPixelization
+			shl ecx, 2	; *4
+			add ecx, SettingsGraphicsPixelization
 		.ELSEIF (eax > 1440)
-			mov ecx, FX_PIXEL_SIZE * 4
+			mov ecx, SettingsGraphicsPixelization
+			shl ecx, 2	; *4
 		.ELSEIF (eax > 1080)
-			mov ecx, FX_PIXEL_SIZE * 3
+			mov ecx, SettingsGraphicsPixelization
+			shl ecx, 1
+			add ecx, SettingsGraphicsPixelization	; *3
 		.ELSEIF (eax > 720)
-			mov ecx, FX_PIXEL_SIZE * 2
+			mov ecx, SettingsGraphicsPixelization
+			shl ecx, 1	; *2
 		.ELSE
-			mov ecx, FX_PIXEL_SIZE
+			mov ecx, SettingsGraphicsPixelization
 		.ENDIF
 		xor edx, edx
 		div ecx

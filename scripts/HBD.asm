@@ -22,6 +22,10 @@ HBD_Spawn PROC EXPORT State:BPEnum
 		print "Spawned Huenbergondel at "
 		mov HBDAnimPlr.FrameType, BPA_FRAME_VERTEX
 		mov HBDAnimPlr.Mesh, OFFSET MeshHBD
+	
+		mov HBDAnimPlr.Speed, FLT_1 or FLT_NEG
+		invoke bpAnimPlay, ADDR HBDAnimPlr, ADDR AnimHBDBlink
+			
 		invoke Maze_GetRandomPos, ADDR HBDPos, TRUE
 		Vector32DPrint HBDPos
 		invoke Vector2Set, ADDR HBDPosT, HBDPos.X, HBDPos.Z
@@ -193,8 +197,11 @@ HBD_Process PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
-	invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(0.7), 0
-	mov movePool, al
+	mov movePool, 0
+	.IF (PlrState == PLAYER_STATE_GAME)
+		invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(0.7), 0
+		mov movePool, al
+	.ENDIF
 	
 	.IF (HBD == HBD_MOVE)
 		fld delta10
@@ -224,7 +231,11 @@ HBD_Process PROC EXPORT
 					.IF (SettingsGraphicsParticles)
 						invoke Vector32DCopy, ADDR MazePartDust.Position, \
 						ADDR HBDPos
+						invoke Vector32DCopy, ADDR MazePartDebris.Position, \
+						ADDR HBDPos
 						invoke Particles_Spawn, ADDR MazePartDust, 32
+						invoke Particles_Spawn, ADDR MazePartDebris, \
+						MazePartDebris.Count
 					.ENDIF
 				.ENDIF
 			.ELSE
@@ -244,7 +255,7 @@ HBD_Process PROC EXPORT
 				.ENDIF
 			.ENDIF
 	
-			.IF (movePool) && (PlrState == PLAYER_STATE_GAME)
+			.IF (movePool)
 				; Calculate dot product to check if plr is in front
 				fld HBDRot[4]
 				fsincos

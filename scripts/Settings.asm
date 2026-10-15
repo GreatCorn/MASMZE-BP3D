@@ -50,6 +50,7 @@ SettingsIniGamma			DB "Gamma", 0
 SettingsIniGammaBypass		DB "GammaBypass", 0
 SettingsIniInterpolation	DB "Interpolation", 0
 SettingsIniMazeCull			DB "MazeCull", 0
+SettingsIniMipmaps			DB "Mipmaps", 0
 SettingsIniMSAA				DB "MSAA", 0
 SettingsIniNoise			DB "Noise", 0
 SettingsIniParticles		DB "Particles", 0
@@ -110,13 +111,14 @@ SettingsGraphicsAfterimage		BPBool TRUE
 SettingsGraphicsDisplay			DWORD 0
 SettingsGraphicsGamma			REAL4 0.5
 SettingsGraphicsGammaBypass		BPBool FALSE
-SettingsGraphicsInterpolation	BPBool FALSE
+SettingsGraphicsInterpolation	BPBool TRUE
 SettingsGraphicsMazeCull		DWORD 5
+SettingsGraphicsMipmaps			BPBool TRUE
 SettingsGraphicsMSAA			DWORD 4
 SettingsGraphicsNoise			BPBool TRUE
 SettingsGraphicsParticles		BPBool TRUE
-SettingsGraphicsPixelization	BPBool TRUE
-SettingsGraphicsPosterization	BPBool TRUE
+SettingsGraphicsPixelization	DWORD 2
+SettingsGraphicsPosterization	DWORD 1
 SettingsGraphicsResolution		DWORD 854, 480
 SettingsGraphicsUIScale			REAL4 1.0
 SettingsGraphicsVignette		BPBool TRUE
@@ -335,7 +337,7 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		
 		; Animation interpolation
 		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-		ADDR SettingsIniInterpolation, ADDR SettingsIniFalse, \
+		ADDR SettingsIniInterpolation, ADDR SettingsIniTrue, \
 		ADDR SettingsIniString, 9, ADDR SettingsIniPathAbs
 		call Settings_IsTrue
 		;.IF (al != SettingsGraphicsInterpolation)
@@ -349,6 +351,15 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		.IF (eax != SettingsGraphicsMazeCull)
 			mov SettingsGraphicsMazeCull, eax
 			invoke Settings_SetOption, OFFSET SettingsGraphicsMazeCull
+		.ENDIF
+		
+		; Mipmaps
+		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniMipmaps, ADDR SettingsIniTrue, ADDR SettingsIniString,\
+		9, ADDR SettingsIniPathAbs
+		call Settings_IsTrue
+		.IF (al != SettingsGraphicsMipmaps)
+			mov SettingsGraphicsMipmaps, al
 		.ENDIF
 		
 		; MSAA
@@ -378,21 +389,16 @@ Settings_Load PROC EXPORT IniSection:BPPtr
 		.ENDIF
 		
 		; Pixelization
-		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-		ADDR SettingsIniPixelization, ADDR SettingsIniTrue, ADDR SettingsIniString,\
-		9, ADDR SettingsIniPathAbs
-		call Settings_IsTrue
-		.IF (al != SettingsGraphicsPixelization)
-			mov SettingsGraphicsPixelization, al
-			invoke Settings_SetOption, OFFSET SettingsGraphicsPixelization
-		.ENDIF
+		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniPixelization, SettingsGraphicsPixelization, \
+		ADDR SettingsIniPathAbs
+		mov SettingsGraphicsPixelization, eax
 		
 		; Posterization
-		invoke GetPrivateProfileString, ADDR SettingsIniGraphics, \
-		ADDR SettingsIniPosterization,ADDR SettingsIniTrue,ADDR SettingsIniString, \
-		9, ADDR SettingsIniPathAbs
-		call Settings_IsTrue
-		mov SettingsGraphicsPosterization, al
+		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
+		ADDR SettingsIniPosterization, SettingsGraphicsPosterization, \
+		ADDR SettingsIniPathAbs
+		mov SettingsGraphicsPosterization, eax
 		
 		; Resolution
 		invoke GetPrivateProfileInt, ADDR SettingsIniGraphics, \
@@ -742,22 +748,14 @@ Settings_Save PROC EXPORT IniSection:BPPtr
 		ADDR SettingsIniPathAbs
 		
 		; Pixelization
-		.IF (SettingsGraphicsPixelization)
-			lea pax, SettingsIniTrue
-		.ELSE
-			lea pax, SettingsIniFalse
-		.ENDIF
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-		ADDR SettingsIniPixelization, pax, ADDR SettingsIniPathAbs
+		ADDR SettingsIniPixelization, str$(SettingsGraphicsPixelization), \
+		ADDR SettingsIniPathAbs
 		
 		; Posterization
-		.IF (SettingsGraphicsPosterization)
-			lea pax, SettingsIniTrue
-		.ELSE
-			lea pax, SettingsIniFalse
-		.ENDIF
 		invoke WritePrivateProfileStringA, ADDR SettingsIniGraphics, \
-		ADDR SettingsIniPosterization, pax, ADDR SettingsIniPathAbs
+		ADDR SettingsIniPosterization, str$(SettingsGraphicsPosterization), \
+		ADDR SettingsIniPathAbs
 		
 		; Afterimage
 		.IF (SettingsGraphicsAfterimage)
@@ -926,7 +924,10 @@ Settings_SetMSAA PROC
 	ret
 Settings_SetMSAA ENDP
 
-Settings_SetOption PROC EXPORT OptionPtr:BPPtr	
+Settings_SetOption PROC EXPORT OptionPtr:BPPtr
+	LOCAL paxVal:BPPtr
+	mov paxVal, pax
+	
 	mov SettingsChanged, TRUE
 	print "Setting option: "
 	.IF (OptionPtr == OFFSET SettingsAudioVolume)
@@ -976,7 +977,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsAfterimage)
 		print "graphics/afterimage", 13, 10
-		mov FXReadPixelsTest, FX_RP_UNTESTED
+		;mov FXReadPixelsTest, FX_RP_UNTESTED
 		.IF (FMain.Handle)
 			invoke FX_SetAfterimage, FX_AFTERIMAGE_AMOUNT
 		.ENDIF
@@ -999,6 +1000,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		mov KubaleAnimPlr.Interpolation, al
 		mov MotryaAnimPlr.Interpolation, al
 		mov VebraAnimPlr.Interpolation, cl
+		mov VirdyaAnimPlr.Interpolation, al
 		mov WmblykAnimPlr.Interpolation, al
 		
 		xor pcx, pcx
@@ -1011,13 +1013,13 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		call Settings_SetMSAA
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsPixelization)
 		print "graphics/pixelization", 13, 10
-		mov FXReadPixelsTest, FX_RP_UNTESTED
+		;mov FXReadPixelsTest, FX_RP_UNTESTED
 		.IF (FMain.Handle)
 			call FX_Resize
 		.ENDIF
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsPosterization)
 		print "graphics/posterization", 13, 10
-		mov FXReadPixelsTest, FX_RP_UNTESTED
+		;mov FXReadPixelsTest, FX_RP_UNTESTED
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsResolution)
 		print "graphics/resolution", 13, 10
 		.IF (FMain.Handle)
@@ -1037,8 +1039,15 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsUIScale)
 		print "graphics/ui scale", 13, 10
 		call UI_Resize
-
-		bpMEM32 UIScaleForMouse, SettingsGraphicsUIScale
+		
+		mov pax, paxVal
+		.IF (UIFocus != ah)
+			mov ecx, SettingsGraphicsUIScale
+			mov UIScaleReal, ecx
+		.ENDIF
+		.IF (UIPressed != ah)
+			bpMEM32 UIScaleForMouse, SettingsGraphicsUIScale
+		.ENDIF
 	.ELSEIF (OptionPtr == OFFSET SettingsGraphicsVSync)
 		print "graphics/vsync", 13, 10
 		.IF (wglSwapIntervalEXT) && (FMain.GraphicsContext)

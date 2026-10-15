@@ -189,9 +189,9 @@ Kubale_Process PROC EXPORT
 				invoke SndSetPos, SndKubale, ADDR KubalePos
 				
 				fld dist
+				fmul f(0.2)
+				fadd f(10)
 				fmul deltaTime
-				fmul f(1.5)
-				fadd delta2
 				fstp flVal
 				
 				invoke GetPlrNearPos, OFFSET KubalePos
@@ -221,8 +221,8 @@ Kubale_Process PROC EXPORT
 		; Kollisions
 		push dist
 		.IF (NetSock)
-			mov al, 1
 			mov dist, rv(Vector32DDistanceSqr, OFFSET KubalePos, OFFSET CamPos)
+			mov al, 1
 		.ELSE
 			fcmp dist, f(32)
 			.IF (Carry?)
@@ -233,14 +233,15 @@ Kubale_Process PROC EXPORT
 		.ENDIF
 		.IF (al)
 			; Player collision
-			invoke Collide_Distance, ADDR CamPos, ADDR KubalePos, f(0.5), dist
-			.IF (al)
-				invoke Vector32DCopy, ADDR dot, ADDR CamForward
-				invoke Vector32DMulF, ADDR dot, deltaTime
-				invoke Vector32DAdd, ADDR KubalePos, ADDR dot
-				
-				.IF (NetSock)
-					mov NetEntitiesClient, TRUE
+			.IF (PlrState == PLAYER_STATE_GAME)
+				invoke Collide_Distance, ADDR CamPos, ADDR KubalePos,f(0.5),dist
+				.IF (pax)
+					invoke Vector32DCopy, ADDR dot, ADDR CamForward
+					invoke Vector32DMulF, ADDR dot, deltaTime
+					invoke Vector32DAdd, ADDR KubalePos, ADDR dot
+					.IF (NetSock)
+						mov NetEntitiesClient, TRUE
+					.ENDIF
 				.ENDIF
 			.ENDIF
 			
@@ -315,8 +316,15 @@ Kubale_Process PROC EXPORT
 		.ENDIF
 		pop pbx
 		
+		; Scare Virdya
+		.IF (Virdya)
+			vinvoke Virdya_Scare, OFFSET KubalePos, TRUE
+		.ENDIF
+		
+		; Kubale needs nerfing maybe
+		;IFDEF KUBALE_TELEPORT
 		; Teleport if far enough away
-		fcmp dist, f(96)
+		fcmp dist, f(256)
 		.IF (!Carry?)
 			print "Teleporting Kubale", 13, 10
 			mov al, 64	; Repeated check for visibility
@@ -340,6 +348,7 @@ Kubale_Process PROC EXPORT
 				dec al
 			.ENDW
 		.ENDIF
+		;ENDIF
 	.ENDIF
 	ret
 Kubale_Process ENDP

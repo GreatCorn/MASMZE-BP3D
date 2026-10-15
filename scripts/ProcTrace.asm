@@ -49,17 +49,6 @@ PROCP MACRO procname, flag, parmbytes, localbytes, reglist, userparms
 		mov DWORD PTR [ebp-12], edx
 		pop edx
 		pop eax
-		
-		procsym CATSTR <procname>,<NameStrS>
-		procstr CATSTR <">,<procname>,< START">
-		%IFNDEF procsym
-			.DATA
-			procsym DB procstr, 0
-			.CODE
-		ENDIF
-		pushad
-		print OFFSET procsym, 13, 10
-		popad
 	ENDIF
 	
 	EXITM %newlocal
@@ -84,7 +73,7 @@ PROCE MACRO procname, flag, parmbytes, localbytes, reglist, userparms
 		sub eax, DWORD PTR [ebp-8]
 		sub edx, DWORD PTR [ebp-12]
 		procsym CATSTR <procname>,<NameStrE>
-		procstr CATSTR <">,<procname>,< END">
+		procstr CATSTR <">,<procname>,<">
 		%IFNDEF procsym
 			.DATA
 			procsym DB procstr, 0

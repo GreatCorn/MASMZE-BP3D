@@ -10,6 +10,7 @@ EBD				BPEnum EBD_NONE
 EBDAmplitude	REAL4 1.0
 EBDAnim			REAL4 0.0, 0.0
 EBDAnimSpeed	REAL4 3.0
+EBDFloor		BPBool FALSE
 EBDPos	Vector3 <>
 
 .DATA?
@@ -47,7 +48,7 @@ EBD_DrawHair PROC EXPORT
 			invoke glVertex2f, v2Val.X, v2Val.Y
 		
 			fld v2Val.Y
-			fsub EBDSegmentLength
+			fadd EBDSegmentLength
 			fstp v2Val.Y
 			
 			fld EBDAnim[4]
@@ -101,7 +102,13 @@ EBD_Spawn PROC EXPORT State:BPEnum
 		.ENDW
 		pop pbx
 		
-		bpMEM32 EBDPos.Y, f(2)
+		.IF (EBDFloor)
+			mov EBDPos.Y, 0
+		.ELSE
+			fld f(2)
+			fmul MazeHeight
+			fstp EBDPos.Y
+		.ENDIF
 		invoke SndSetPos, SndEBD, ADDR EBDPos
 		invoke alSourcePlay, SndEBD
 		
@@ -121,19 +128,21 @@ EBD_Draw PROC EXPORT
 	invoke glDisable, GL_FOG
 	
 	call glPushMatrix
-	.IF (MazeHeight != FLT_1)
-		invoke glScalef, FLT_1, MazeHeight, FLT_1
-	.ENDIF
 	invoke glTranslate3fv, ADDR EBDPos
+	mov eax, MazeHeight
+	.IF !(EBDFloor)
+		or eax, FLT_NEG
+	.ENDIF
+	invoke glScalef, FLT_1, eax, FLT_1
 	
+	invoke glDisable, GL_CULL_FACE
 	invoke glBindTexture, GL_TEXTURE_2D, TexEBDShadow
 	invoke glBlendFunc, GL_ZERO, GL_SRC_COLOR
 	call glPushMatrix
-		invoke glTranslatef, f(-1), f(-2.01), f(-1)
-		invoke glCallList, MdlPlaneR
+		invoke glTranslatef, f(-1), f(0.01), f(-1)
+		invoke glCallList, MdlPlaneG
 	call glPopMatrix
 	
-	invoke glDisable, GL_CULL_FACE
 	invoke glEnable, GL_ALPHA_TEST
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	
@@ -167,6 +176,12 @@ EBD_Process PROC EXPORT
 	fmul EBDAnimSpeed
 	fadd EBDAnim
 	fstp EBDAnim
+	fcmp EBDAnim, PI2
+	.IF (Carry?)
+		fld EBDAnim
+		fsub PI2
+		fstp EBDAnim
+	.ENDIF
 	
 	mov EBD, EBD_ACTIVE
 	
@@ -196,6 +211,7 @@ EBD_Process PROC EXPORT
 		.IF !(GameTips & GAME_TIP_CROUCH)
 			vinvoke UI_ShowSubtitles, StrCCCrouch, UISubDur
 			or GameTips, GAME_TIP_CROUCH
+			vinvoke Settings_SaveEnum,OFFSET SettingsRegGameTips,OFFSET GameTips
 		.ENDIF
 		
 		fcmp dist, f(0.6)
@@ -204,6 +220,18 @@ EBD_Process PROC EXPORT
 			.IF (Carry?)
 				mov EBD, EBD_ATTACK
 			.ENDIF
+		.ENDIF
+	.ENDIF
+	
+	.IF (Virdya == VIRDYA_CHILL) || (Virdya == VIRDYA_SCARED) || \
+	(Virdya == VIRDYA_DEFENSIVE)
+		mov dist, vrv(Vector32DDistanceSqr, OFFSET EBDPos, OFFSET VirdyaPos)
+		fcmp dist, f(0.3)
+		.IF (Carry?)
+			mov Virdya, VIRDYA_SCARED
+			bpMEM32 VirdyaFace, TexVirdyaN
+			bpMEM32 VirdyaRot, EBDAnim
+			bpMEM32 VirdyaSpeed, f(-3)
 		.ENDIF
 	.ENDIF
 	

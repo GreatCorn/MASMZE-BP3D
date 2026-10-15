@@ -1,11 +1,14 @@
 .686
+.xmm
 .model flat,stdcall
 option casemap:none
 
 ;BP_COMPATIBILITY_W9X		EQU <1>
-;BP_ERROR_PASS				EQU <1>
+BP_ERROR_PASS				EQU <1>
 BP_INTERPOLATION_DYNAMIC	EQU <1>
+;BP_USE_SSE					EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
+;BP_FORCE_MANUAL_TEXTURE		EQU <1>
 IFDEF MODE_DEBUG
 	ECHO Compiling MASMZE-BP3D in debug mode.
 	BP_TRACEABLE_HEAP EQU <1>
@@ -246,7 +249,7 @@ ENUM	BIND_NONE, \
 		BIND_JOYSTICK
 
 AppName 	DB "MASMZE-3D", 0	; App name & caption
-AppVersion	DB "0.8.5", 0
+AppVersion	DB "v0.8.7", 0
 AsmTime		DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), \
 13, 10, 0
 
@@ -383,6 +386,7 @@ FogEndDistSqr	REAL4 ?
 
 DrawWireframe	BPBool FALSE
 FreezeTime		BPBool FALSE
+Textureless		BPBool FALSE
 
 PollProcPtr		BPPtr (-1)
 PollProcStack	BPPtr 8 dup (0)
@@ -406,6 +410,7 @@ GameComplete	BPEnum 0
 GAME_TIP_PLACE_GLYPH	EQU 1
 GAME_TIP_CROUCH			EQU 2
 GAME_TIP_MULTIPLAYER	EQU 4
+GAME_TIP_GAMMA_DISC		EQU 8
 GameTips		BPEnum 0
 
 .DATA?
@@ -432,7 +437,11 @@ wglSwapIntervalEXT				BPPtr ?
 include scripts\NetCode.inc
 
 ;PROC_TRACE		EQU <1>
-PROC_TRACE_ALL	EQU <1>
+;PROC_TRACE_ALL	EQU <1>
+TraceFiles TEXTEQU <!<\
+						main.asm,\
+						scripts\NetCode.asm,\
+					!>>
 include scripts\ProcTrace.asm
 
 AUDIO_OPENAL	EQU <1>
@@ -454,6 +463,7 @@ include scripts\HBD.asm
 include scripts\HDL.asm
 include scripts\Kubale.asm
 include scripts\Vebra.asm
+include scripts\Virdya.asm
 include scripts\WBBK.asm
 include scripts\Wmblyk.asm
 
@@ -464,7 +474,7 @@ include scripts\UI.asm
 include scripts\NetCode.asm
 .CODE
 
-GPadParse PROTO :BPEnum, :BPPtr
+GPadParse PROTO :BPPtr
 
 CreateScene PROC EXPORT
 	call Plr_Create
@@ -521,8 +531,10 @@ DrawMenuScene PROC EXPORT
 DrawMenuScene ENDP
 
 DrawScene PROC EXPORT
-	.IF (DrawWireframe)
-		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_LINE
+	.IF (DrawWireframe) || (Textureless)
+		.IF (DrawWireframe)
+			invoke glPolygonMode, GL_FRONT_AND_BACK, GL_LINE
+		.ENDIF
 		invoke glDisable, GL_TEXTURE_2D
 	.ENDIF
 	
@@ -542,6 +554,9 @@ DrawScene PROC EXPORT
 	.IF (Vebra)
 		call Vebra_Draw
 	.ENDIF
+	.IF (Virdya)
+		call Virdya_Draw
+	.ENDIF
 	.IF (WBBK)
 		call WBBK_Draw
 	.ENDIF
@@ -556,10 +571,13 @@ DrawScene PROC EXPORT
 	.IF (GameState == GAME_STATE_MENU) && (UIMenuSplash >= 2)
 		call DrawMenuScene
 	.ENDIF
-	.IF (DrawWireframe)
-		invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
+	.IF (DrawWireframe) || (Textureless)
+		.IF (DrawWireframe)
+			invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
+		.ENDIF
 		invoke glEnable, GL_TEXTURE_2D
 	.ENDIF
+	
 	ret
 DrawScene ENDP
 
@@ -568,6 +586,12 @@ FixedScene PROC EXPORT
 	fmul deltaScale
 	fstp deltaFixed
 	call Maze_Fixed
+	.IF (Virdya)
+		call Virdya_Fixed
+	.ENDIF
+	.IF (NetSock)
+		call Net_Fixed
+	.ENDIF
 	ret
 FixedScene ENDP
 
@@ -622,6 +646,8 @@ GameStart PROC EXPORT
 	
 	.IF (MazeLayer == 1)		
 		mov PlrState, PLAYER_STATE_ENTER
+		mov MazeState, MAZE_STATE_SAFE
+		mov MazeStateTimer, 0
 	.ELSE
 		mov PlrState, PLAYER_STATE_GAME
 		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamWalk
@@ -657,12 +683,11 @@ GameStartNew PROC EXPORT
 	ret
 GameStartNew ENDP
 
-GPadInput PROC EXPORT InType:BPEnum, InStruct:BPPtr, Input:BPPtr, \
-ValPtr:BPPtr	
+GPadInput PROC EXPORT InStruct:BPPtr, Input:BPPtr, ValPtr:BPPtr	
 	mov pbx, InStruct
-	invoke GPadParse, InType, pbx
+	invoke GPadParse, pbx
 	
-	.IF (InType == BP_INPUT_JOY_AXIS)	; Fix parallel axes
+	.IF (BPEnum PTR [pbx] == BP_INPUT_JOY_AXIS)	; Fix parallel axes
 		mov pcx, pax
 		and pcx, not GAMEPAD_NEG
 		mov pdx, Input
@@ -678,7 +703,7 @@ ValPtr:BPPtr
 	.ENDIF
 	.IF (Input == pax)
 		mov pax, ValPtr
-		.IF (InType == BP_INPUT_JOY_AXIS)
+		.IF (BPEnum PTR [pbx] == BP_INPUT_JOY_AXIS)
 			ASSUME pbx:PTR BPInJoyAxis
 			mov ecx, [pbx].Position
 			and ecx, not FLT_NEG
@@ -693,7 +718,7 @@ ValPtr:BPPtr
 		.ENDIF
 	.ENDIF
 	ret
-	.IF (Input >= GAMEPAD_LS_H) && (InType == BP_INPUT_JOY_AXIS)
+	.IF (Input >= GAMEPAD_LS_H) && (BPEnum PTR [pbx] == BP_INPUT_JOY_AXIS)
 		ASSUME pbx:PTR BPInJoyAxis
 		.IF (Input & GAMEPAD_NEG)
 			fcmp [pbx].Position
@@ -746,9 +771,9 @@ ValPtr:BPPtr
 	ret
 GPadInput ENDP
 
-GPadParse PROC EXPORT InType:BPEnum, InStruct:BPPtr
+GPadParse PROC EXPORT InStruct:BPPtr
 	mov pbx, InStruct
-	.IF (InType == BP_INPUT_JOY_AXIS)
+	.IF (BPEnum PTR [pbx] == BP_INPUT_JOY_AXIS)
 		ASSUME pbx:PTR BPInJoyAxis
 		
 		mov eax, [pbx].Axis
@@ -937,6 +962,7 @@ MenuInit PROC EXPORT
 	
 	mov deltaScale, FLT_1
 	
+	mov PlrHealth, FLT_1
 	mov PlrState, PLAYER_STATE_ETC
 	mov PlrStateCallback, 0
 	mov CamAnimPlr.TrackPtr, 0
@@ -998,6 +1024,9 @@ ProcessScene PROC EXPORT
 		.IF (Vebra)
 			call Vebra_Process
 		.ENDIF
+		.IF (Virdya)
+			call Virdya_Process
+		.ENDIF
 		.IF (WBBK)
 			call WBBK_Process
 		.ENDIF
@@ -1043,17 +1072,20 @@ OnFixed PROC EXPORT
 	ret
 OnFixed ENDP
 
-OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
+OnInput PROC EXPORT BPInStruct:BPPtr
 	LOCAL axisVal:REAL4;, joyInfo:JOYINFOEX
+	ASSUME pbx:PTR BPInput
+	mov pbx, BPInStruct
+	
 	; Set current input method
-	.IF (BPInType == BP_INPUT_MOUSE_BUTTON || BPInType == BP_INPUT_KEY)
+	.IF ([pbx].InType == BP_INPUT_MOUSE_BUTTON || [pbx].InType == BP_INPUT_KEY)
 		mov InputMethod, INPUT_KEYBOARD_MOUSE
-	.ELSEIF (BPInType == BP_INPUT_JOY_AXIS || BPInType == BP_INPUT_JOY_BUTTON)
+	.ELSEIF ([pbx].InType == BP_INPUT_JOY_AXIS \
+	|| [pbx].InType == BP_INPUT_JOY_BUTTON)
 		mov InputMethod, INPUT_JOYSTICK
 	.ENDIF
 	
-	mov pbx, BPInStruct
-	.IF (BPInType == BP_INPUT_MOUSE_MOVE)
+	.IF ([pbx].InType == BP_INPUT_MOUSE_MOVE)
 		ASSUME pbx:PTR BPInMouseMove
 		.IF ([pbx].Relative.x)
 			fild [pbx].Relative.x
@@ -1067,7 +1099,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 			fmul SettingsControlsMouseSensitivity
 			fstp InputLook.Y
 		.ENDIF
-	.ELSEIF (BPInType == BP_INPUT_KEY) || (BPInType == BP_INPUT_MOUSE_BUTTON)
+	.ELSEIF ([pbx].InType == BP_INPUT_KEY) \
+	|| ([pbx].InType == BP_INPUT_MOUSE_BUTTON)
 		ASSUME pbx:PTR BPInKey
 		mov al, [pbx].Pressed
 		mov pcx, [pbx].Keycode
@@ -1175,6 +1208,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov UIMenuSplash, 0
 					mov UIMenuSplashTimer, 0
 				CASE 'R'
+					print str$(rv(nRand, 2)), 13, 10
 					.IF (Maze)
 						call Maze_Free
 						.IF (Keys[VK_SHIFT])
@@ -1201,11 +1235,20 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					call Maze_GenerateLayoutTex
 					xor PlrItems, MAZE_ITEM_MAP
 				CASE 'P'
-					mov PlrPowerupDur, FLT_1
-					mov PlrPowerupVal, 0
-					inc PlrPowerup
-					.IF (PlrPowerup > 4)
-						mov PlrPowerup, MAZE_POWERUP_NONE
+					.IF (Keys[VK_SHIFT])
+						mov UIPlush, 3
+						vinvoke Vector2Set, OFFSET UIPlushSqueak, 0, 0
+						mov UIPlushSqueaked, FALSE
+						vinvoke Vector3Set, OFFSET UIPlushPos, 0, f(-0.25), f(-5)
+						bpMEM32 UIPlushRot, f(-540)
+						mov UIPlushColor.W, FLT_1
+					.ELSE
+						mov PlrPowerupDur, FLT_1
+						mov PlrPowerupVal, 0
+						inc PlrPowerup
+						.IF (PlrPowerup > 4)
+							mov PlrPowerup, MAZE_POWERUP_NONE
+						.ENDIF
 					.ENDIF
 				CASE 'B'
 					.IF (Keys[VK_SHIFT])
@@ -1215,6 +1258,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					.ELSE
 						invoke Wmblyk_Spawn, WMBLYK_STILL
 					.ENDIF
+				CASE 'V'
+					invoke Virdya_Spawn, VIRDYA_CHILL
 				CASE 'X'
 					mov PlrState, PLAYER_STATE_ENTER
 				CASE 'Z'
@@ -1368,7 +1413,8 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 					mov InputPowerup, 0
 			ENDSW
 		.ENDIF
-	.ELSEIF (BPInType == BP_INPUT_JOY_AXIS) || (BPInType == BP_INPUT_JOY_BUTTON)		
+	.ELSEIF ([pbx].InType == BP_INPUT_JOY_AXIS) \
+	|| ([pbx].InType == BP_INPUT_JOY_BUTTON)		
 		mov eax, DWORD PTR [pbx]
 		mov ecx, SIZEOF BPJoystick
 		mul ecx
@@ -1382,7 +1428,7 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 		bpMEM32 LastInputTimer, LastInputTimes[0]
 		
 		.IF (UIBinding == BIND_JOYSTICK)
-			.IF (BPInType == BP_INPUT_JOY_AXIS)
+			.IF (BPEnum PTR [pbx] == BP_INPUT_JOY_AXIS)
 				ASSUME pbx:PTR BPInJoyAxis
 				bpMEM32 axisVal, [pbx].Position
 				and axisVal, not FLT_NEG
@@ -1390,37 +1436,37 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 				jc skipBind	; axisVal < 0.3
 			.ENDIF
 			mov pcx, UIBindAction
-			mov BPPtr PTR [pcx], rv(GPadParse, BPInType, pbx)
+			mov BPPtr PTR [pcx], rv(GPadParse, pbx)
 			print str$(BPPtr PTR [pcx]), 13, 10
 			call UI_HandleMenuEscape
 			mov SettingsChanged, TRUE
 			skipBind:
 		.ELSE
-			invoke GPadInput, BPInType, pbx, JBUIUp, ADDR InputUIUp
+			invoke GPadInput, pbx, JBUIUp, ADDR InputUIUp
 			.IF (InputUIUp)
 				mov LastInput, OFFSET InputUIUp
 			.ENDIF
-			invoke GPadInput, BPInType, pbx, JBUIDown, ADDR InputUIDown
+			invoke GPadInput, pbx, JBUIDown, ADDR InputUIDown
 			.IF (InputUIDown)
 				mov LastInput, OFFSET InputUIDown
 			.ENDIF
-			invoke GPadInput, BPInType, pbx, JBUILeft, ADDR InputUILeft
+			invoke GPadInput, pbx, JBUILeft, ADDR InputUILeft
 			.IF (InputUILeft)
 				mov LastInput, OFFSET InputUILeft
 			.ENDIF
-			invoke GPadInput, BPInType, pbx, JBUIRight, ADDR InputUIRight
+			invoke GPadInput, pbx, JBUIRight, ADDR InputUIRight
 			.IF (InputUIRight)
 				mov LastInput, OFFSET InputUIRight
 			.ENDIF
-			invoke GPadInput, BPInType, pbx, JBUIConfirm, ADDR InputUIConfirm
+			invoke GPadInput, pbx, JBUIConfirm, ADDR InputUIConfirm
 			bpMEM32 InputUIConfirmT, InputUIConfirm
 			
-			invoke GPadInput, BPInType, pbx, JBMenu, ADDR InputMenu
+			invoke GPadInput, pbx, JBMenu, ADDR InputMenu
 			.IF (InputMenu)
 				call UI_HandleMenuEscape
 				mov InputMenu, FALSE
 			.ENDIF
-			invoke GPadInput, BPInType, pbx, JBCancel, ADDR InputMenu
+			invoke GPadInput, pbx, JBCancel, ADDR InputMenu
 			.IF (InputMenu)
 				.IF (UIState >= UI_STATE_MENU_PAUSE)
 					call UI_HandleMenuEscape
@@ -1429,23 +1475,23 @@ OnInput PROC EXPORT BPInType:BPEnum, BPInStruct:BPPtr
 			.ENDIF
 		
 			; REBINDABLE
-			invoke GPadInput, BPInType, pbx, JBUp, ADDR InputAxes[0]
-			invoke GPadInput, BPInType, pbx, JBDown, ADDR InputAxes[4]
-			invoke GPadInput, BPInType, pbx, JBLeft, ADDR InputAxes[8]
-			invoke GPadInput, BPInType, pbx, JBRight, ADDR InputAxes[12]
+			invoke GPadInput, pbx, JBUp, ADDR InputAxes[0]
+			invoke GPadInput, pbx, JBDown, ADDR InputAxes[4]
+			invoke GPadInput, pbx, JBLeft, ADDR InputAxes[8]
+			invoke GPadInput, pbx, JBRight, ADDR InputAxes[12]
 			
-			invoke GPadInput, BPInType, pbx, JBLookUp, ADDR InputAxes[16]
-			invoke GPadInput, BPInType, pbx, JBLookDown, ADDR InputAxes[20]
-			invoke GPadInput, BPInType, pbx, JBLookLeft, ADDR InputAxes[24]
-			invoke GPadInput, BPInType, pbx, JBLookRight, ADDR InputAxes[28]
+			invoke GPadInput, pbx, JBLookUp, ADDR InputAxes[16]
+			invoke GPadInput, pbx, JBLookDown, ADDR InputAxes[20]
+			invoke GPadInput, pbx, JBLookLeft, ADDR InputAxes[24]
+			invoke GPadInput, pbx, JBLookRight, ADDR InputAxes[28]
 			
-			invoke GPadInput, BPInType, pbx, JBCrouch, ADDR InputCrouch
-			invoke GPadInput, BPInType, pbx, JBGlyph, ADDR InputGlyph
-			invoke GPadInput, BPInType, pbx, JBAction, ADDR InputAction
-			invoke GPadInput, BPInType, pbx, JBConfirm, ADDR InputConfirm
+			invoke GPadInput, pbx, JBCrouch, ADDR InputCrouch
+			invoke GPadInput, pbx, JBGlyph, ADDR InputGlyph
+			invoke GPadInput, pbx, JBAction, ADDR InputAction
+			invoke GPadInput, pbx, JBConfirm, ADDR InputConfirm
 			
-			invoke GPadInput, BPInType, pbx, JBPlayers, ADDR InputPlayers
-			invoke GPadInput, BPInType, pbx, JBPowerup, ADDR InputPowerup
+			invoke GPadInput, pbx, JBPlayers, ADDR InputPlayers
+			invoke GPadInput, pbx, JBPowerup, ADDR InputPowerup
 		.ENDIF
 	.ENDIF
 	
@@ -1562,9 +1608,9 @@ OnRender PROC EXPORT
 	.ENDIF
 	
 	; Drawing
-	invoke glColor4fv, OFFSET clWhite
+	invoke glColor4fv, ADDR clWhite
 	invoke glFogf, GL_FOG_DENSITY, FogDensity
-	invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
+	invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR clWhite
 	
 	IFDEF MODE_DEBUG
 	.IF (UIDebug)
@@ -1667,6 +1713,49 @@ FARBOnCreate ENDP
 
 start:
 	print OFFSET AsmTime, 13, 10
+	
+	print real4$(rv(flAcos, 0)), 9
+	fld PI
+	fdiv f(2)
+	fstp CamPos.X
+	print real4$(CamPos.X), 13, 10
+	print real4$(rv(flAcos, f(0.5))), 9
+	fld PI
+	fdiv f(3)
+	fstp CamPos.X
+	print real4$(CamPos.X), 13, 10
+	print real4$(rv(flAcos, f(-0.5))), 9
+	fld PI2
+	fdiv f(3)
+	fstp CamPos.X
+	print real4$(CamPos.X), 13, 10
+	print "Domain bound: "
+	print real4$(rv(flAcos, f(1.0))), 9
+	print real4$(rv(flAcos, f(-1.0))), 13, 10
+	print real4$(rv(flAcos, f(1.0001))), 9
+	print real4$(rv(flAcos, f(-1.0001))), 9
+	print real4$(rv(flAcos, f(-5.0))), 13, 10
+	
+	print real4$(rv(flAsin, 0)), 9
+	fld f(0)
+	fstp CamPos.X
+	print real4$(CamPos.X), 13, 10
+	print real4$(rv(flAsin, f(0.5))), 9
+	fld PI
+	fdiv f(6)
+	fstp CamPos.X
+	print real4$(CamPos.X), 13, 10
+	print real4$(rv(flAsin, f(-0.5))), 9
+	fld PI
+	fdiv f(-6)
+	fstp CamPos.X
+	print real4$(CamPos.X), 13, 10
+	print "Domain bound: "
+	print real4$(rv(flAsin, f(1.0))), 9
+	print real4$(rv(flAsin, f(-1.0))), 13, 10
+	print real4$(rv(flAsin, f(1.0001))), 9
+	print real4$(rv(flAsin, f(-1.0001))), 9
+	print real4$(rv(flAsin, f(5.0))), 13, 10
 	
 	finit
 	

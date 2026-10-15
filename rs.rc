@@ -1,1 +1,27 @@
 500 ICON "icon.ico"
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION    0,8,7,0
+PRODUCTVERSION 0,8,7,0
+FILEFLAGSMASK  0x3F
+FILEFLAGS      0x0L
+FILEOS         4
+FILETYPE       1
+FILESUBTYPE    0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0" // U.S. English, Unicode charset
+        BEGIN
+            VALUE "FileDescription",  "A horror maze-runner game made with x86 Assembly.\0"
+            VALUE "FileVersion",      "0.8.7\0"
+            VALUE "InternalName",     "MASMZE-3D\0"
+            VALUE "LegalCopyright",   "© Yevhenii Ionenko (aka GreatCorn), 2023-2026\0"
+            VALUE "ProductName",      "MASMZE-3D\0"
+            VALUE "ProductVersion",   "0.8.7\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

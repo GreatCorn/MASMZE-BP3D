@@ -15,6 +15,7 @@ set _reading=args
 set _includes=masm
 
 set _quiet=0
+set "_appName="
 set "_asmArgs="
 set "_linkArgs="
 
@@ -73,7 +74,9 @@ for %%x in (%*) do (
 
 if [%_argCnt%] NEQ [0] (
 	set _project=%~n1
-	set _appName=%_project%.exe
+	if not defined _appName (
+		set _appName=%_project%.exe
+	)
 	if /i "%~x1" == ".asm" (set _sourcefile=%1) else (set "_sourcefile=%~1.asm")
 )
 
@@ -145,11 +148,11 @@ if %_link%==jwlink (
 )
 if exist rs.rc (
 	rc /v rs.rc
-	cvtres /machine:ix86 rs.res
+	::cvtres /machine:ix86 rs.res
 	if %_link%==jwlink (
-		set _linkArgs=%_linkArgs% FILE rs.obj
+		set _linkArgs=%_linkArgs% OPTION RESOURCE=rs.RES
 	) else (
-		set _linkArgs=%_linkArgs% rs.obj
+		set _linkArgs=%_linkArgs% rs.RES
 	)
 )
 
@@ -189,5 +192,5 @@ if %_link%==jwlink (
 	polink /subsystem:%_target% %_linkArgs% /libpath:%_libpath% /entry:start /out:"%_appName%"
 )
 if [%_build%] NEQ [1] (
-	%_project%.exe
+	%_appName%
 )

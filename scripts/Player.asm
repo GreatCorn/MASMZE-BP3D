@@ -72,13 +72,16 @@ PlrGlyphs		DWORD 7
 PlrGlyphsInMaze	DWORD 0
 PlrGlyphPos		Vector3 7 DUP (<>)
 PlrGlyphRot		REAL4 7 DUP (0.0)
+PlrHeal			REAL4 1.0
 PlrHealth		REAL4 1.0
 PlrPlayStep		BPBool FALSE
+
 
 PlrCollide		BPBool TRUE
 PlrItems		BPEnum 0
 PlrCompassRot	REAL4 0.0
 PlrCompassVel	REAL4 0.0
+PlrProcessCompass BPBool FALSE
 
 PlrMouseCool	DWORD 10	; Mouse cooldown frames
 
@@ -86,15 +89,18 @@ PlrState			DWORD PLAYER_STATE_ETC
 PlrStateCallback	BPPtr 0
 PlrStateTimer		REAL4 0.0
 
+PlrStepGain			REAL4 1.0
 PlrStepPitch		REAL4 1.0
 PlrStepPtr			BPPtr OFFSET SndStep
 
 PlrPartRain		ParticleSystem	<>
 PlrPartRainB	ParticleSystem	<>
+PlrRainBlood	BPBool FALSE
 
 .CODE
 Plr_FreezeTime PROTO :BPBool, :DWORD
 Plr_Shake PROTO :REAL4
+Plr_Sledgehammer PROTO :BPPtr
 
 Plr_CalculateAxes PROC EXPORT
 	fld CamRotL.Y
@@ -282,19 +288,14 @@ Plr_Control PROC EXPORT
 				
 				.IF !(al)
 					invoke Vector32DF, ADDR velocity
-					invoke SndSetPos, SndBreak, ADDR velocity
-					invoke alSourcePlay, SndBreak
+					invoke Plr_Sledgehammer, ADDR velocity
+					
 					bpMEM32 PlrPowerupVal, f(0.05)
 					
 					fld PlrPowerupDur
 					fsub f(0.51)
 					fstp PlrPowerupDur
 					
-					.IF (SettingsGraphicsParticles)
-						invoke Vector32DCopy, ADDR MazePartDust.Position, \
-						ADDR velocity
-						invoke Particles_Spawn, ADDR MazePartDust, 32
-					.ENDIF
 					Vector32DPop velocity
 					print str$(velocity.X), 9
 					print str$(velocity.Z), 13, 10
@@ -320,6 +321,39 @@ Plr_Control PROC EXPORT
 					
 					invoke alSourcePlay, SndCamera
 					mov DrawWireframe, TRUE
+					
+					.IF (Virdya)
+						mov flVal, \
+						vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET VirdyaPos)
+						fcmp flVal, f(8)
+						.IF (Carry?)
+							mov flVal, vrv(Plr_FrustumDot, OFFSET VirdyaPos)
+							fcmp flVal, f(0.2)
+							.IF (!Carry?)
+								mov Virdya, VIRDYA_BLIND
+								invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+							.ENDIF
+						.ENDIF
+					.ENDIF
+					.IF (Wmblyk == WMBLYK_WALK)
+						mov flVal, \
+						vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET WmblykPos)
+						fcmp flVal, f(8)
+						.IF (Carry?)
+							mov flVal, vrv(Plr_FrustumDot, OFFSET WmblykPos)
+							fcmp flVal, f(0.2)
+							.IF (!Carry?)
+								mov Wmblyk, WMBLYK_BLIND
+								invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+							.ENDIF
+						.ENDIF
+					.ENDIF
+					
+					.IF (NetSock)
+						bpMEM32 NetSound, SndCamera[4]
+						invoke Vector32DCopy, ADDR NetSoundPos, ADDR CamPos
+						invoke Net_FormSend, NET_SOUND, NetSock
+					.ENDIF
 				.ENDIF
 				mov InputPowerup, FALSE
 				ret
@@ -331,14 +365,16 @@ Plr_Control PROC EXPORT
 				fsubr PlrPowerupDur
 				fstp PlrPowerupDur
 			.ELSEIF (PlrPowerup == MAZE_POWERUP_METHYLPHENIDATE)
-				.IF (FreezeTime)
-					mov al, FALSE
-				.ELSE
-					mov al, TRUE
-				.ENDIF
+				.IF !(FreezeTime)
+				;.IF (FreezeTime)
+				;	mov al, FALSE
+				;.ELSE
+				;	mov al, TRUE
+				;.ENDIF
 				invoke Plr_FreezeTime, al, NetSock
 				
 				mov InputPowerup, FALSE
+				.ENDIF
 			.ENDIF
 		.ENDIF
 		
@@ -435,93 +471,104 @@ Plr_ControlLook PROC EXPORT
 	ret
 Plr_ControlLook ENDP
 
-Plr_DrawCompassMap PROC EXPORT
-	LOCAL flVal:REAL4, v2Val:Vector2
+;   Returns in pax if the position should be culled.
+Plr_Cull PROC EXPORT PosPtr:BPPtr
+	LOCAL dist:REAL4
 	
-	.IF (Maze) && (PlrState == PLAYER_STATE_GAME)
-		fcmp CamRot.X, f(0.4)
-		.IF (!Carry?)
-			call glPushMatrix
-			fld CamPosL.Y
-			fsub f(0.4)
-			fstp flVal
-			invoke glTranslatef, CamPosL.X, flVal, CamPosL.Z
-			invoke glRotatefr, CamRot.Y, 0, f(1), 0
-			invoke glDisable, GL_DEPTH_TEST
-			.IF (PlrItems & MAZE_ITEM_MAP)
-				call glPushMatrix
-				invoke glScalef, f(0.5), f(1), f(0.5)
-				invoke glRotatef, f(-90), f(1), 0, 0
-				invoke glEnable, GL_ALPHA_TEST
-				invoke glBindTexture, GL_TEXTURE_2D, TexMap
-				invoke glCallList, MdlParticle
-				
-				invoke glScalef, f(0.9), f(0.9), f(0.9)
-				invoke glScale2fv, ADDR MazeMapSize
-				invoke glEnable, GL_BLEND
-				invoke glBlendFunc, GL_ZERO, GL_ONE_MINUS_SRC_COLOR
-				invoke glBindTexture, GL_TEXTURE_2D, MazeLayoutTex
-				invoke glCallList, MdlParticle
-				invoke glDisable, GL_ALPHA_TEST
-				
-				; Draw player icon
-				invoke glBindTexture, GL_TEXTURE_2D, 0
-				fild MazeSize[0]
-				fmul f(2)
-				fdivr CamPosL.X
-				fsub f(0.5)
-				fchs
-				fstp v2Val.X
-				fild MazeSize[4]
-				fmul f(2)
-				fdivr CamPosL.Z
-				fsub f(0.5)
-				fstp v2Val.Y
-				invoke glTranslatef, v2Val.X, v2Val.Y, 0
-				invoke glScalef, f(0.05), f(0.05), f(0.05)
-				invoke glRotatefr, CamRotL.Y, 0, 0, f(1)
-				invoke glBegin, GL_TRIANGLES
-				invoke glVertex2f, f(-0.3), f(-0.5)
-				invoke glVertex2f, f(0.3), f(-0.5)
-				invoke glVertex2f, f(0), f(0.5)
-				call glEnd
-				
-				invoke glDisable, GL_BLEND
-				call glPopMatrix
-				
-				.IF (PlrItems & MAZE_ITEM_COMPASS)
-					invoke glEnable, GL_BLEND
-					invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
-					invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clHalf
-				.ENDIF
-				xor pax, pax
-			.ELSE
-				mov pax, TRUE
-			.ENDIF
-			
-			.IF (PlrItems & MAZE_ITEM_COMPASS)
-				.IF (pax)
-					call glPushMatrix
-					invoke glScalef, f(0.3), f(1), f(0.3)
-					invoke glRotatef, f(-90), f(1), 0, 0
-					invoke glEnable, GL_ALPHA_TEST
-					invoke glBindTexture, GL_TEXTURE_2D, TexCompass
-					invoke glCallList, MdlParticle
-					invoke glDisable, GL_ALPHA_TEST
-					call glPopMatrix
-				.ENDIF
-				invoke glRotatefr, PlrCompassRot, 0, f(1), 0
-				invoke glBindTexture, GL_TEXTURE_2D, TexCompassWorld
-				invoke glCallList, MdlCompassArrow
-				.IF (PlrItems & MAZE_ITEM_MAP)
-					invoke glDisable, GL_BLEND
-					invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
-				.ENDIF
-			.ENDIF
-			call glPopMatrix
-			invoke glEnable, GL_DEPTH_TEST
+	mov dist, rv(Vector32DDistanceSqr, OFFSET CamPos, PosPtr)
+	fcmp PosPtr, f(3)
+	.IF (Carry?)
+		mov pax, FALSE
+	.ELSE
+		mov dist, vrv(Plr_FrustumDot, PosPtr)
+		fcmp dist, f(0.2)
+		.IF (Carry?)
+			mov pax, TRUE
+		.ELSE
+			mov pax, FALSE
 		.ENDIF
 	.ENDIF
+	ret
+Plr_Cull ENDP
+
+Plr_DrawCompassMap PROC EXPORT Compass:BPBool, Map:BPBool
+	LOCAL flVal:REAL4, v2Val:Vector2
+	
+	call glPushMatrix
+	.IF (Map)
+		call glPushMatrix
+		invoke glScalef, f(0.5), f(1), f(0.5)
+		invoke glRotatef, f(-90), f(1), 0, 0
+		invoke glEnable, GL_ALPHA_TEST
+		invoke glBindTexture, GL_TEXTURE_2D, TexMap
+		invoke glCallList, MdlParticle
+		
+		invoke glDepthMask, GL_FALSE
+		invoke glScalef, f(0.9), f(0.9), f(0.9)
+		invoke glTranslatef, 0, 0, f(0.01)
+		invoke glScale2fv, ADDR MazeMapSize
+		invoke glEnable, GL_BLEND
+		invoke glBlendFunc, GL_ZERO, GL_ONE_MINUS_SRC_COLOR
+		invoke glBindTexture, GL_TEXTURE_2D, MazeLayoutTex
+		invoke glCallList, MdlParticle
+		invoke glDisable, GL_ALPHA_TEST
+		
+		; Draw player icon
+		invoke glBindTexture, GL_TEXTURE_2D, 0
+		fild MazeSize[0]
+		fmul f(2)
+		fdivr CamPosL.X
+		fsub f(0.5)
+		fchs
+		fstp v2Val.X
+		fild MazeSize[4]
+		fmul f(2)
+		fdivr CamPosL.Z
+		fsub f(0.5)
+		fstp v2Val.Y
+		invoke glTranslatef, v2Val.X, v2Val.Y, 0
+		invoke glScalef, f(0.05), f(0.05), f(0.05)
+		invoke glRotatefr, CamRotL.Y, 0, 0, f(1)
+		invoke glBegin, GL_TRIANGLES
+		invoke glVertex2f, f(-0.3), f(-0.5)
+		invoke glVertex2f, f(0.3), f(-0.5)
+		invoke glVertex2f, f(0), f(0.5)
+		call glEnd
+		
+		invoke glDisable, GL_BLEND
+		invoke glDepthMask, GL_TRUE
+		call glPopMatrix
+		
+		.IF (Compass)
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+			invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clHalf
+		.ENDIF
+		xor pax, pax
+	.ELSE
+		mov pax, TRUE
+	.ENDIF
+	
+	.IF (Compass)
+		.IF (pax)
+			call glPushMatrix
+			invoke glScalef, f(0.3), f(1), f(0.3)
+			invoke glRotatef, f(-90), f(1), 0, 0
+			invoke glEnable, GL_ALPHA_TEST
+			invoke glBindTexture, GL_TEXTURE_2D, TexCompass
+			invoke glCallList, MdlParticle
+			invoke glDisable, GL_ALPHA_TEST
+			call glPopMatrix
+		.ENDIF
+		invoke glRotatefr, PlrCompassRot, 0, f(1), 0
+		invoke glBindTexture, GL_TEXTURE_2D, TexCompassWorld
+		invoke glCallList, MdlCompassArrow
+		.IF (Map)
+			invoke glDisable, GL_BLEND
+			invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
+		.ENDIF
+	.ENDIF
+	call glPopMatrix
 	ret
 Plr_DrawCompassMap ENDP
 
@@ -612,7 +659,11 @@ Plr_DrawRain PROC EXPORT
 	invoke glDisable, GL_LIGHTING
 	invoke glDisable, GL_CULL_FACE
 	
-	invoke glColor4f, f(0.5), f(0.5), f(0.5), f(0.5)
+	.IF (PlrRainBlood)
+		invoke glColor4f, f(0.5), 0, 0, f(0.8)
+	.ELSE
+		invoke glColor4f, f(0.5), f(0.5), f(0.5), f(0.5)
+	.ENDIF
 	
 	invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
 	invoke glBindTexture, GL_TEXTURE_2D, TexRaindrop
@@ -644,6 +695,18 @@ Plr_DrawRain PROC EXPORT
 	invoke glColor4fv, OFFSET clWhite
 	ret
 Plr_DrawRain ENDP
+
+Plr_FreezeTime PROC EXPORT Freeze:BPBool, Sock:DWORD
+	mbm FreezeTime, Freeze
+	mov UIWhiteFade, UI_FADE_IN
+	mov UIWhiteFadeVal, FLT_1
+	invoke alSourcePlay, SndDistress
+	
+	.IF (NetSock) && (Sock)
+		invoke Net_FormSend, NET_GAME_STATES, Sock
+	.ENDIF
+	ret
+Plr_FreezeTime ENDP
 
 ;   Checks if a point is in the (2D) frustum of the player camera
 Plr_FrustumDot PROC EXPORT Position:BPPtr
@@ -852,6 +915,7 @@ Plr_ProcessState PROC EXPORT
 		.IF (MazeLayer == 3) && !(GameTips & GAME_TIP_PLACE_GLYPH)
 			vinvoke UI_ShowSubtitles, StrCCPlaceGlyph, UISubDur
 			or GameTips, GAME_TIP_PLACE_GLYPH
+			vinvoke Settings_SaveEnum,OFFSET SettingsRegGameTips,OFFSET GameTips
 		.ENDIF
 		ret
 	.ELSEIF (PlrState == PLAYER_STATE_EXIT)
@@ -944,6 +1008,7 @@ Plr_ProcessState PROC EXPORT
 					mov FogDensity, rv(flLerp, FogDensity, f(0.1), deltaTime)
 			ENDSW
 			.IF (SettingsGraphicsParticles)
+				mov PlrPartRain.Position.X, 0
 				fld CamPos.Z
 				;fchs
 				fadd f(4)
@@ -1054,6 +1119,10 @@ Plr_ProcessState PROC EXPORT
 			inc NetSpectateID
 			mov InputAction, 0
 		.ENDIF
+		.IF (InputConfirm)
+			not NetSpectateFP
+			mov InputConfirm, 0
+		.ENDIF
 		
 		push pbx
 		mov pbx, NetSpectateID
@@ -1083,7 +1152,9 @@ Plr_ProcessState PROC EXPORT
 			vinvoke UI_ShowSubtitles, StrNetCCSwitch, f(0.1)
 		.ENDIF
 		
-		call Plr_ControlLook
+		.IF !(NetSpectateFP)
+			call Plr_ControlLook
+		.ENDIF
 		
 		shr pbx, NetPlayerShift
 		mov NetSpectateID, pbx
@@ -1189,7 +1260,7 @@ Plr_ProcessState PROC EXPORT
 				&& (NetPlayersV[pax].PlrState < PLAYER_STATE_SPECTATE)
 					; Alive player found, don't end round yet
 					mov PlrState, PLAYER_STATE_COMPLETED
-					invoke nRand, 3
+					invoke nRand, SIZEOF TexLoad/4
 					shl pax, 2
 					bpMEM32 UILoadTex, TexLoad[pax]
 					.BREAK
@@ -1257,7 +1328,7 @@ Plr_Reset PROC EXPORT
 Plr_Reset ENDP
 
 ;   Shake screen (through CamRotL)
-Plr_Shake PROC Amplitude:REAL4
+Plr_Shake PROC EXPORT Amplitude:REAL4
 	LOCAL v3Val:Vector3
 	mov eax, Amplitude
 	or eax, FLT_NEG
@@ -1272,6 +1343,20 @@ Plr_Shake PROC Amplitude:REAL4
 	ret
 Plr_Shake ENDP
 
+Plr_Sledgehammer PROC EXPORT PosPtr:BPPtr
+	vinvoke HDL_Alert, PosPtr, f(6)
+	invoke SndSetPos, SndBreak, PosPtr
+	invoke alSourcePlay, SndBreak
+				
+	.IF (SettingsGraphicsParticles)
+		invoke Vector32DCopy, ADDR MazePartDust.Position, PosPtr
+		invoke Vector32DCopy, ADDR MazePartDebris.Position, PosPtr
+		invoke Particles_Spawn, ADDR MazePartDust, 32
+		invoke Particles_Spawn, ADDR MazePartDebris, MazePartDebris.Count
+	.ENDIF
+	ret
+Plr_Sledgehammer ENDP
+
 Plr_Step PROC EXPORT HalfStep:BPBool
 	LOCAL v2Val:Vector2
 	mov al, HalfStep
@@ -1283,6 +1368,7 @@ Plr_Step PROC EXPORT HalfStep:BPBool
 		push pax
 		fld PlrSpeedScaled
 		fmul st, st
+		fmul PlrStepGain
 		fstp v2Val.X
 		invoke SndSetGain, pax, v2Val.X
 		
@@ -1310,18 +1396,6 @@ Plr_Teleport PROC EXPORT X:REAL4, Y:REAL4
 	invoke Vector32DCopy, ADDR CamPosP, ADDR CamPos
 	ret
 Plr_Teleport ENDP
-
-Plr_FreezeTime PROC EXPORT Freeze:BPBool, Sock:DWORD
-	mbm FreezeTime, Freeze
-	mov UIWhiteFade, UI_FADE_IN
-	mov UIWhiteFadeVal, FLT_1
-	invoke alSourcePlay, SndDistress
-	
-	.IF (NetSock) && (Sock)
-		invoke Net_FormSend, NET_GAME_STATES, Sock
-	.ENDIF
-	ret
-Plr_FreezeTime ENDP
 
 
 Plr_Create PROC EXPORT
@@ -1355,11 +1429,30 @@ Plr_Create PROC EXPORT
 Plr_Create ENDP
 
 Plr_Draw PROC EXPORT
+	LOCAL flVal:REAL4
 	.IF (PlrGlyphsInMaze)
 		call Plr_DrawGlyphs
 	.ENDIF
 	.IF (PlrItems & MAZE_ITEM_COMPASS) || (PlrItems & MAZE_ITEM_MAP)
-		call Plr_DrawCompassMap
+		.IF (Maze) && (PlrState == PLAYER_STATE_GAME)
+			fcmp CamRot.X, f(0.4)
+			.IF (!Carry?)
+				call glPushMatrix
+				fld CamPosL.Y
+				fsub f(0.4)
+				fstp flVal
+				invoke glTranslatef, CamPosL.X, flVal, CamPosL.Z
+				invoke glRotatefr, CamRot.Y, 0, f(1), 0
+				invoke glDisable, GL_DEPTH_TEST
+				mov al, PlrItems
+				mov cl, al
+				and cl, MAZE_ITEM_COMPASS
+				and al, MAZE_ITEM_MAP
+				invoke Plr_DrawCompassMap, cl, al
+				invoke glEnable, GL_DEPTH_TEST
+				call glPopMatrix
+			.ENDIF
+		.ENDIF
 	.ENDIF
 	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
 	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
@@ -1392,7 +1485,7 @@ Plr_Process PROC EXPORT
 		IFDEF MODE_DEBUG
 		.ENDIF
 		ENDIF
-		.IF (PlrItems & MAZE_ITEM_COMPASS)
+		.IF (PlrProcessCompass)
 			.IF (MazeLocked == MAZE_LOCK_LOCKED) || \
 			(MazeLocked == MAZE_LOCK_LOCKED_JAPE)
 				mov pax, OFFSET MazeKeyPos
@@ -1440,10 +1533,21 @@ Plr_Process PROC EXPORT
 	
 	; Health restore
 	.IF (PlrState != PLAYER_STATE_STRANGLE)
+		fcmp PlrHeal, f(1)
+		.IF (Carry?)
+			fld deltaTime
+			fmul f(0.1)
+			fadd PlrHeal
+			fstp PlrHeal
+		.ELSE
+			mov PlrHeal, FLT_1
+		.ENDIF
+		
 		fcmp PlrHealth, f(1)
 		.IF (Carry?)
 			fld deltaTime
 			fmul f(0.2)
+			fmul PlrHeal
 			fadd PlrHealth
 			fstp PlrHealth
 		.ELSE
@@ -1458,22 +1562,30 @@ Plr_Process PROC EXPORT
 	fstp CamFOV
 	
 	; Health affect afterimage
-	fld PlrHealth
-	.IF (FXAfterimageHighFPS)
-		fmul f(3)
+	.IF (Maze && MazeState == MAZE_STATE_WBBK)
+		mov pax, FXAfterimageEndFull
+		.IF (!FXAfterimageHighFPS)
+			sub pax, SIZEOF BPPtr*4
+		.ENDIF
+		mov FXAfterimageEnd, pax
 	.ELSE
-		fmul f(4)
+		fld PlrHealth
+		.IF (FXAfterimageHighFPS)
+			fmul f(6)
+		.ELSE
+			fmul f(4)
+		.ENDIF
+		fistp flVal
+		mov eax, flVal
+		shl pax, BPPtrShift
+		mov pcx, FXAfterimageEndFull
+		sub pcx, pax
+		add pcx, SIZEOF BPPtr
+		.IF (!FXAfterimageHighFPS)
+			sub pcx, SIZEOF BPPtr*4
+		.ENDIF
+		mov FXAfterimageEnd, pcx
 	.ENDIF
-	fistp flVal
-	mov eax, flVal
-	shl pax, BPPtrShift
-	mov pcx, FXAfterimageEndFull
-	sub pcx, pax
-	add pcx, SIZEOF BPPtr
-	.IF (!FXAfterimageHighFPS)
-		sub pcx, SIZEOF BPPtr*3
-	.ENDIF
-	mov FXAfterimageEnd, pcx
 	
 	; Health check (one hundred dollar (because US haha get it))
 	; who the fuck wrote this comment up there what
@@ -1482,6 +1594,12 @@ Plr_Process PROC EXPORT
 		.IF (eax & FLT_NEG)
 			mov PlrState, PLAYER_STATE_DYING
 		.ENDIF
+	.ENDIF
+	
+	.IF (PlrItems & MAZE_ITEM_COMPASS)
+		mov PlrProcessCompass, TRUE
+	.ELSE
+		mov PlrProcessCompass, FALSE
 	.ENDIF
 	ret
 Plr_Process ENDP

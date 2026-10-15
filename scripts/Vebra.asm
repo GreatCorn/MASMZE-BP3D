@@ -7,6 +7,7 @@ ENUM	VEBRA_NONE, \
 Vebra			BPEnum VEBRA_NONE
 VebraAnimPlr	BPAnimPlayer <>
 VebraTimer		REAL4 0.0
+VebraVisible	BPBool FALSE
 
 .CODE
 
@@ -21,16 +22,24 @@ Vebra_Spawn ENDP
 
 
 Vebra_Draw PROC EXPORT
-	call glPushMatrix
-	invoke glTranslatef, MazeDoorPos.X, 0, MazeDoorPos.Z
-	invoke glBindTexture, GL_TEXTURE_2D, TexVebra
-	invoke bpDrawMesh, ADDR MeshVebra
-	call glPopMatrix
+	.IF (VebraVisible)
+		call glPushMatrix
+		invoke glTranslatef, MazeDoorPos.X, 0, MazeDoorPos.Z
+		invoke glBindTexture, GL_TEXTURE_2D, TexVebra
+		invoke bpDrawMesh, ADDR MeshVebra
+		call glPopMatrix
+	.ENDIF
 	ret
 Vebra_Draw ENDP
 
 Vebra_Process PROC EXPORT
 	LOCAL flVal:REAL4
+	
+	.IF (rv(Plr_Cull, OFFSET MazeDoorPos))
+		mov VebraVisible, FALSE
+	.ELSE
+		mov VebraVisible, TRUE
+	.ENDIF
 	
 	invoke bpProcessAnimPlayer, ADDR VebraAnimPlr, deltaTime
 	
