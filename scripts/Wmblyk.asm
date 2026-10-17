@@ -69,6 +69,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		.ENDIF
 		
 		invoke alSourcePlay, SndWmblykB
+		invoke alSourcef, SndWmblykB, AL_PITCH, f(1)
 		
 		print "walking, at "
 		Vector32DPrint WmblykPos
@@ -751,10 +752,11 @@ Wmblyk_Process PROC EXPORT
 					bpMEM32 CamRot.X, f(-0.9)
 					bpMEM32 CamRotL.X, f(-0.9)
 					call Plr_CalculateAxes
-					invoke Vector3Add, ADDR CamPos, ADDR CamPosA
-					invoke Vector3Copy, ADDR CamPosA, ADDR CamForward
-					invoke Vector3MulF, ADDR CamPosA, f(0.3)
-					bpMEM32 CamPosA.Y, f(0.25)
+					invoke Vector32DAdd, ADDR CamPos, ADDR CamPosA
+					invoke Vector32DCopy, ADDR CamPosA, ADDR PlrForward
+					invoke Vector32DMulF, ADDR CamPosA, f(0.3)
+					bpMEM32 CamPosA.Y, f(0.3)
+					mov CamAnimPlr.TrackPtr, 0
 					invoke SndSetPos, SndSplash, ADDR CamPosL
 					invoke alSourcePlay, SndSplash
 					invoke alSourceStop, SndWmblykStr
@@ -850,7 +852,11 @@ Wmblyk_Process PROC EXPORT
 			mov Wmblyk, WMBLYK_WALK
 		.ENDIF		
 	.ELSEIF (Wmblyk == WMBLYK_FROZEN)
-		invoke Vector3Lerp, ADDR CamPosA, ADDR Vector3Zero, delta10
+		Vector3Print CamPosA
+		fld deltaTime
+		fmul f(8)
+		fstp flVal
+		invoke Vector3Lerp, ADDR CamPosA, ADDR Vector3Zero, flVal
 		
 		fld WmblykStateVal
 		fsub deltaTime

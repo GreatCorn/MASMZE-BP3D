@@ -1430,7 +1430,7 @@ Net_Process PROC EXPORT
 	.WHILE (pbx < SIZEOF NetPlayersV)		
 		mov eax, NetPlayerID
 		.IF (NetPlayers[pbx].PlayerID != eax) \
-		&& (NetPlayers[pbx].PlayerID != -1)
+		&& (NetPlayers[pbx].PlayerID != -1) && !(MazeElevator)
 			.IF (NetPlayersV[pbx].PlrState == PLAYER_STATE_EXITING)
 				.IF !(MazeDoorRot) \
 				&& (rv(SndPlaying, SndCheckpoint) != AL_PLAYING)

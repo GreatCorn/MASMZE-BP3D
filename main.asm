@@ -9,6 +9,7 @@ BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_USE_SSE					EQU <1>
 ;BP_IMPORTERS_VERBOSE	EQU <1>
 ;BP_FORCE_MANUAL_TEXTURE		EQU <1>
+;BP_PAINT_LOOP				EQU <1>
 IFDEF MODE_DEBUG
 	ECHO Compiling MASMZE-BP3D in debug mode.
 	BP_TRACEABLE_HEAP EQU <1>
@@ -139,7 +140,12 @@ IFNDEF str$
 		ELSE		; MASM
 			invoke crt__ltoa, IntVal, ADDR localStr, 10
 		ENDIF
-		EXITM <ADDR localStr>
+		;   MASM's macro returns ADDR here, sdword returns something useable
+		; instead. Fuck you MASM.
+		EXITM <pax>
+	ENDM
+	sdword$ MACRO IntVal:REQ
+		EXITM <str$(IntVal)>
 	ENDM
 ENDIF
 IFNDEF SWITCH
@@ -249,7 +255,10 @@ ENUM	BIND_NONE, \
 		BIND_JOYSTICK
 
 AppName 	DB "MASMZE-3D", 0	; App name & caption
-AppVersion	DB "v0.8.7", 0
+IFNDEF VER_STRING
+	VER_STRING TEXTEQU <"MANUAL BUILD">
+ENDIF
+AppVersion	DB VER_STRING, 0
 AsmTime		DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), \
 13, 10, 0
 
@@ -307,7 +316,7 @@ IBLookRight	BPPtr VK_RIGHT
 IBCrouch	BPPtr VK_CONTROL
 IBGlyph		BPPtr "G"
 IBAction	BPPtr VK_SPACE
-IBConfirm	BPPtr VK_RETURN
+IBConfirm	BPPtr "E"
 
 IBMenu		BPPtr VK_ESCAPE
 IBUIUp		BPPtr VK_UP
@@ -951,6 +960,7 @@ MenuInit PROC EXPORT
 	call Settings_CheckSave
 	mov HasSave, al
 	mov PlrCanControl, FALSE
+	call Plr_Reset
 	invoke Vector3Copy, ADDR CamPos, ADDR Vector3Zero
 	invoke Vector3Copy, ADDR CamPosL, ADDR Vector3Zero
 	invoke Vector3Copy, ADDR CamPosA, ADDR Vector3Zero
@@ -962,7 +972,6 @@ MenuInit PROC EXPORT
 	
 	mov deltaScale, FLT_1
 	
-	mov PlrHealth, FLT_1
 	mov PlrState, PLAYER_STATE_ETC
 	mov PlrStateCallback, 0
 	mov CamAnimPlr.TrackPtr, 0
@@ -1027,12 +1036,12 @@ ProcessScene PROC EXPORT
 		.IF (Virdya)
 			call Virdya_Process
 		.ENDIF
-		.IF (WBBK)
-			call WBBK_Process
-		.ENDIF
 		.IF (Wmblyk)
 			call Wmblyk_Process
 		.ENDIF
+	.ENDIF
+	.IF (WBBK)
+		call WBBK_Process
 	.ENDIF
 	.IF (NetSock)
 		call Net_Process
@@ -1091,12 +1100,14 @@ OnInput PROC EXPORT BPInStruct:BPPtr
 			fild [pbx].Relative.x
 			fmul f(0.01)
 			fmul SettingsControlsMouseSensitivity
+			fadd InputLook.X
 			fstp InputLook.X
 		.ENDIF
 		.IF ([pbx].Relative.y)
 			fild [pbx].Relative.y
 			fmul f(0.01)
 			fmul SettingsControlsMouseSensitivity
+			fadd InputLook.Y
 			fstp InputLook.Y
 		.ENDIF
 	.ELSEIF ([pbx].InType == BP_INPUT_KEY) \
@@ -1187,7 +1198,9 @@ OnInput PROC EXPORT BPInStruct:BPPtr
 						xor PlrItems, MAZE_ITEM_COMPASS
 					.ENDIF
 				CASE 'E'
-					invoke EBD_Spawn, EBD_ACTIVE
+					.IF (Keys[VK_SHIFT])
+						invoke EBD_Spawn, EBD_ACTIVE
+					.ENDIF
 				
 				CASE 'F'
 					bpMEM32 deltaScale, f(4)
@@ -1713,49 +1726,6 @@ FARBOnCreate ENDP
 
 start:
 	print OFFSET AsmTime, 13, 10
-	
-	print real4$(rv(flAcos, 0)), 9
-	fld PI
-	fdiv f(2)
-	fstp CamPos.X
-	print real4$(CamPos.X), 13, 10
-	print real4$(rv(flAcos, f(0.5))), 9
-	fld PI
-	fdiv f(3)
-	fstp CamPos.X
-	print real4$(CamPos.X), 13, 10
-	print real4$(rv(flAcos, f(-0.5))), 9
-	fld PI2
-	fdiv f(3)
-	fstp CamPos.X
-	print real4$(CamPos.X), 13, 10
-	print "Domain bound: "
-	print real4$(rv(flAcos, f(1.0))), 9
-	print real4$(rv(flAcos, f(-1.0))), 13, 10
-	print real4$(rv(flAcos, f(1.0001))), 9
-	print real4$(rv(flAcos, f(-1.0001))), 9
-	print real4$(rv(flAcos, f(-5.0))), 13, 10
-	
-	print real4$(rv(flAsin, 0)), 9
-	fld f(0)
-	fstp CamPos.X
-	print real4$(CamPos.X), 13, 10
-	print real4$(rv(flAsin, f(0.5))), 9
-	fld PI
-	fdiv f(6)
-	fstp CamPos.X
-	print real4$(CamPos.X), 13, 10
-	print real4$(rv(flAsin, f(-0.5))), 9
-	fld PI
-	fdiv f(-6)
-	fstp CamPos.X
-	print real4$(CamPos.X), 13, 10
-	print "Domain bound: "
-	print real4$(rv(flAsin, f(1.0))), 9
-	print real4$(rv(flAsin, f(-1.0))), 13, 10
-	print real4$(rv(flAsin, f(1.0001))), 9
-	print real4$(rv(flAsin, f(-1.0001))), 9
-	print real4$(rv(flAsin, f(5.0))), 13, 10
 	
 	finit
 	

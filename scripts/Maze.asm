@@ -500,7 +500,7 @@ Maze_Collide PROC EXPORT PosPtr:BPPtr, Radius:REAL4, X:REAL4, Y:REAL4, Cell:BYTE
 		fsub f(0.5)
 		fstp colSize.X
 		invoke Collide_Distance, PosPtr, ADDR colPos, colSize.X, 0
-	.ELSEIF (al == MAZE_PROP_ARCH)
+	.ELSEIF (al == MAZE_PROP_ARCH) && (MazeState != MAZE_STATE_TRENCH)
 		.IF (Cell & MAZE_CELL_ROTATED)
 			invoke Vector32DSet, ADDR colSize, f(1), f(0.3)
 			lea pcx, colPos.Z
@@ -1051,7 +1051,8 @@ Maze_DrawLayout PROC EXPORT
 						invoke Maze_DrawDoor, MazeDoorRot, TRUE
 						.IF (MazeLocked)
 							invoke glCallList, MdlDoorFrameLock
-							.IF (MazeLocked == MAZE_LOCK_LOCKED)
+							.IF (MazeLocked == MAZE_LOCK_LOCKED) || \
+							(MazeLocked == MAZE_LOCK_LOCKED_JAPE)
 								invoke glCallList, MdlPadlock
 							.ENDIF
 						.ENDIF
@@ -1180,24 +1181,25 @@ Maze_Finish PROC EXPORT
 	
 	; Alternate layer types
 	.IF (MazeState == MAZE_STATE_GAME)
-		.IF (MazeLayer > 10) && (MazeByteSize < 100)
+		.IF (MazeLayer > 42)
+			.IF !(NetSock) && !(rv(nRandLocal, 11, OFFSET MazeSeed))
+				call Maze_SpawnTrench
+			.ENDIF
+		.ELSEIF (MazeLayer > 21) && (MazeLayer != 42)
+			.IF (MazeSize[0] > 7) && (MazeSize[4] > 7) && !(WBBK)
+				.IF !(rv(nRandLocal, 11, OFFSET MazeSeed))
+					call Maze_SpawnHedge
+				.ENDIF
+			.ENDIF
+		.ENDIF
+		.IF (MazeState == MAZE_STATE_GAME) && (MazeLayer > 10) && \
+		(MazeByteSize < 100)
 			.IF !(rv(nRandLocal, 11, OFFSET MazeSeed))
 				;.IF (rv(nRandLocal, 3, OFFSET MazeSeed))
 					vinvoke WBBK_Spawn, WBBK_ABSTRACTED
 				;.ELSE
 					;vinvoke WBBK_Spawn, WBBK_UNABSTRACTED
 				;.ENDIF
-			.ENDIF
-		.ENDIF
-		.IF (MazeLayer > 42)
-			.IF !(NetSock) && !(rv(nRandLocal, 11, OFFSET MazeSeed))
-				call Maze_SpawnTrench
-			.ENDIF
-		.ELSEIF (MazeLayer > 21) && (MazeLayer != 42)
-			.IF (MazeSize[0] > 8) && (MazeSize[4] > 8) && !(WBBK)
-				.IF !(rv(nRandLocal, 11, OFFSET MazeSeed))
-					call Maze_SpawnHedge
-				.ENDIF
 			.ENDIF
 		.ENDIF
 	.ENDIF
@@ -1233,6 +1235,9 @@ Maze_Finish PROC EXPORT
 	
 	.IF (MazeState == MAZE_STATE_GAME) || (MazeState == MAZE_STATE_SAFE)
 		call Maze_SpawnElements
+		.IF (MazeState == MAZE_STATE_GAME)
+			call Maze_SpawnEntities
+		.ENDIF
 	.ENDIF
 
 	
@@ -1254,10 +1259,10 @@ Maze_Generate PROC EXPORT Seed:DWORD
 	mov MazeGenerating, TRUE
 	
 	print " ", 13, 10
-	print "Generating maze with size "
+	print "Generating maze layer "
+	print str$(MazeLayer), " with size "
 	print str$(MazeSize[0]), 32
-	print str$(MazeSize[4]), 9
-	print "Seed: "
+	print str$(MazeSize[4]), 9, "Seed: "
 	print str$(Seed), 13, 10
 	
 	bpMEM32 MazeSeed, Seed
@@ -1697,6 +1702,40 @@ Maze_OrCellI PROC EXPORT X:SDWORD, Y:SDWORD, Val:BYTE
 	ret
 Maze_OrCellI ENDP
 
+Maze_PlrVisible PROC EXPORT PosPtr:BPPtr
+	LOCAL retVal:BPPtr, flVal:REAL4, flVal1:REAL4
+	
+	mov retVal, FALSE
+	mov flVal, vrv(Vector32DDistanceSqr, PosPtr, OFFSET CamPos)
+	fcmp flVal, f(9)
+	.IF (Carry?)
+		mov retVal, TRUE
+	.ELSE
+		fld FogEndDistSqr
+		fmul f(0.8)
+		fstp flVal1
+		fcmp flVal, flVal1
+		.IF (Carry?)
+			; eax = if visible raycast
+			mov eax, MdlWallSlit
+			.IF (MazeCurWallMDL != eax)
+				vinvoke Maze_Raycast, OFFSET CamPos, PosPtr
+			.ELSE
+				xor eax, eax
+			.ENDIF
+			.IF !(eax)
+				mov flVal, vrv(Plr_FrustumDot, PosPtr)
+				fcmp flVal, f(0.1)
+				.IF (!Carry?)
+					mov retVal, TRUE
+				.ENDIF
+			.ENDIF
+		.ENDIF
+	.ENDIF
+	mov pax, retVal
+	ret
+Maze_PlrVisible ENDP
+
 Maze_ProcessState PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
 	
@@ -1860,6 +1899,7 @@ Maze_ProcessState PROC EXPORT
 			mov MazeVasP, FALSE
 			
 			call Maze_SpawnElements
+			call Maze_SpawnEntities
 			vinvoke UI_ShowSubtitles, StrCCTrench, UISubDur
 			
 			invoke alSourcePlay, SndMistake
@@ -2051,7 +2091,7 @@ Maze_ProcessVas ENDP
 
 Maze_Progress PROC EXPORT
 	; Populate previous layer struct
-	bpMEM32 MazePrevLayer.MazeSeed, MazeSeed
+	bpMEM32 MazePrevLayer.MazeSeed, MazeStartSeed
 	invoke Vector2Copy, ADDR MazePrevLayer.MazeSize, ADDR MazeSize
 	
 	.IF (Maze)
@@ -2767,6 +2807,7 @@ Maze_SpawnElements PROC EXPORT
 		; Plushies
 		.IF (GameComplete) && (MazeLayer > 6)
 			push MazeSeed
+			add MazeSeed, 13581
 			.IF !(rv(nRandLocal, 9, OFFSET MazeSeed))
 				invoke nRandLocal, SIZEOF MdlPl/4, OFFSET MazeSeed
 				inc al
@@ -2790,8 +2831,6 @@ Maze_SpawnElements PROC EXPORT
 			invoke Maze_GetRandomPos, ADDR MazePowerupPos, TRUE
 			Vector32DPrint MazePowerupPos
 		.ENDIF
-		
-		call Maze_SpawnEntities
 		
 		; Elevator
 		.IF (MazeLayer != 42) && (MazeLayer != 63) && \
@@ -2895,6 +2934,8 @@ Maze_SpawnElements ENDP
 
 Maze_SpawnEntities PROC EXPORT
 	LOCAL rndVal:DWORD
+	print "Spawning Maze entities with seed "
+	print str$(MazeSeed), 13, 10
 	; EBD
 	.IF (NetSock)
 		invoke IntRandRLocal, 0, 63, OFFSET MazeSeed
@@ -2963,9 +3004,9 @@ Maze_SpawnEntities PROC EXPORT
 	
 	; Virdya
 	.IF (NetSock)
-		mov eax, 7
+		invoke IntRandRLocal, 6, 63, OFFSET MazeSeed
 	.ELSE
-		mov eax, 13
+		invoke IntRandRLocal, 12, 78, OFFSET MazeSeed
 	.ENDIF
 	.IF (MazeLayer > eax)
 		.IF (rv(nRandLocal, 3, OFFSET MazeSeed))
@@ -2974,12 +3015,14 @@ Maze_SpawnEntities PROC EXPORT
 	.ENDIF
 	
 	; Huenbergondel appears if nobody is present
-	.IF (MazeLayer > 21) && !(Kubale) && (!HDL) && (!Virdya)
+	.IF (MazeLayer > 21) && !(Kubale) && !(HDL) && !(Virdya)
+		print "Testing conditions for HBD", 13, 10
 		.IF (MazeType == MAZE_TYPE_SQUIGGLY)
 			.IF (rv(nRandLocal, 2, OFFSET MazeSeed))
 				vinvoke HDL_Spawn, HDL_WANDER
 			.ENDIF
 		.ELSEIF (Wmblyk != WMBLYK_WALK) && (Wmblyk != WMBLYK_STILL)
+			print "HBD should spawn", 13, 10
 			vinvoke HBD_Spawn, HBD_SLEEP
 		.ENDIF
 	.ENDIF
@@ -3060,23 +3103,34 @@ Maze_SpawnHedge PROC EXPORT
 		inc pbx
 	.ENDW
 	
+	; Clear up
 	mov pbx, MazeSize[0]
 	shr pbx, 1
 	mov bounds.X, pbx
 	sub pbx, 3
+	mov bounds.Z, pbx
 	add bounds.X, 2
 	.WHILE (pbx < bounds.X)
 		mov pcx, MazeSize[4]
 		shr pcx, 1
 		mov bounds.Y, pcx
 		sub pcx, 3
+		mov bounds.W, pcx
 		add bounds.Y, 2
 		.WHILE (pcx < bounds.Y)
 			push pcx
 			invoke bp2DArrayGetOffset, pbx, pcx, MazeSize[0], 1
-			add pax, Maze
-			mov BYTE PTR [pax], MAZE_CELL_PASSLEFT or MAZE_CELL_PASSTOP
 			pop pcx
+			xor dl, dl
+			.IF (pbx != bounds.Z)
+				or dl, MAZE_CELL_PASSLEFT
+			.ENDIF
+			.IF (pcx != bounds.W)
+				or dl, MAZE_CELL_PASSTOP
+			.ENDIF
+			add pax, Maze
+			and BYTE PTR [pax], 11b
+			or BYTE PTR [pax], dl
 			inc pcx
 		.ENDW
 		inc pbx
@@ -3207,39 +3261,6 @@ Maze_SpawnTrench PROC EXPORT
 	ret
 Maze_SpawnTrench ENDP
 
-Maze_PlrVisible PROC EXPORT PosPtr:BPPtr
-	LOCAL retVal:BPPtr, flVal:REAL4, flVal1:REAL4
-	
-	mov retVal, FALSE
-	mov flVal, vrv(Vector32DDistanceSqr, PosPtr, OFFSET CamPos)
-	fcmp flVal, f(9)
-	.IF (Carry?)
-		mov retVal, TRUE
-	.ELSE
-		fld FogEndDistSqr
-		fmul f(0.8)
-		fstp flVal1
-		fcmp flVal, flVal1
-		.IF (Carry?)
-			; eax = if visible raycast
-			mov eax, MdlWallSlit
-			.IF (MazeCurWallMDL != eax)
-				vinvoke Maze_Raycast, OFFSET CamPos, PosPtr
-			.ELSE
-				xor eax, eax
-			.ENDIF
-			.IF !(eax)
-				mov flVal, vrv(Plr_FrustumDot, PosPtr)
-				fcmp flVal, f(0.1)
-				.IF (!Carry?)
-					mov retVal, TRUE
-				.ENDIF
-			.ENDIF
-		.ENDIF
-	.ENDIF
-	mov pax, retVal
-	ret
-Maze_PlrVisible ENDP
 
 Maze_Create PROC EXPORT
 	bpMEM32 MazeCurArch, MdlArchRound
@@ -4523,6 +4544,8 @@ Maze_Process PROC EXPORT
 					
 					vinvoke Settings_EraseSave, TRUE
 					vinvoke Settings_SaveGame, FALSE
+					
+					mov PlrGlyphs, 7
 					
 					invoke alSourcePlay, SndMus[8]
 					mov MazeCheck, MAZE_CHECK_SAVED

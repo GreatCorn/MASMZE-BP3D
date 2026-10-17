@@ -11,11 +11,11 @@ HBDPosT		Vector3 <>	; Target position (in target cell)
 HBDRot		REAL4 0.0, 0.0	; Displayed rotation, functional rotation
 HBDTimer	REAL4 0.0
 HBDSpeed	REAL4 1.0
+HBDStuckTimer	DWORD 16
 
 .CODE
 HBD_Spawn PROC EXPORT State:BPEnum
-	mov al, State
-	mov HBD, al
+	mbm HBD, State
 	.IF (State == HBD_NONE)
 		invoke alSourceStop, SndHBD
 	.ELSE
@@ -133,6 +133,11 @@ HBD_Process PROC EXPORT
 				.ENDIF
 				.IF !(movePool)
 					print "Huenbergondel stuck", 13, 10
+					dec HBDStuckTimer
+					.IF !(HBDStuckTimer)
+						; bad temporary fix
+						mov HBD, HBD_NONE
+					.ENDIF
 					ret
 				.ENDIF
 				
@@ -173,6 +178,8 @@ HBD_Process PROC EXPORT
 				invoke Vector32DF, ADDR HBDPosT
 				invoke Vector32DMulF, ADDR HBDPosT, f(2)
 				invoke Vector32DAdd, ADDR HBDPosT, ADDR Vector3One
+				
+				mov HBDStuckTimer, 16
 				
 				invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 			.ENDIF

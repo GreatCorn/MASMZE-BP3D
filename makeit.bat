@@ -19,6 +19,14 @@ set "_appName="
 set "_asmArgs="
 set "_linkArgs="
 
+:: Extract VER_STRING
+set "VER_STR="
+for /f "tokens=2,3" %%i in (version.h) do (
+    if "%%i"=="VER_STRING" set "VER_STR=%%j"
+)
+
+echo Version: %VER_STR%
+
 for %%x in (%*) do (
 	if !_reading!==appName (
 		set _appName=%%~x
@@ -55,14 +63,6 @@ for %%x in (%*) do (
 			set _quiet=1
 		) else if [%%~x] == [/w] (
 			set _includes=wininc
-		) else if [%%~x] == [/64] (
-			if !_asm!==masm (
-				set _asm=ml64
-			) else if !_asm!==asmc (
-				set _asm=asmc64
-			) else if !_asm!==uasm (
-				set _asm=uasm64
-			)
 		) else if "%%~x"=="/help" (
 			set _argCnt=0
 			set _help=1
@@ -85,7 +85,6 @@ if [%_argCnt%] NEQ [0] (
 if %_help%==1 (
 	echo Usage: MAKEIT [sourcepath] ^<options^>
 	
-	echo /64		Use x64 compilation if available 
 	echo /b		Build only, without running
 	echo /c		Use ASMC and LINKW to compile and link
 	echo /d [drive]	Specify drive when using default include paths
@@ -122,23 +121,26 @@ if %_includes%==masm (
 		set _libpath="%_drive%:\WinInc\Lib"
 	)
 	
-	if %_asm%==masm (
-		set _asmArgs=%_asmArgs% /DBP_WININC=1
-	) else if %_asm%==poasm (
-		set _asmArgs=%_asmArgs% /DBP_WININC=1
-	) else (
+	if %_asm%==uasm (
 		set _asmArgs=%_asmArgs% -DBP_WININC=1
+	) else (
+		set _asmArgs=%_asmArgs% /DBP_WININC=1
 	)
 )
 
 if %_target%==CONSOLE (
-	if %_asm%==masm (
-		set _asmArgs=%_asmArgs% /DMODE_DEBUG=1
-	) else if %_asm%==poasm (
-		set _asmArgs=%_asmArgs% /DMODE_DEBUG=1
-	) else (
+	if %_asm%==uasm (
 		set _asmArgs=%_asmArgs% -DMODE_DEBUG=1
+	) else (
+		set _asmArgs=%_asmArgs% /DMODE_DEBUG=1
 	)
+)
+
+:: Insert version
+if %_asm%==uasm (
+	set _asmArgs=%_asmArgs% -DVER_STRING='%VER_STR%'
+) else (
+	set _asmArgs=%_asmArgs% /DVER_STRING='%VER_STR%'
 )
 
 if %_link%==jwlink (

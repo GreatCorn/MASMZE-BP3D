@@ -786,9 +786,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexLoad[0],		"assets\textures\loadKubale.bpt"
 		LoadBPT OFFSET TexLoad[4],		"assets\textures\loadVebra.bpt"
 		LoadBPT OFFSET TexLoad[8],		"assets\textures\loadWmblyk.bpt"
-		LoadBPT OFFSET TexLogo[0],		"assets\textures\logo1.bpt"
-		LoadBPT OFFSET TexLogo[4],		"assets\textures\logo2.bpt"
+		mov bpTextureClamp, TRUE
 		LoadBPT OFFSET TexMap,			"assets\textures\map.bpt"
+		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexMetal,		"assets\textures\metal.bpt"
 		LoadBPT OFFSET TexMetalFloor,	"assets\textures\metalFloor.bpt"
 		LoadBPT OFFSET TexMetalRoof,	"assets\textures\metalRoof.bpt"
@@ -904,6 +904,8 @@ LoadResources PROC EXPORT
 		mov bpTextureMipmaps, FALSE
 		
 		LoadBPT OFFSET TexKey,			"assets\textures\key.bpt"
+		LoadBPT OFFSET TexLogo[0],		"assets\textures\logo1.bpt"
+		LoadBPT OFFSET TexLogo[4],		"assets\textures\logo2.bpt"
 		LoadBPT OFFSET TexNoise,		"assets\textures\noise.bpt"
 		LoadBPT OFFSET TexUIArrow,		"assets\textures\uiArrow.bpt"
 		LoadBPT OFFSET TexUICircle,		"assets\textures\uiCircle.bpt"

@@ -944,7 +944,7 @@ UI_Scrollbar PROC EXPORT X:SDWORD, Y:SDWORD, Height:SDWORD
 UI_Scrollbar ENDP
 
 UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
-	LOCAL xFrom:SDWORD, yFrom:SDWORD, boolRet:BPPtr
+	LOCAL xFrom:SDWORD, yFrom:SDWORD, boolRet:BPPtr, flVal:REAL4
 	
 	inc UIID
 	
@@ -971,12 +971,13 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 	.ELSE
 		mov pax, ValuePtr
 	.ENDIF
-	mov eax, REAL4 PTR [pax]
-	mov pcx, real4$(eax)
-	push pcx
-	invoke StrLength, pcx
-	pop pcx
+	
 	.IF (UISliderZeros)
+		mov eax, REAL4 PTR [pax]
+		mov pcx, real4$(eax)
+		push pcx
+		invoke StrLength, pcx
+		pop pcx
 		IFDEF BP_WININC
 			; Dirty _gcvt tricks (add suppressed trailing)
 			.IF (pax < 2)
@@ -991,23 +992,9 @@ UI_Slider PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ValuePtr:BPPtr
 		ENDIF
 		mov BYTE PTR [pcx+4], 0	; Keep fixed length of 4
 	.ELSE
-		IFNDEF BP_WININC
-		IFNDEF BP_CUSTOM_INCLUDES
-			; MASM tricks, as its real4$ doesn't suppress trailing
-			dec pax
-			.WHILE (pax)
-				.IF (BYTE PTR [pcx+pax] == '0')
-					mov BYTE PTR [pcx+pax], 0
-					dec pax
-				.ELSE
-					.IF (BYTE PTR [pcx+pax]=='.') || (BYTE PTR [pcx+pax]==',')
-						mov BYTE PTR [pcx+pax], 0
-					.ENDIF
-					.BREAK
-				.ENDIF
-			.ENDW
-		ENDIF
-		ENDIF
+		fld REAL4 PTR [pax]
+		fistp flVal
+		mov pcx, sdword$(flVal)
 	.ENDIF
 	mov eax, xFrom
 	add eax, UI_BTN_W
@@ -1514,18 +1501,21 @@ UI_DrawMenuMain PROC EXPORT
 	push bpFontWidth
 	push bpFontHeight
 	FontSize 3, 6
+	mov eax, UIScreenScaled.X
+	add eax, 4
+	mov pcbBuffer, eax
 	IFDEF MODE_DEBUG
 	
-	mov ebx, FMain.ScreenSize.y
+	mov ebx, UIScreenScaled.W
 	sub ebx, 20*UI_SCALE+4
-	invoke UI_Text, s("DEBUG BUILD"), 4, ebx, 0, 0
+	invoke UI_Text, s("DEBUG BUILD"), pcbBuffer, ebx, 0, 0
 	add ebx, 7*UI_SCALE
-	invoke UI_Text, ADDR AsmTime, 4, ebx, 0, 0
+	invoke UI_Text, ADDR AsmTime, pcbBuffer, ebx, 0, 0
 	ENDIF
 	
-	mov ebx, FMain.ScreenSize.y
+	mov ebx, UIScreenScaled.W
 	sub ebx, 6*UI_SCALE+4
-	invoke UI_Text, ADDR AppVersion, 4, ebx, 0, 0
+	invoke UI_Text, ADDR AppVersion, pcbBuffer, ebx, 0, 0
 	pop bpFontHeight
 	pop bpFontWidth
 	

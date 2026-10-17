@@ -82,11 +82,12 @@ LANGOFFSET			EQU SIZEOF SettingsLangPath - 2
 
 SettingsRegCompass		DB "Compass", 0
 SettingsRegComplete		DB "Complete", 0
+SettingsRegCurCompass	DB "CurCompass", 0
+SettingsRegCurGlyphs	DB "CurGlyphs", 0
 SettingsRegCurLayer		DB "CurLayer", 0
 SettingsRegCurWidth		DB "CurWidth", 0
 SettingsRegCurHeight	DB "CurHeight", 0
 SettingsRegGameTips		DB "GameTips", 0
-SettingsRegGlyphs		DB "Glyphs", 0
 SettingsRegHedge		DB "Hedge", 0
 SettingsRegLayer		DB "Layer", 0
 SettingsRegMazeW		DB "MazeW", 0
@@ -175,9 +176,9 @@ Settings_CheckSave PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
-	.IF (GameState == GAME_STATE_MENU)
+	;.IF (GameState == GAME_STATE_MENU)
 		invoke IntToStr, StrLayerNumPtr, pcbVal, TRUE
-	.ENDIF
+	;.ENDIF
 	
 	invoke RegCloseKey, SettingsRegistry
 	mov pax, 1
@@ -195,13 +196,14 @@ Settings_EraseSave PROC EXPORT Temporary:BPBool
 	.ENDIF
 	
 	.IF (Temporary)
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCurCompass
+		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCurGlyphs
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCurLayer
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCurWidth
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCurHeight
 	.ELSE
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegLayer
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegCompass
-		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegGlyphs
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegMazeW
 		invoke RegDeleteValueA, SettingsRegistry, ADDR SettingsRegMazeH
 	.ENDIF
@@ -582,6 +584,12 @@ Settings_LoadGame PROC EXPORT
 		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCurHeight,0,\
 		NULL, ADDR MazeSize[4], ADDR pcbData
 		
+		mov pcbData, 1
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCurGlyphs,0,\
+		NULL, ADDR PlrGlyphs, ADDR pcbData
+		invoke RegQueryValueExA, SettingsRegistry,ADDR SettingsRegCurCompass,0,\
+		NULL, ADDR PlrItems, ADDR pcbData
+		
 		vinvoke UI_ShowSubtitles, StrCCLoad, UISubDur
 		
 		invoke alSourcePlay, SndDistress
@@ -605,14 +613,12 @@ Settings_LoadGame PROC EXPORT
 		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegMazeH, 0, \
 		NULL, ADDR MazeSize[4], ADDR pcbData
 		
+		mov pcbData, 1
+		invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCompass, 0, \
+		NULL, ADDR PlrItems, ADDR pcbData
+		
 		mov MazeCheck, MAZE_CHECK_SAVED
 	.ENDIF
-	
-	mov pcbData, 1
-	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegCompass, 0, \
-	NULL, ADDR PlrItems, ADDR pcbData
-	invoke RegQueryValueExA, SettingsRegistry, ADDR SettingsRegGlyphs, 0, \
-	NULL, ADDR PlrGlyphs, ADDR pcbData
 	
 	invoke RegCloseKey, SettingsRegistry
 	mov pax, TRUE
@@ -881,6 +887,7 @@ Settings_SaveEnum ENDP
 
 Settings_SaveGame PROC EXPORT Temporary:BPBool
 	IFDEF SAVEGAME_REG
+	LOCAL bVal:BYTE
 	invoke RegCreateKeyExA, HKEY_CURRENT_USER, ADDR SettingsRegPath, 0, NULL, \
 	REG_OPTION_NON_VOLATILE, KEY_WRITE, NULL, ADDR SettingsRegistry, NULL
 	.IF (eax != ERROR_SUCCESS)
@@ -889,6 +896,16 @@ Settings_SaveGame PROC EXPORT Temporary:BPBool
 	.ENDIF
 	
 	.IF (Temporary)
+		mov al, PlrItems
+		and al, MAZE_ITEM_COMPASS
+		.IF (al)
+			mov bVal, al
+			invoke RegSetValueExA, SettingsRegistry,ADDR SettingsRegCurCompass,\
+			0, REG_BINARY, ADDR bVal, 1
+		.ENDIF
+		
+		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurGlyphs, 0, \
+		REG_BINARY, ADDR PlrGlyphs, 1
 		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurLayer, 0, \
 		REG_DWORD, ADDR MazeLayer, 4
 		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCurWidth, 0, \
@@ -899,12 +916,13 @@ Settings_SaveGame PROC EXPORT Temporary:BPBool
 		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegLayer, 0, \
 		REG_DWORD, ADDR MazeLayer, 4
 		
-		.IF (PlrItems & MAZE_ITEM_COMPASS)
+		mov al, PlrItems
+		and al, MAZE_ITEM_COMPASS
+		.IF (al)
+			mov bVal, al
 			invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegCompass, \
-			0, REG_BINARY, ADDR PlrItems, 1
+			0, REG_BINARY, ADDR bVal, 1
 		.ENDIF
-		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegGlyphs, 0, \
-		REG_BINARY, ADDR PlrGlyphs, 1
 		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeW, 0, \
 		REG_DWORD, ADDR MazeSize[0], 4
 		invoke RegSetValueExA, SettingsRegistry, ADDR SettingsRegMazeH, 0, \
@@ -1052,8 +1070,10 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		print "graphics/vsync", 13, 10
 		.IF (wglSwapIntervalEXT) && (FMain.GraphicsContext)
 			.IF (SettingsGraphicsVSync)
-				push -1	; -1 for adaptive, should test
+				;mov FMain.MessageTimeout, INFINITE	; breaks menus
+				push -1	; -1 for adaptive
 			.ELSE
+				;mov FMain.MessageTimeout, 0
 				push 0
 			.ENDIF
 			call wglSwapIntervalEXT
@@ -1083,6 +1103,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 			
 			;invoke IntToStr, StrLayerNumPtr, MazeLayer, TRUE
 			call Settings_CheckSave
+			mov UISubtitlesStr, 0
 		.ENDIF
 	.ENDIF
 	ret

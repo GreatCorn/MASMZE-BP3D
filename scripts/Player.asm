@@ -205,7 +205,8 @@ Plr_Control PROC EXPORT
 	.IF (SettingsMiscCameraBobbing)
 		fld InputMovementClamped.X
 		fmul f(0.02)
-		fstp CamRot.Z
+		fstp flVal
+		mov CamRot.Z, rv(flLerp, CamRot.Z, flVal, delta10)
 	.ENDIF
 	
 	; Glyphs
@@ -542,7 +543,8 @@ Plr_DrawCompassMap PROC EXPORT Compass:BPBool, Map:BPBool
 		.IF (Compass)
 			invoke glEnable, GL_BLEND
 			invoke glBlendFunc, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
-			invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clHalf
+			;invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clHalf
+			invoke glColor4f, f(1), f(1), f(1), f(0.85)
 		.ENDIF
 		xor pax, pax
 	.ELSE
@@ -565,7 +567,8 @@ Plr_DrawCompassMap PROC EXPORT Compass:BPBool, Map:BPBool
 		invoke glCallList, MdlCompassArrow
 		.IF (Map)
 			invoke glDisable, GL_BLEND
-			invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
+			;invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, OFFSET clWhite
+			invoke glColor4fv, ADDR clWhite
 		.ENDIF
 	.ENDIF
 	call glPopMatrix
@@ -1322,6 +1325,7 @@ Plr_Progress ENDP
 
 Plr_Reset PROC EXPORT
 	mov PlrGlyphs, 7
+	mov PlrHealth, FLT_1
 	mov PlrItems, 0
 	mov PlrPowerup, MAZE_POWERUP_NONE
 	ret
@@ -1444,12 +1448,14 @@ Plr_Draw PROC EXPORT
 				invoke glTranslatef, CamPosL.X, flVal, CamPosL.Z
 				invoke glRotatefr, CamRot.Y, 0, f(1), 0
 				invoke glDisable, GL_DEPTH_TEST
+				invoke glDisable, GL_LIGHTING
 				mov al, PlrItems
 				mov cl, al
 				and cl, MAZE_ITEM_COMPASS
 				and al, MAZE_ITEM_MAP
 				invoke Plr_DrawCompassMap, cl, al
 				invoke glEnable, GL_DEPTH_TEST
+				invoke glEnable, GL_LIGHTING
 				call glPopMatrix
 			.ENDIF
 		.ENDIF
