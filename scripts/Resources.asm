@@ -15,6 +15,7 @@ ANIM_INTERPOLATION	EQU BP_INTERPOLATE_LINEAR_S
 
 AnimCamEnter		BPAnimTrack <>
 AnimCamExit			BPAnimTrack <>
+AnimCamExitEnd		BPAnimTrack <>
 AnimCamWalk			BPAnimTrack <>
 AnimHBDBlink		BPAnimTrack <>
 AnimHDLAttack		BPAnimTrack <>
@@ -35,6 +36,13 @@ AnimPlrDead			BPAnimTrack <>
 AnimPlrIdle			BPAnimTrack <>
 AnimPlrStretch		BPAnimTrack <>
 AnimPlrWalk			BPAnimTrack <>
+AnimShilbrikBack	BPAnimTrack <>
+AnimShilbrikIdle	BPAnimTrack <>
+AnimShilbrikJump	BPAnimTrack <>
+AnimShilbrikLeft	BPAnimTrack <>
+AnimShilbrikRight	BPAnimTrack <>
+AnimShilbrikRun		BPAnimTrack <>
+AnimShilbrikWarn	BPAnimTrack <>
 AnimVasFloat		BPAnimTrack <>
 AnimVebraGo			BPAnimTrack <>
 AnimVebraSit		BPAnimTrack <>
@@ -68,12 +76,16 @@ StrTipL			DB 90, 93, 90, 60, 46, 90, 91, 79, 93, 60, 0
 .DATA?
 
 ; ----- MODELS -----
+MdlAirlockFloor		DWORD ?
+MdlAirlockRoof		DWORD ?
+MdlAirlockWall		DWORD ?
 MdlArchRect			DWORD ?
 MdlArchRound		DWORD ?
 MdlArchWood			DWORD ?
 MdlBorderFloor		DWORD ?
 MdlBorderWall		DWORD ?
 MdlButton			DWORD ?
+MdlCarpet			DWORD ?
 MdlCheckFloor		DWORD ?
 MdlCheckRails		DWORD ?
 MdlCheckRoof		DWORD ?
@@ -83,6 +95,7 @@ MdlCityFacade		DWORD ?
 MdlCityTerrain		DWORD ?
 MdlCompassArrow		DWORD ?
 MdlCompassWorld		DWORD ?
+MdlCouch			DWORD ?
 MdlCrevice			DWORD ?
 MdlCube				DWORD ?
 MdlDebris			DWORD ?
@@ -98,6 +111,7 @@ MdlLamp				DWORD ?
 MdlLampAbajour		DWORD ?
 MdlLampCase			DWORD ?
 MdlLightPost		DWORD ?
+MdlMoss				DWORD ?
 MdlMotrya			DWORD ?, ?, ?, ?
 MdlNeqaotor			DWORD ?
 MdlOutskirtsBunker	DWORD ?
@@ -169,6 +183,7 @@ MeshKubale			BPMesh?
 MeshMotrya			BPMesh?
 MeshPlr				BPMesh?
 MeshPlrScarf		BPMesh?	; Non-volatile
+MeshShilbrik		BPMesh?
 MeshVas				BPMesh?
 MeshVebra			BPMesh?
 MeshVirdya			BPMesh?
@@ -183,15 +198,18 @@ TexSectionStart		BYTE ?
 
 TexAmbient			DWORD ?
 TexBricks			DWORD ?
+TexCarpet			DWORD ?
 TexCompass			DWORD ?
 TexCompassWorld		DWORD ?
 TexConcrete			DWORD ?
 TexConcreteRoof		DWORD ?
+TexCouch			DWORD ?
 TexCroa				DWORD ?
 TexCursor			DWORD ?
 TexDiamond			DWORD ?
 TexDirt				DWORD ?
 TexDoor				DWORD ?
+TexDoorAirlock		DWORD ?
 TexDoorBlur			DWORD ?
 TexDoorLift			DWORD ?
 TexDugGlyph			DWORD ?
@@ -203,6 +221,7 @@ TexFlash			DWORD ?
 TexFloor			DWORD ?
 TexFloorLinoleum	DWORD ?
 TexFloorParquet		DWORD ?
+TexFoil				DWORD ?
 TexFshnada			DWORD ?
 TexGamma			DWORD ?
 TexGlimpse			DWORD ?, ?, ?
@@ -225,6 +244,7 @@ TexMap				DWORD ?
 TexMetal			DWORD ?
 TexMetalFloor		DWORD ?
 TexMetalRoof		DWORD ?
+TexMoss				DWORD ?
 TexMotrya			DWORD ?
 TexMud				DWORD ?
 TexMudDug			DWORD ?
@@ -248,16 +268,20 @@ TexPlrFace5			DWORD ?, ?, ?, ?
 TexPlrFace6			DWORD ?, ?, ?, ?
 TexPlrWounded		DWORD ?
 
-TexPosters			DWORD ?, ?, ?, ?, ?
+TexPosters			DWORD ?, ?, ?, ?, ?, ?
 TexPowerups			DWORD ?
 TexRain				DWORD ?
 TexRaindrop			DWORD ?
 TexRainsplash		DWORD ?
 TexRoof				DWORD ?
+TexRoofDust			DWORD ?
+TexRoofWeb			DWORD ?
 TexRustPanel		DWORD ?
 TexSigns			DWORD ?
 TexShadow			DWORD ?
 TexSheet			DWORD ?
+TexShilbrik			DWORD ?
+TexShilbrikBlink	DWORD ?, ?
 TexSky				DWORD ?
 TexSmoke			DWORD ?
 TexTaburetka		DWORD ?
@@ -305,12 +329,14 @@ TexSectionEnd BYTE ?
 ; ----- SOUNDS -----
 SndSectionStart	BYTE ?
 
+SndAirlock		DWORD ?
 SndAlarm		DWORD ?
 SndAmbHeavy		DWORD ?, ?, ?
 SndAmbMod		DWORD ?, ?
 SndAmbPlain		DWORD ?, ?, ?
 SndAmbW			DWORD ?, ?, ?, ?
 SndBreak		DWORD ?
+SndButton		DWORD ?
 SndCamera		DWORD ?, ?
 SndCheckpoint	DWORD ?
 SndCreak		DWORD ?
@@ -343,6 +369,10 @@ SndRain			DWORD ?
 SndRand			DWORD ?, ?, ?, ?, ?, ?, ?, ?, ?
 SndSave			DWORD ?
 SndScribble		DWORD ?
+SndShilbrikJump DWORD ?
+SndShilbrikHide DWORD ?, ?
+SndShilbrikStep	DWORD ?
+SndShilbrikWarn	DWORD ?
 SndSiren		DWORD ?
 SndSlam			DWORD ?
 SndSpeak		DWORD ?
@@ -430,6 +460,7 @@ LoadResources PROC EXPORT
 		print "Loading animations...", 9		
 		LoadBPA OFFSET AnimCamEnter,		"assets\anim\camEnter.bpa"
 		LoadBPA OFFSET AnimCamExit,			"assets\anim\camExit.bpa"
+		LoadBPA OFFSET AnimCamExitEnd,		"assets\anim\camExitEnd.bpa"
 		LoadBPA OFFSET AnimCamWalk,			"assets\anim\camWalk.bpa"
 		mov AnimCamWalk.Looping, TRUE
 		
@@ -468,6 +499,19 @@ LoadResources PROC EXPORT
 		LoadBPA OFFSET AnimPlrStretch,		"assets\anim\plrStretch.bpa"
 		LoadBPA OFFSET AnimPlrWalk,			"assets\anim\plrWalk.bpa"
 		mov AnimPlrWalk.Looping, TRUE
+		
+		LoadBPA OFFSET AnimShilbrikBack,	"assets\anim\shilbrikBack.bpa"
+		mov AnimShilbrikBack.Looping, TRUE
+		LoadBPA OFFSET AnimShilbrikIdle,	"assets\anim\shilbrikIdle.bpa"
+		mov AnimShilbrikIdle.Looping, TRUE
+		LoadBPA OFFSET AnimShilbrikJump,	"assets\anim\shilbrikJump.bpa"
+		LoadBPA OFFSET AnimShilbrikLeft,	"assets\anim\shilbrikLeft.bpa"
+		mov AnimShilbrikLeft.Looping, TRUE
+		LoadBPA OFFSET AnimShilbrikRight,	"assets\anim\shilbrikRight.bpa"
+		mov AnimShilbrikRight.Looping, TRUE
+		LoadBPA OFFSET AnimShilbrikRun,		"assets\anim\shilbrikRun.bpa"
+		mov AnimShilbrikRun.Looping, TRUE
+		LoadBPA OFFSET AnimShilbrikWarn,	"assets\anim\shilbrikWarn.bpa"
 		
 		LoadBPA OFFSET AnimVasFloat,	"assets\anim\vasFloat.bpa"
 		mov AnimVasFloat.Looping, TRUE
@@ -513,12 +557,16 @@ LoadResources PROC EXPORT
 	.ELSEIF (LoadState == LOADING_MODELS)
 		; ----- MODELS -----
 		print "Loading models...", 9
+		LoadBPL OFFSET MdlAirlockFloor, 	"assets\models\airlockFloor.bpl"
+		LoadBPL OFFSET MdlAirlockRoof, 		"assets\models\airlockRoof.bpl"
+		LoadBPL OFFSET MdlAirlockWall, 		"assets\models\airlockWall.bpl"
 		LoadBPL OFFSET MdlArchRect, 		"assets\models\archRect.bpl"
 		LoadBPL OFFSET MdlArchRound, 		"assets\models\archRound.bpl"
 		LoadBPL OFFSET MdlArchWood, 		"assets\models\archWood.bpl"
 		LoadBPL OFFSET MdlBorderFloor, 		"assets\models\borderFloor.bpl"
 		LoadBPL OFFSET MdlBorderWall, 		"assets\models\borderWall.bpl"
 		LoadBPL OFFSET MdlButton, 			"assets\models\button.bpl"
+		LoadBPL OFFSET MdlCarpet, 			"assets\models\carpet.bpl"
 		LoadBPL OFFSET MdlCheckFloor, 		"assets\models\checkFloor.bpl"
 		LoadBPL OFFSET MdlCheckRails, 		"assets\models\checkRails.bpl"
 		LoadBPL OFFSET MdlCheckRoof, 		"assets\models\checkRoof.bpl"
@@ -528,6 +576,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlCityTerrain, 		"assets\models\cityTerrain.bpl"
 		LoadBPL OFFSET MdlCompassArrow, 	"assets\models\compassArrow.bpl"
 		LoadBPL OFFSET MdlCompassWorld, 	"assets\models\compassWorld.bpl"
+		LoadBPL OFFSET MdlCouch, 			"assets\models\couch.bpl"
 		LoadBPL OFFSET MdlCrevice, 			"assets\models\crevice.bpl"
 		LoadBPL OFFSET MdlCube, 			"assets\models\cube.bpl"
 		LoadBPL OFFSET MdlDebris, 			"assets\models\debris.bpl"
@@ -543,6 +592,7 @@ LoadResources PROC EXPORT
 		LoadBPL OFFSET MdlLampAbajour,		"assets\models\lampAbajour.bpl"
 		LoadBPL OFFSET MdlLampCase,			"assets\models\lampCase.bpl"
 		LoadBPL OFFSET MdlLightPost,		"assets\models\lightPost.bpl"
+		LoadBPL OFFSET MdlMoss,				"assets\models\moss.bpl"
 		LoadBPL OFFSET MdlMotrya[0],		"assets\models\motrya1.bpl"
 		LoadBPL OFFSET MdlMotrya[4],		"assets\models\motrya2.bpl"
 		LoadBPL OFFSET MdlMotrya[8],		"assets\models\motrya3.bpl"
@@ -629,6 +679,7 @@ LoadResources PROC EXPORT
 		LoadBPM OFFSET MeshKubale,			"assets\models\kubale.bpm"
 		LoadBPM OFFSET MeshMotrya,			"assets\models\motrya.bpm"
 		LoadBPM OFFSET MeshPlrScarf,		"assets\models\plrScarf.bpm"
+		LoadBPM OFFSET MeshShilbrik,		"assets\models\shilbrik.bpm"
 		LoadBPM OFFSET MeshVas,				"assets\models\vas.bpm"
 		LoadBPM OFFSET MeshVebra,			"assets\models\vebra.bpm"
 		LoadBPM OFFSET MeshVirdya,			"assets\models\virdya.bpm"
@@ -669,6 +720,7 @@ LoadResources PROC EXPORT
 			mul pcx
 			mov NetPlayersAnim[pax].FrameType, BPA_FRAME_VERTEX
 			pop NetPlayersAnim[pax].Mesh
+			mov NetPlayersAnim[pax].MeshUseNormals, TRUE
 			
 			invoke bpMalloc, bpDefHeap, 0, MeshPlrScarf.V3Size
 			mov pcx, pbx
@@ -722,14 +774,17 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexAmbient,		"assets\textures\ambient.bpt"
 		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexBricks,		"assets\textures\bricks.bpt"
+		LoadBPT OFFSET TexCarpet,		"assets\textures\carpet.bpt"
 		LoadBPT OFFSET TexCompass,		"assets\textures\compass.bpt"
 		LoadBPT OFFSET TexCompassWorld,	"assets\textures\compassWorld.bpt"
 		LoadBPT OFFSET TexConcrete,		"assets\textures\concrete.bpt"
 		LoadBPT OFFSET TexConcreteRoof,	"assets\textures\concreteRoof.bpt"
+		LoadBPT OFFSET TexCouch,		"assets\textures\couch.bpt"
 		LoadBPT OFFSET TexCroa,			"assets\textures\croa.bpt"
 		LoadBPT OFFSET TexDiamond,		"assets\textures\diamond.bpt"
 		LoadBPT OFFSET TexDirt,			"assets\textures\dirt.bpt"
 		LoadBPT OFFSET TexDoor,			"assets\textures\door.bpt"
+		LoadBPT OFFSET TexDoorAirlock,	"assets\textures\doorAirlock.bpt"
 		mov bpTextureClamp, TRUE
 		LoadBPT OFFSET TexDoorBlur,		"assets\textures\doorBlur.bpt"
 		mov bpTextureClamp, FALSE
@@ -747,6 +802,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexFloor,		"assets\textures\floor.bpt"
 		LoadBPT OFFSET TexFloorLinoleum,"assets\textures\floorLinoleum.bpt"
 		LoadBPT OFFSET TexFloorParquet,	"assets\textures\floorParquet.bpt"
+		LoadBPT OFFSET TexFoil,			"assets\textures\foil.bpt"
 		LoadBPT OFFSET TexFshnada,		"assets\textures\fshnada.bpt"
 		LoadBPT OFFSET TexGamma,		"assets\textures\gamma.bpt"
 		LoadBPT OFFSET TexGlimpse[0],	"assets\textures\glimpse1.bpt"
@@ -792,6 +848,9 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexMetal,		"assets\textures\metal.bpt"
 		LoadBPT OFFSET TexMetalFloor,	"assets\textures\metalFloor.bpt"
 		LoadBPT OFFSET TexMetalRoof,	"assets\textures\metalRoof.bpt"
+		mov bpTextureClamp, TRUE
+		LoadBPT OFFSET TexMoss,			"assets\textures\moss.bpt"
+		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexMotrya,		"assets\textures\motrya.bpt"
 		LoadBPT OFFSET TexMud,			"assets\textures\mud.bpt"
 		LoadBPT OFFSET TexMudDug,		"assets\textures\mudDug.bpt"
@@ -839,6 +898,7 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexPosters[8],	"assets\textures\posters3.bpt"
 		LoadBPT OFFSET TexPosters[12],	"assets\textures\posters4.bpt"
 		LoadBPT OFFSET TexPosters[16],	"assets\textures\posters5.bpt"
+		LoadBPT OFFSET TexPosters[20],	"assets\textures\posters6.bpt"
 		LoadBPT OFFSET TexPowerups,		"assets\textures\powerups.bpt"
 		LoadBPT OFFSET TexRain,			"assets\textures\rain.bpt"
 		;mov bpTextureFiltering, TRUE
@@ -846,9 +906,16 @@ LoadResources PROC EXPORT
 		LoadBPT OFFSET TexRainsplash,	"assets\textures\rainsplash.bpt"
 		;mov bpTextureFiltering, FALSE
 		LoadBPT OFFSET TexRoof,			"assets\textures\roof.bpt"
+		mov bpTextureClamp, TRUE
+		LoadBPT OFFSET TexRoofDust,		"assets\textures\roofDust.bpt"
+		LoadBPT OFFSET TexRoofWeb,		"assets\textures\roofWeb.bpt"
+		mov bpTextureClamp, FALSE
 		LoadBPT OFFSET TexRustPanel,	"assets\textures\rustPanel.bpt"
 		LoadBPT OFFSET TexShadow,		"assets\textures\shadow.bpt"
 		LoadBPT OFFSET TexSheet,		"assets\textures\sheet.bpt"
+		LoadBPT OFFSET TexShilbrik,		"assets\textures\shilbrik.bpt"
+		LoadBPT OFFSET TexShilbrikBlink[0],	"assets\textures\shilbrikBlink1.bpt"
+		LoadBPT OFFSET TexShilbrikBlink[4],	"assets\textures\shilbrikBlink2.bpt"
 		LoadBPT OFFSET TexSigns,		"assets\textures\signs.bpt"
 		mov bpTextureFiltering, TRUE
 		LoadBPT OFFSET TexSky,			"assets\textures\sky.bpt"
@@ -924,6 +991,7 @@ LoadResources PROC EXPORT
 	.ELSEIF (LoadState == LOADING_SOUNDS)
 		; ----- SOUNDS -----
 		print "Loading sounds...", 9
+		LoadBPS OFFSET SndAirlock,		"assets\sounds\airlock.bps"
 		LoadBPS OFFSET SndAlarm,		"assets\sounds\alarm.bps"
 		invoke alSourcei, SndAlarm, AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndAmb[0],		"assets\sounds\amb1.bps"
@@ -964,6 +1032,8 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndAmbW[12],		"assets\sounds\ambW4.bps"
 		LoadBPS OFFSET SndBreak,		"assets\sounds\break.bps"
 		invoke alSourcef, SndBreak, AL_ROLLOFF_FACTOR, f(0.6)
+		LoadBPS OFFSET SndButton,		"assets\sounds\button.bps"
+		invoke alSourcef, SndButton, AL_ROLLOFF_FACTOR, f(1.5)
 		LoadBPS OFFSET SndCamera[0],	"assets\sounds\camera.bps"
 		LoadBPS OFFSET SndCamera[4],	"assets\sounds\cameraM.bps"
 		LoadBPS OFFSET SndCheckpoint,	"assets\sounds\checkpoint.bps"
@@ -1039,7 +1109,7 @@ LoadResources PROC EXPORT
 		invoke SndSetGain, ADDR SndMus[12], 0
 		invoke alSourcei, SndMus[12], AL_LOOPING, AL_TRUE
 		LoadBPS OFFSET SndMus[16],		"assets\sounds\mus5.bps"
-		invoke SndSetGain, ADDR SndMus[16], f(0.5)
+		;invoke SndSetGain, ADDR SndMus[16], f(0.5)
 		LoadBPS OFFSET SndMus[20],		"assets\sounds\mus6.bps"
 		invoke SndSetGain, ADDR SndMus[20], f(0.5)
 		LoadBPS OFFSET SndOver,			"assets\sounds\over.bps"
@@ -1057,6 +1127,11 @@ LoadResources PROC EXPORT
 		LoadBPS OFFSET SndRand[32],		"assets\sounds\rand9.bps"
 		LoadBPS OFFSET SndSave,			"assets\sounds\save.bps"
 		LoadBPS OFFSET SndScribble,		"assets\sounds\scribble.bps"
+		LoadBPS OFFSET SndShilbrikHide[0],"assets\sounds\shilbrikHide1.bps"
+		LoadBPS OFFSET SndShilbrikHide[4],"assets\sounds\shilbrikHide2.bps"
+		LoadBPS OFFSET SndShilbrikJump,	"assets\sounds\shilbrikJump.bps"
+		LoadBPS OFFSET SndShilbrikStep,	"assets\sounds\shilbrikStep.bps"
+		LoadBPS OFFSET SndShilbrikWarn,	"assets\sounds\shilbrikWarn.bps"
 		LoadBPS OFFSET SndSiren,		"assets\sounds\siren.bps"
 		invoke SndSetGain, ADDR SndSiren, 0
 		invoke alSourcei, SndSiren, AL_LOOPING, AL_TRUE
@@ -1348,7 +1423,7 @@ IntToStr PROC EXPORT StrA:BPPtr, Val:SDWORD, Terminate:BPBool
 	ret
 IntToStr ENDP
 
-Rotate2DPoint PROC EXPORT PosPtr:BPPtr, Angle:REAL4
+Rotate2DPoint PROC EXPORT PosPtr:BPPtr, Angle:REAL4, FlipSin:BPBool
 	LOCAL sinCos:Vector2
 	
 	mov pax, PosPtr
@@ -1361,7 +1436,11 @@ Rotate2DPoint PROC EXPORT PosPtr:BPPtr, Angle:REAL4
 	fmul sinCos.Y
 	fld REAL4 PTR [pax+8]
 	fmul sinCos.X
-	fsub
+	.IF (FlipSin)
+		fsub
+	.ELSE
+		fadd
+	.ENDIF
 	fstp REAL4 PTR [pax]
 	;fld REAL4 PTR [pax]	still have it in st
 	fmul sinCos.X

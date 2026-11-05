@@ -29,7 +29,15 @@ WBBK_Spawn PROC EXPORT State:BPEnum
 		mov pax, MazeAmb
 		invoke alSourceStop, DWORD PTR [pax]
 		
-		invoke glLightf, GL_LIGHT0, GL_QUADRATIC_ATTENUATION, f(1)
+		invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, f(1)
+		invoke glLightf, GL_LIGHT0, GL_QUADRATIC_ATTENUATION, f(2)
+		
+		invoke glEnable, GL_LIGHT1
+		invoke glLightf, GL_LIGHT1, GL_CONSTANT_ATTENUATION, 0
+		invoke glLightf, GL_LIGHT1, GL_QUADRATIC_ATTENUATION, f(1.5)
+		mov MazeDoorPos.W, FLT_1
+		invoke glLightfv, GL_LIGHT1, GL_DIFFUSE, ADDR clWhite
+		;invoke glLightfv, GL_LIGHT1, GL_SPECULAR, ADDR clWhite
 		
 		mov MazeState, MAZE_STATE_WBBK
 	.ELSEIF (WBBK)
@@ -38,7 +46,10 @@ WBBK_Spawn PROC EXPORT State:BPEnum
 		invoke alSourceStop, SndAmbT
 		invoke alSourceStop, SndWBBK
 		
+		invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0
 		invoke glLightf, GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0
+		
+		invoke glDisable, GL_LIGHT1
 		
 		mov MazeState, MAZE_STATE_GAME
 	.ENDIF
@@ -48,36 +59,39 @@ WBBK_Spawn ENDP
 
 
 WBBK_Draw PROC EXPORT
-	.IF (WBBK == WBBK_ABSTRACTED)
-		call glPushMatrix
-		invoke glDisable, GL_LIGHTING
-		invoke glEnable, GL_BLEND
-		invoke glBlendFunc, GL_ONE, GL_ONE
-		invoke glTranslatef, WBBKPos.X, f(0.6), WBBKPos.Z
-		invoke glRotatefr, WBBKRot, 0, FLT_1, 0
-		.IF (WBBKTimer & FLT_NEG)
-			invoke glBindTexture, GL_TEXTURE_2D, TexWBBK1
+	invoke glLightfv, GL_LIGHT1, GL_POSITION, ADDR MazeDoorPos
+	.IF !(DrawWireframe)
+		.IF (WBBK == WBBK_ABSTRACTED)
+			call glPushMatrix
+			invoke glDisable, GL_LIGHTING
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_ONE, GL_ONE
+			invoke glTranslatef, WBBKPos.X, f(0.6), WBBKPos.Z
+			invoke glRotatefr, WBBKRot, 0, FLT_1, 0
+			.IF (WBBKTimer & FLT_NEG)
+				invoke glBindTexture, GL_TEXTURE_2D, TexWBBK1
+			.ELSE
+				invoke glBindTexture, GL_TEXTURE_2D, TexWBBK
+			.ENDIF
+			invoke glCallList, MdlPlaneC
+			invoke glEnable, GL_LIGHTING
+			call glPopMatrix
 		.ELSE
-			invoke glBindTexture, GL_TEXTURE_2D, TexWBBK
+			
 		.ENDIF
-		invoke glCallList, MdlPlaneC
-		invoke glEnable, GL_LIGHTING
-		call glPopMatrix
-	.ELSE
 		
-	.ENDIF
-	
-	.IF (WBBKGlimpse)
-		call glPushMatrix
-		invoke glDisable, GL_LIGHTING
-		invoke glEnable, GL_BLEND
-		invoke glBlendFunc, GL_ONE, GL_ONE
-		invoke glTranslate3fv, ADDR WBBKGlimpsePos
-		invoke glRotatefr, WBBKGlimpseRot, 0, FLT_1, 0
-		invoke glBindTexture, GL_TEXTURE_2D, WBBKGlimpse
-		invoke glCallList, MdlPlaneC
-		invoke glEnable, GL_LIGHTING
-		call glPopMatrix
+		.IF (WBBKGlimpse)
+			call glPushMatrix
+			invoke glDisable, GL_LIGHTING
+			invoke glEnable, GL_BLEND
+			invoke glBlendFunc, GL_ONE, GL_ONE
+			invoke glTranslate3fv, ADDR WBBKGlimpsePos
+			invoke glRotatefr, WBBKGlimpseRot, 0, FLT_1, 0
+			invoke glBindTexture, GL_TEXTURE_2D, WBBKGlimpse
+			invoke glCallList, MdlPlaneC
+			invoke glEnable, GL_LIGHTING
+			call glPopMatrix
+		.ENDIF
 	.ENDIF
 	ret
 WBBK_Draw ENDP
@@ -152,7 +166,7 @@ WBBK_Process PROC EXPORT
 		mov WBBKGlimpseRot, \
 		rv(Vector32DAngle, OFFSET CamPos, OFFSET WBBKGlimpsePos)
 	
-		.IF (rv(Maze_PlrVisible, OFFSET WBBKGlimpsePos))
+		.IF (rv(Maze_PlrVisible, OFFSET WBBKGlimpsePos, f(9)))
 			fld WBBKGlimpseTimer
 			fsub deltaTime
 			fstp WBBKGlimpseTimer
@@ -209,7 +223,7 @@ WBBK_Process PROC EXPORT
 					.BREAK
 				.ENDIF
 				
-				invoke Maze_PlrVisible, OFFSET WBBKGlimpsePos
+				invoke Maze_PlrVisible, OFFSET WBBKGlimpsePos, f(9)
 			.UNTIL !(eax)
 			pop pbx
 			

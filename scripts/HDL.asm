@@ -11,8 +11,8 @@ HDL			BPEnum HDL_NONE
 HDLAnimPlr	BPAnimPlayer <>
 HDLAttackTimer	REAL4 0.0
 HDLCell		Vector2 <>
-HDLCellT	Vector2 <>
-HDLCellNext	Vector2 <>
+HDLCellT	Vector2 <>		; Final target cell
+HDLCellNext	Vector2 <>		; Next cell to move to
 HDLCloseT	Vector3 <>		; Close target position (used when rushing, etc)
 HDLCurSpeed	REAL4 0.0		; Current calculated speed
 HDLMazeMap	BPPtr 0
@@ -26,7 +26,7 @@ HDLStack	BPPtr 0
 HDLStackPtr	BPPtr 0
 HDLState	SDWORD 0
 HDLStep		BPBool FALSE	; Step leg alternation
-HDLTarget	Vector3 <>		; Global target position
+HDLTarget	Vector3 <>		; Global final target position
 HDLTimer	REAL4 0.0
 HDLVisible	BPBool FALSE
 
@@ -96,8 +96,6 @@ HDL_Alert PROC EXPORT PosPtr:BPPtr, Amplitude:REAL4
 HDL_Alert ENDP
 
 HDL_Solve PROC EXPORT PosPtr:BPPtr
-	LOCAL pos:Vector2, delta:Vector3
-	
 	invoke Vector32DCopy, ADDR HDLTarget, PosPtr
 	print "HDL solving to "
 	Vector32DPrint HDLTarget
@@ -115,107 +113,14 @@ HDL_Solve PROC EXPORT PosPtr:BPPtr
 	
 	mov HDL, HDL_RUSH
 	
-	invoke HSClear, HDLStack
-	
-	; Clear visit flags
-	push pbx
-	xor pbx, pbx
-	mov pcx, HDLMazeMap
-	.WHILE (pbx < MazeByteSize)
-		mov BYTE PTR [pcx+pbx], 0
-		inc pbx
-	.ENDW
-	pop pbx
-	
-	invoke Vector2Copy, ADDR pos, ADDR HDLCell
-	invoke Vector2Copy, ADDR HDLCellNext, ADDR HDLCell
+	invoke Vector32DCopy, ADDR HDLCloseT, ADDR HDLPos
 	mov HDLStackPtr, SIZEOF BPPtr
-	.WHILE (TRUE)
-		;print str$(pos.X), 9
-		;print str$(pos.Y), 13, 10
-		invoke Maze_GetCellI, pos.X, pos.Y
-		add pcx, HDLMazeMap
-		mov BYTE PTR [pcx], 1	; Visited
-		
-		.IF (pos.Y > 0)
-			sub pcx, MazeSize[0]	; Y - 1
-			.IF (al & MAZE_CELL_PASSTOP) && !(BYTE PTR [pcx])
-				invoke Vector2Set, ADDR delta, 0, -1
-				jmp hdlSolveMove
-			.ENDIF
-			add pcx, MazeSize[0]
-		.ENDIF
-		.IF (pos.X > 0)				; X - 1
-			dec pcx
-			.IF (al & MAZE_CELL_PASSLEFT) && !(BYTE PTR [pcx])
-				invoke Vector2Set, ADDR delta, -1, 0
-				jmp hdlSolveMove
-			.ENDIF
-			inc pcx
-		.ENDIF
-		mov eax, MazeSize[12]
-		.IF (pos.Y < eax)			; Y + 1
-			add pcx, MazeSize[0]
-			mov pax, pcx
-			sub pax, HDLMazeMap
-			add pax, Maze
-			.IF (BYTE PTR [pax] & MAZE_CELL_PASSTOP) && !(BYTE PTR [pcx])
-				invoke Vector2Set, ADDR delta, 0, 1
-				jmp hdlSolveMove
-			.ENDIF
-			sub pcx, MazeSize[0]
-		.ENDIF
-		mov eax, MazeSize[8]
-		.IF (pos.X < eax)			; X + 1
-			inc pcx
-			mov pax, pcx
-			sub pax, HDLMazeMap
-			add pax, Maze
-			.IF (BYTE PTR [pax] & MAZE_CELL_PASSLEFT) && !(BYTE PTR [pcx])
-				invoke Vector2Set, ADDR delta, 1, 0
-				jmp hdlSolveMove
-			.ENDIF
-		.ENDIF
-		
-		mov pax, HDLStack		; Nothing more to pop
-		.IF (BPPtr PTR [pax] <= (SIZEOF BPPtr*2))
-			print "No way found.", 13, 10
-			mov HDL, HDL_WANDER
-			ret
-		.ENDIF
-		
-		;print "Going back", 13, 10
-		mov pos.Y, rv(HSPop, HDLStack)	; Step back
-		mov pos.X, rv(HSPop, HDLStack)
-		.CONTINUE
-		
-		hdlSolveMove:
-		;print "DELTA: "
-		;print str$(delta.X), 9
-		;print str$(delta.Y), 13, 10
-		
-		mov pax, HDLStack
-		mov ecx, MazeByteSize
-		shl ecx, BPPtrShift+1
-		.IF (BPPtr PTR [pax] < ecx)
-			invoke HSPush, HDLStack, pos.X
-			invoke HSPush, HDLStack, pos.Y
-		.ELSE
-			print "PUSH LIMIT REACHED", 13, 10
-		.ENDIF
-		
-		mov eax, delta.X
-		add pos.X, eax
-		mov eax, delta.Y
-		add pos.Y, eax
-		
-		mov eax, pos.X
-		mov ecx, pos.Y
-		.IF (eax == HDLCellT.X) && (ecx == HDLCellT.Y)
-			print "Found path to pos.", 13, 10
-			.BREAK
-		.ENDIF
-	.ENDW
+	mov eax, MazeByteSize
+	shl eax, 1
+	invoke Maze_Solve, HDLStack, eax, HDLMazeMap, ADDR HDLCell, ADDR HDLCellT, 2
+	.IF !(pax)
+		mov HDL, HDL_WANDER
+	.ENDIF
 	ret
 HDL_Solve ENDP
 
@@ -239,6 +144,7 @@ HDL_Spawn PROC EXPORT State:BPEnum
 		
 		mov HDLAnimPlr.FrameType, BPA_FRAME_VERTEX
 		mov HDLAnimPlr.Mesh, OFFSET MeshHDL
+		mov HDLAnimPlr.MeshUseNormals, TRUE
 		invoke bpAnimPlay, ADDR HDLAnimPlr, ADDR AnimHDLIdle
 		
 		mov eax, MazeByteSize
@@ -276,6 +182,23 @@ HDL_Draw PROC EXPORT
 		.ENDIF
 		call glPopMatrix
 	.ENDIF
+	
+	IFDEF DEBUG_BULLSHIT
+	invoke glPushAttrib, GL_ENABLE_BIT
+	invoke glDisable, GL_FOG
+	invoke glDisable, GL_LIGHTING
+	invoke glDisable, GL_TEXTURE_2D
+	invoke glBegin, GL_LINES
+	invoke glColor3fv, ADDR clGreen
+	invoke glVertex3fv, ADDR HDLCloseT
+	invoke glVertex3f, HDLCloseT.X, FLT_1, HDLCloseT.Z
+	invoke glColor3fv, ADDR clRed
+	invoke glVertex3fv, ADDR HDLTarget
+	invoke glVertex3f, HDLTarget.X, FLT_1, HDLTarget.Z
+	invoke glEnd
+	invoke glPopAttrib
+	invoke glColor3fv, ADDR clWhite
+	ENDIF
 	ret
 HDL_Draw ENDP
 
@@ -283,7 +206,7 @@ HDL_Process PROC EXPORT
 	LOCAL v3Val:Vector3
 	
 	HDL_Arrive MACRO
-		.IF !(rv(nRand, 3))
+		.IF (rv(nRand, 3))
 			mov HDL, HDL_SEARCH
 		.ELSE
 			mov HDL, HDL_ATTACK
@@ -380,19 +303,11 @@ HDL_Process PROC EXPORT
 			invoke Vector32DCopy, ADDR HDLCloseT, ADDR HDLTarget
 		.ELSE
 			mov v3Val.X, 0
-			fild HDLCellNext.X
-			fmul f(2)
-			fadd f(1)
-			fstp HDLCloseT.X
-			fild HDLCellNext.Y
-			fmul f(2)
-			fadd f(1)
-			fstp HDLCloseT.Z
 		.ENDIF
 		
-		mov v3Val.Y, rv(Vector32DDistanceSqr, OFFSET HDLPos, ADDR HDLCloseT)
+		mov v3Val.Y, rv(Vector32DDistanceSqr, OFFSET HDLPos, OFFSET HDLCloseT)
 		fcmp v3Val.Y, f(0.2)
-		.IF (Carry?)			
+		.IF (Carry?)
 			; Reverse stack combing
 			mov pax, HDLStack
 			mov pcx, HDLStackPtr
@@ -401,7 +316,16 @@ HDL_Process PROC EXPORT
 				add pax, HDLStackPtr
 				bpMPM HDLCellNext.X, BPPtr PTR [pax]
 				bpMPM HDLCellNext.Y, BPPtr PTR [pax+SIZEOF BPPtr]
+				bpMEM32 HDLCloseT.X, HDLCellNext.X
+				shl HDLCloseT.X, 1
+				inc HDLCloseT.X
+				bpMEM32 HDLCloseT.Z, HDLCellNext.Y
+				shl HDLCloseT.Z, 1
+				inc HDLCloseT.Z
+				invoke Vector32DF, ADDR HDLCloseT
 				add HDLStackPtr, SIZEOF BPPtr*2
+				print "Moving to "
+				Vector32DPrint HDLCloseT
 			.ELSE
 				HDL_Arrive
 			.ENDIF
@@ -435,8 +359,8 @@ HDL_Process PROC EXPORT
 		.ELSE
 			fld v3Val.Y
 			.IF (HDL == HDL_SEARCH) || (HDL == HDL_RUSH)
-				fmul f(0.3)
-				fadd f(2)
+				fmul f(0.5)
+				fadd f(2.2)
 			.ELSE
 				fmul f(0.6)
 			.ENDIF
@@ -445,7 +369,7 @@ HDL_Process PROC EXPORT
 			fld HDLSpeed
 			fmul deltaTime
 			fstp v3Val.Y
-			invoke Vector32DMove, ADDR HDLPos, ADDR HDLCloseT, v3Val.Y
+			invoke Vector32DMoveEach, ADDR HDLPos, ADDR HDLCloseT, v3Val.Y
 		.ENDIF
 		
 		; Collide
@@ -526,18 +450,18 @@ HDL_Process PROC EXPORT
 	
 	invoke SndSetPos, SndWmblykB, ADDR HDLPos
 	invoke bpProcessAnimPlayer, ADDR HDLAnimPlr, deltaTime
-	.IF (al) 	; Frame changed
+	.IF (pax) 	; Frame changed
 		; I hope you like indentations
 		.IF (HDLAnimPlr.TrackPtr == OFFSET AnimHDLWalk)	
 			xor cl, cl
-			fcmp HDLAnimPlr.Timer, f(25)
+			fcmp HDLAnimPlr.Timer, f(22)
 			.IF (!Carry?)
 				.IF (HDLStep)
 					mov cl, 1
 					mov HDLStep, FALSE
 				.ENDIF
 			.ELSE
-				fcmp HDLAnimPlr.Timer, f(10)
+				fcmp HDLAnimPlr.Timer, f(8)
 				.IF (!Carry?)
 					.IF !(HDLStep)
 						mov cl, 1
@@ -577,10 +501,15 @@ HDL_Process PROC EXPORT
 						; This is inverted dot cuz HDL is rotated 180 idk why
 						fcmp v3Val.Y, f(-0.5)
 						.IF (Carry?)
-							.IF !(rv(Maze_Raycast, OFFSET HDLPos,OFFSET CamPos))
+							.IF !(rv(Maze_Raycast, OFFSET HDLPos, OFFSET CamPos, TRUE))
 								bpMPM UIDeadTipStr, StrTipHDL
 								invoke SndSetPos, SndHurt, ADDR HDLPos
 								invoke alSourcePlay, SndHurt
+								
+								bpMEM32 NetSound, SndHurt
+								invoke Vector32DCopy,ADDR NetSoundPos,ADDR CamPos
+								invoke Net_FormSend, NET_SOUND, NetSock
+								
 								;mov PlrState, PLAYER_STATE_DYING
 								fld PlrHealth
 								fsub f(0.8)

@@ -22,8 +22,11 @@ set "_linkArgs="
 :: Extract VER_STRING
 set "VER_STR="
 for /f "tokens=2,3" %%i in (version.h) do (
-    if "%%i"=="VER_STRING" set "VER_STR=%%j"
+	if "%%i"=="VER_MAJOR" set "VER_MAJOR=%%j"
+	if "%%i"=="VER_MINOR" set "VER_MINOR=%%j"
+	if "%%i"=="VER_PATCH" set "VER_PATCH=%%j"
 )
+set "VER_STR=v%VER_MAJOR%.%VER_MINOR%.%VER_PATCH%-BP3D"
 
 echo Version: %VER_STR%
 

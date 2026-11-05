@@ -10,8 +10,8 @@ HSClear ENDP
 ; Create HeapStack object with dwCount positions
 HSCreate PROC dwCount:DWORD
 	mov pax, dwCount
-	add pax, 1
-	shl pax, 2
+	inc pax
+	shl pax, BPPtrShift
 	
 	invoke bpMalloc, bpDefHeap, 0, pax
 	mov BPPtr PTR [pax], SIZEOF BPPtr

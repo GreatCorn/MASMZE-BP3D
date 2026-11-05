@@ -363,6 +363,8 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		SIZEOF PlrGlyphRot
 		
 		
+		invoke RtlMoveMemory, ADDR MazeAirlockState, \
+		ADDR [pbx].MazeAirlockState, MAZE_AIRLOCKS_MAX
 		mbm MazeCheck, [pbx].MazeCheck
 		mbm MazeElevator, [pbx].MazeElevator
 		mbm MazeItems, [pbx].MazeItems
@@ -440,6 +442,13 @@ Net_FormRespond PROC EXPORT Sock:SOCKET, Buffer:BPPtr
 		mbm Kubale, [pbx].Kubale
 		bpMEM32 KubaleRot, [pbx].KubaleRot
 		invoke Vector3Copy, ADDR KubalePos, ADDR [pbx].KubalePos
+		
+		mbm Shilbrik, [pbx].Shilbrik
+		invoke Vector2Copy, ADDR ShilbrikCellT, ADDR [pbx].ShilbrikCellT
+		bpMEM32 ShilbrikPatience, [pbx].ShilbrikPatience
+		invoke Vector3Copy, ADDR ShilbrikPos, ADDR [pbx].ShilbrikPos
+		bpMEM32 ShilbrikRot, [pbx].ShilbrikRot
+		invoke Vector3Copy, ADDR ShilbrikTarget, ADDR [pbx].ShilbrikPos
 		
 		mbm Vebra, [pbx].Vebra
 		
@@ -626,6 +635,8 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		SIZEOF PlrGlyphPos
 		invoke RtlMoveMemory, ADDR [pbx].PlrGlyphRot, ADDR PlrGlyphRot, \
 		SIZEOF PlrGlyphRot
+		invoke RtlMoveMemory, ADDR [pbx].MazeAirlockState, \
+		ADDR MazeAirlockState, MAZE_AIRLOCKS_MAX
 		mbm [pbx].MazeCheck, MazeCheck
 		mbm [pbx].MazeElevator, MazeElevator
 		mbm [pbx].MazeItems, MazeItems
@@ -667,6 +678,13 @@ Net_FormSend PROC EXPORT MsgType:BYTE, Sock:SOCKET
 		mbm [pbx].Kubale, Kubale
 		bpMEM32 [pbx].KubaleRot, KubaleRot
 		invoke Vector3Copy, ADDR [pbx].KubalePos, ADDR KubalePos
+		
+		mbm [pbx].Shilbrik, Shilbrik
+		invoke Vector2Copy, ADDR [pbx].ShilbrikCellT, ADDR ShilbrikCellT
+		bpMEM32 [pbx].ShilbrikPatience, ShilbrikPatience
+		invoke Vector3Copy, ADDR [pbx].ShilbrikPos, ADDR ShilbrikPos
+		bpMEM32 [pbx].ShilbrikRot, ShilbrikRot
+		invoke Vector3Copy, ADDR [pbx].ShilbrikTarget, ADDR ShilbrikPos
 		
 		mbm [pbx].Vebra, Vebra
 		
@@ -970,6 +988,26 @@ Net_PlayersClear PROC EXPORT
 	ret
 Net_PlayersClear ENDP
 
+Net_PlayerDot PROC EXPORT PosPtr:BPPtr
+	LOCAL dot:Vector3, fwd:Vector3
+	
+	invoke Vector32DCopy, ADDR dot, PosPtr
+	invoke Vector32DSub, ADDR dot, \
+	ADDR NetPlayersV[pbx].Position
+	invoke Vector32DNormalize, ADDR dot
+	mov eax, NetPlayerID
+	.IF (NetPlayers[pbx].PlayerID == eax)
+		invoke Vector32DDot, ADDR dot, ADDR PlrForward
+	.ELSE
+		fld NetPlayersV[pbx].Rotation.Y
+		fsincos
+		fstp fwd.Z
+		fstp fwd.X
+		invoke Vector32DDot, ADDR dot, ADDR fwd
+	.ENDIF
+	ret
+Net_PlayerDot ENDP
+
 Net_PopulateVolatile PROC EXPORT NPVPtr:BPPtr
 	LOCAL flVal:REAL4
 	
@@ -1208,7 +1246,7 @@ Net_Draw PROC EXPORT
 			; Calculate and rotate head pos (should be done in process ffs)
 			invoke Vector3Copy, ADDR headPos, pax
 			invoke Vector3Add, ADDR headPos, ADDR MeshPlrHeadOff
-			invoke Rotate2DPoint, ADDR headPos, NetPlayersVL[pbx].BodyRot
+			invoke Rotate2DPoint, ADDR headPos, NetPlayersVL[pbx].BodyRot, TRUE
 			xor headPos.X, FLT_NEG
 			invoke glTranslate3fv, ADDR headPos
 			
@@ -1308,18 +1346,84 @@ Net_Draw PROC EXPORT
 Net_Draw ENDP
 
 Net_Fixed PROC EXPORT
-	LOCAL v3Val:Vector3
+	LOCAL v3Val:Vector3, anim:BPPtr, blink:BPBool
 	
 	; Animate players and their scarves
 	push pbx
 	xor pbx, pbx
 	ASSUME pbx:PTR NetPlayerVolatile	
 	.WHILE (pbx < SIZEOF NetPlayersV)
-		.IF (NetPlayersVL[pbx].Visible & NET_VISIBLE_LOCAL)
+		mov eax, NetPlayerID
+		.IF (NetPlayers[pbx].PlayerID != eax) && \
+		(NetPlayersVL[pbx].Visible & NET_VISIBLE_LOCAL)
+			; Get the player's animation player (will be using later)
 			mov pax, pbx
 			shr pax, NetPlayerShift
 			mov pcx, SIZEOF BPAnimPlayer
 			mul pcx
+			mov anim, pax
+			
+			; Determine which anim to play (and set some stuff)
+			; If dead (also set head pos and anim)
+			.IF (NetPlayersV[pbx].PlrState == PLAYER_STATE_DYING) \
+			|| (NetPlayersV[pbx].PlrState == PLAYER_STATE_DEAD)
+				bpMEM32 NetPlayersV[pbx].Rotation.X, PIHalfN
+				mov pax, OFFSET AnimPlrDead
+			.ELSE	; Not dead - animate
+				mov blink, FALSE
+				fld NetPlayersVL[pbx].BlinkTimer
+				fsub deltaFixed
+				fstp NetPlayersVL[pbx].BlinkTimer
+				fcmp NetPlayersVL[pbx].BlinkTimer, f(-0.1)
+				.IF (Carry?)
+					mov NetPlayersVL[pbx].BlinkTimer,rv(flRandRange,f(0.5),f(7))
+					mov blink, TRUE
+				.ENDIF
+				
+				; If player is moving, play appropriate animation
+				mov pax, pbx
+				shr pax, 3
+				mov eax, NetPlayersSpeed[pax]
+				mov v3Val.Y, eax
+				fcmp v3Val.Y, f(0.1)
+				.IF (!Carry?)
+					.IF (NetPlayersV[pbx].NetState & NPS_CROUCH)
+						mov pax, OFFSET AnimPlrCrouchWalk
+					.ELSE
+						mov pax, OFFSET AnimPlrWalk
+					.ENDIF
+				.ELSE
+					.IF (NetPlayersV[pbx].NetState & NPS_CROUCH)
+						mov pax, OFFSET AnimPlrCrouch
+					.ELSE
+						invoke nRand, 5
+						mov pdx, anim
+						mov pcx, pbx
+						shr pcx, NetPlayerShift
+						.IF ((blink) && (!al) && (NetPlayersColl[pcx] != 2)) ||\
+						(NetPlayersAnim[pdx].TrackPtr == OFFSET AnimPlrStretch)
+							mov pax, OFFSET AnimPlrStretch
+						.ELSE
+							mov pax, OFFSET AnimPlrIdle
+						.ENDIF
+					.ENDIF
+				.ENDIF
+			.ENDIF
+			mov pdx, anim
+			.IF (pax == OFFSET AnimPlrCrouchWalk) || (pax == OFFSET AnimPlrWalk)
+				mov ecx, v3Val.Y
+				mov NetPlayersAnim[pdx].Speed, ecx
+			.ELSE
+				mov NetPlayersAnim[pdx].Speed, FLT_1
+			.ENDIF
+			.IF (NetPlayersAnim[pdx].TrackPtr != pax)
+				.IF (pax != OFFSET AnimPlrDead) \
+				|| (NetPlayersAnim[pdx].TrackPtr)
+					invoke bpAnimPlay, ADDR NetPlayersAnim[pdx], pax
+				.ENDIF
+			.ENDIF
+			
+			mov pax, anim
 			invoke bpProcessAnimPlayer, ADDR NetPlayersAnim[pax], deltaFixed
 			
 			; Animate scarf
@@ -1334,7 +1438,7 @@ Net_Fixed PROC EXPORT
 					invoke Vector3Copy, ADDR v3Val, pax
 					mov eax, NetPlayersVL[pbx].BodyRot
 					xor eax, FLT_NEG
-					invoke Rotate2DPoint, ADDR v3Val, eax
+					invoke Rotate2DPoint, ADDR v3Val, eax, TRUE
 					
 					fld v3Val.Y
 					fmul st, st
@@ -1391,6 +1495,7 @@ Net_Fixed ENDP
 Net_Process PROC EXPORT
 	LOCAL Dot:Vector3, ClPlr:BPPtr, Anim:BPPtr, OpenDoor:BYTE, Blink:BPBool
 	
+	print "NetProcess Enter", 13, 10
 	fld NetVolatileTimer[0]
 	fsub deltaUnscaled
 	fstp NetVolatileTimer[0]
@@ -1427,10 +1532,10 @@ Net_Process PROC EXPORT
 	push pbx
 	xor pbx, pbx
 	ASSUME pbx:PTR NetPlayerVolatile	
-	.WHILE (pbx < SIZEOF NetPlayersV)		
+	.WHILE (pbx < SIZEOF NetPlayersV)
 		mov eax, NetPlayerID
 		.IF (NetPlayers[pbx].PlayerID != eax) \
-		&& (NetPlayers[pbx].PlayerID != -1) && !(MazeElevator)
+		&& (NetPlayers[pbx].PlayerID != -1)
 			.IF (NetPlayersV[pbx].PlrState == PLAYER_STATE_EXITING)
 				.IF !(MazeDoorRot) \
 				&& (rv(SndPlaying, SndCheckpoint) != AL_PLAYING)
@@ -1464,13 +1569,6 @@ Net_Process PROC EXPORT
 				or NET_VISIBLE_GLOBAL
 			.ENDIF
 			
-			; Get the player's animation player (will be using later)
-			mov pax, pbx
-			shr pax, NetPlayerShift
-			mov pcx, SIZEOF BPAnimPlayer
-			mul pcx
-			mov Anim, pax
-			
 			; Determine special player face texture
 			mov NetPlayersVL[pbx].FaceTex, 0
 			
@@ -1486,83 +1584,8 @@ Net_Process PROC EXPORT
 			|| (NetPlayersV[pbx].PlrState == PLAYER_STATE_DEAD)
 				mov eax, TexPlrDead
 				mov NetPlayersVL[pbx].FaceTex, ax
-				bpMEM32 NetPlayersV[pbx].Rotation.X, PIHalfN
-				mov pax, OFFSET AnimPlrDead
-			.ELSE	; Not dead - animate
-				mov Blink, FALSE
-				fld NetPlayersVL[pbx].BlinkTimer
-				fsub deltaTime
-				fstp NetPlayersVL[pbx].BlinkTimer
-				fcmp NetPlayersVL[pbx].BlinkTimer, f(-0.1)
-				.IF (Carry?)
-					mov NetPlayersVL[pbx].BlinkTimer,rv(flRandRange,f(0.5),f(7))
-					mov Blink, TRUE
-				.ENDIF
+			.ENDIF
 			
-				mov pax, pbx
-				shr pax, 2
-				.IF ((MazeState == MAZE_STATE_LOBBY_FALL) && (MazeCheckPos.Y))
-					mov ecx, f(3)
-					mov Dot.Y, ecx
-				.ELSE
-					; Calculate speed
-					fld NetPlayersPosP[pax].X
-					fsub NetPlayersVL[pbx].Position.X
-					fmul st, st
-					fld NetPlayersPosP[pax].Y
-					fsub NetPlayersVL[pbx].Position.Z
-					fmul st, st
-					fadd	; Got distance
-					fsqrt
-					fdiv deltaTime
-					fstp Dot.Y
-				.ENDIF
-				
-				; Set prev pos
-				mov ecx, NetPlayersVL[pbx].Position.X
-				mov NetPlayersPosP[pax].X, ecx
-				mov ecx, NetPlayersVL[pbx].Position.Z
-				mov NetPlayersPosP[pax].Y, ecx
-				
-				; If player is moving, play appropriate animation
-				fcmp Dot.Y, f(0.1)
-				.IF (!Carry?)
-					.IF (NetPlayersV[pbx].NetState & NPS_CROUCH)
-						mov pax, OFFSET AnimPlrCrouchWalk
-					.ELSE
-						mov pax, OFFSET AnimPlrWalk
-					.ENDIF
-				.ELSE
-					.IF (NetPlayersV[pbx].NetState & NPS_CROUCH)
-						mov pax, OFFSET AnimPlrCrouch
-					.ELSE
-						invoke nRand, 5
-						mov pdx, Anim
-						mov pcx, pbx
-						shr pcx, NetPlayerShift
-						.IF ((Blink) && (!al) && (NetPlayersColl[pcx] != 2)) ||\
-						(NetPlayersAnim[pdx].TrackPtr == OFFSET AnimPlrStretch)
-							mov pax, OFFSET AnimPlrStretch
-						.ELSE
-							mov pax, OFFSET AnimPlrIdle
-						.ENDIF
-					.ENDIF
-				.ENDIF
-			.ENDIF
-			mov pdx, Anim
-			.IF (pax == OFFSET AnimPlrCrouchWalk) || (pax == OFFSET AnimPlrWalk)
-				; If we got here, Dot.Y is movement speed
-				mov ecx, Dot.Y
-				mov NetPlayersAnim[pdx].Speed, ecx
-			.ELSE
-				mov NetPlayersAnim[pdx].Speed, FLT_1
-			.ENDIF
-			.IF (NetPlayersAnim[pdx].TrackPtr != pax)
-				.IF (pax != OFFSET AnimPlrDead) \
-				|| (NetPlayersAnim[pdx].TrackPtr)
-					invoke bpAnimPlay, ADDR NetPlayersAnim[pdx], pax
-				.ENDIF
-			.ENDIF
 			
 			; Interpolate the position and rotation
 			invoke Vector3Lerp, ADDR NetPlayersVL[pbx].Position, \
@@ -1572,11 +1595,41 @@ Net_Process PROC EXPORT
 			mov NetPlayersVL[pbx].Rotation.Y, \
 			rv(flAngle, NetPlayersVL[pbx].Rotation.Y)
 			
+			; Calculate speed
+			.IF ((MazeState == MAZE_STATE_LOBBY_FALL) && (MazeCheckPos.Y))
+				mov pax, pbx
+				shr pax, 3
+				mov ecx, f(3)
+				mov NetPlayersSpeed[pax], ecx
+			.ELSE
+				mov pax, pbx
+				shr pax, 2
+				; Calculate speed
+				fld NetPlayersPosP[pax].X
+				fsub NetPlayersVL[pbx].Position.X
+				fmul st, st
+				fld NetPlayersPosP[pax].Y
+				fsub NetPlayersVL[pbx].Position.Z
+				fmul st, st
+				fadd	; Got distance
+				fsqrt
+				fdiv deltaTime
+				shr pax, 1
+				fstp NetPlayersSpeed[pax]
+			.ENDIF
+			
+			; Set prev pos
+			shl pax, 1
+			mov ecx, NetPlayersVL[pbx].Position.X
+			mov NetPlayersPosP[pax].X, ecx
+			mov ecx, NetPlayersVL[pbx].Position.Z
+			mov NetPlayersPosP[pax].Y, ecx
+			
 			; Collide
+			mov Dot.Y, \
+			rv(Vector32DDistanceSqr, ADDR CamPos, ADDR NetPlayersV[pbx].Position)
 			xor pax, pax
 			.IF (PlrState == PLAYER_STATE_GAME)
-				mov Dot.Y, \
-				rv(Vector32DDistanceSqr, ADDR CamPos, ADDR NetPlayersV[pbx].Position)
 				invoke Collide_Distance, ADDR CamPos, \
 				ADDR NetPlayersV[pbx].Position, f(0.2), Dot.Y
 				mov pcx, pbx
@@ -1614,7 +1667,6 @@ Net_Process PROC EXPORT
 					mov NetPlayersVL[pbx].FaceTex, ax
 					.IF (NetPlayersColl[pcx])
 						mov NetPlayersColl[pcx], 2
-						
 					.ENDIF
 				.ELSE
 					movzx pax, NetPlayers[pbx].Skin
@@ -1714,5 +1766,6 @@ Net_Process PROC EXPORT
 		.ENDIF
 	.ENDIF
 	pop pbx
+	print "NetProcess Exit", 13, 10
 	ret
 Net_Process ENDP

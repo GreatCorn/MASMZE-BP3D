@@ -79,22 +79,24 @@ NetGameStates ENDS
 NetMazeElements STRUCT
 	NetMsgType		BYTE ?
 	
-	PlrGlyphs		DWORD ?
-	PlrGlyphsInMaze	DWORD ?
-	PlrGlyphPos		Vector3 7 DUP (<?,?,?>)
-	PlrGlyphRot		REAL4 7 DUP (?)
-	MazeCheck		BYTE ?
-	MazeElevator	BYTE ?
-	MazeItems		BYTE ?
-	MazeKeyPos		Vector3 <?,?,?>
-	MazeLocked		BYTE ?
-	MazePowerup		BYTE ?
-	MazeShop		BYTE ?
-	MazeSlam		BYTE ?
-	MazeTeleport	BYTE ?
+	PlrGlyphs			DWORD ?
+	PlrGlyphsInMaze		DWORD ?
+	PlrGlyphPos			Vector3 7 DUP (<?,?,?>)
+	PlrGlyphRot			REAL4 7 DUP (?)
+	MazeAirlockState	BPBool MAZE_AIRLOCKS_MAX DUP (FALSE)
+	MazeCheck			BYTE ?
+	MazeElevator		BYTE ?
+	MazeItems			BYTE ?
+	MazeKeyPos			Vector3 <?,?,?>
+	MazeLocked			BYTE ?
+	MazePowerup			BYTE ?
+	MazeShop			BYTE ?
+	MazeSlam			BYTE ?
+	MazeTeleport		BYTE ?
 NetMazeElements ENDS
 
-NetMazeEntities STRUCT	; 163
+; bunch of garbage gotta clean it
+NetMazeEntities STRUCT	; was 163
 	NetMsgType		BYTE ?
 	
 	HBD					BYTE ?
@@ -114,6 +116,12 @@ NetMazeEntities STRUCT	; 163
 	Kubale				BYTE ?
 	KubalePos			Vector3 <?,?,?>
 	KubaleRot			REAL4 ?
+	Shilbrik			BYTE ?
+	ShilbrikCellT		Vector2 <?,?>
+	ShilbrikPatience	REAL4 ?
+	ShilbrikPos			Vector3 <?,?,?>
+	ShilbrikRot			REAL4 ?
+	ShilbrikTarget		Vector3 <?,?,?>
 	Vebra				BYTE ?
 	Virdya				BYTE ?
 	VirdyaBlinkTimer	REAL4 ?
@@ -188,6 +196,7 @@ Net_Host PROTO
 Net_LeaderboardAppend PROTO :DWORD
 Net_LeaderboardClear PROTO
 Net_LeaderboardCheck PROTO :DWORD
+Net_PlayerDot PROTO :BPPtr
 Net_PlayerRemove PROTO :DWORD
 Net_PlayersClear PROTO
 Net_PopulateVolatile PROTO :BPPtr
@@ -221,6 +230,7 @@ NetPlayersMesh	BPMesh NET_MAX_PLAYERS dup (<>)
 NetPlayersScarf	BPPtr NET_MAX_PLAYERS dup (0)
 NetPlayersScVel	BPPtr NET_MAX_PLAYERS dup (0)
 NetPlayersPosP	Vector2 NET_MAX_PLAYERS dup (<>)
+NetPlayersSpeed	REAL4 NET_MAX_PLAYERS dup (0.0)
 NetPlayersAlive	DWORD 0
 NetPlayersColl	BPBool NET_MAX_PLAYERS dup (FALSE)
 NetLeaderboard	BYTE NET_MAX_PLAYERS dup (-1)
@@ -238,6 +248,6 @@ NetSpectateID	DWORD 0
 NetSpectateFP	BPBool FALSE
 
 .DATA?
-MeshPlrHeadPtr		BPPtr ?
+MeshPlrHeadPtr	BPPtr ?
 NetSound		DWORD ?
 NetSoundPos		Vector3 <?,?,?>

@@ -75,7 +75,7 @@ Virdya_Backoff ENDP
 Virdya_Scare PROC EXPORT PosPtr:BPPtr, CorrectY:BPBool
 	LOCAL flVal:REAL4
 	
-	.IF (Virdya != VIRDYA_COVER)
+	.IF (Virdya) && (Virdya != VIRDYA_COVER)
 		mov flVal, vrv(Vector32DDistanceSqr, PosPtr, OFFSET VirdyaPos)
 		fcmp flVal, f(4)
 		.IF (Carry?)
@@ -98,20 +98,24 @@ Virdya_Spawn PROC EXPORT State:BPEnum
 		invoke alSourceStop, SndVirdya
 	.ELSE
 		print "Spawned Virdya at "
-		mov VirdyaAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init animator
-		mov VirdyaAnimPlr.Mesh, OFFSET MeshVirdya
-		invoke bpAnimPlay, ADDR VirdyaAnimPlr, ADDR AnimVirdyaIdle
-		
 		invoke Maze_GetRandomPos, ADDR VirdyaPos, FALSE
 		Vector32DPrint VirdyaPos
-		
-		bpMEM32 VirdyaFace, TexVirdyaNeut[0]
 	.ENDIF
 	
 	mbm Virdya, State
 	ret
 Virdya_Spawn ENDP
 
+
+Virdya_Create PROC EXPORT
+	mov VirdyaAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init animator
+	mov VirdyaAnimPlr.Mesh, OFFSET MeshVirdya
+	mov VirdyaAnimPlr.MeshUseNormals, TRUE
+	invoke bpAnimPlay, ADDR VirdyaAnimPlr, ADDR AnimVirdyaIdle
+	
+	bpMEM32 VirdyaFace, TexVirdyaNeut[0]
+	ret
+Virdya_Create ENDP
 
 Virdya_Draw PROC EXPORT
 	LOCAL v2Val:Vector2
@@ -166,7 +170,7 @@ Virdya_Fixed PROC EXPORT
 			
 			mov eax, VirdyaHeadRot.Y
 			xor eax, FLT_NEG
-			invoke Rotate2DPoint, ADDR tVert, eax
+			invoke Rotate2DPoint, ADDR tVert, eax, TRUE
 			;invoke Rotate2DPoint, ADDR vert, vert.Y
 			
 			fld tVert.Y
@@ -462,7 +466,7 @@ Virdya_Process PROC EXPORT
 				fstp v3Val.X
 				fcmp v3Val.Y, v3Val.X
 				.IF (Carry?)
-					.IF !(rv(Maze_Raycast, OFFSET VirdyaPos, plrPosPtr))
+					.IF !(rv(Maze_Raycast, OFFSET VirdyaPos, plrPosPtr, FALSE))
 						mov v3Val.Z, 1
 					.ENDIF
 				.ENDIF
@@ -517,7 +521,7 @@ Virdya_Process PROC EXPORT
 			bpMEM32 VirdyaCoverTimer, f(9)
 			fcmp v3Val.Y, f(8)
 			.IF (Carry?)
-				.IF !(rv(Maze_Raycast, OFFSET VirdyaPos, plrPosPtr))
+				.IF !(rv(Maze_Raycast, OFFSET VirdyaPos, plrPosPtr, FALSE))
 					.IF (VirdyaAnimPlr.TrackPtr != OFFSET AnimVirdyaAttack)
 						invoke bpAnimPlay, ADDR VirdyaAnimPlr, \
 						ADDR AnimVirdyaAttack
@@ -610,7 +614,7 @@ Virdya_Process PROC EXPORT
 					mov VirdyaLookPtr, 0
 				.ELSEIF (eax == 2)
 					; Closest player
-					.IF !(rv(Maze_Raycast, OFFSET VirdyaPos, plrPosPtr))
+					.IF !(rv(Maze_Raycast, OFFSET VirdyaPos, plrPosPtr, FALSE))
 						bpMPM VirdyaLookPtr, plrPosPtr
 					.ENDIF
 				.ENDIF

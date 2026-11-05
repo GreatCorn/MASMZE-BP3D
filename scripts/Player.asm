@@ -2,6 +2,7 @@ ENUML
 	E PLAYER_STATE_GAME
 	E PLAYER_STATE_ENTER
 	E PLAYER_STATE_EXIT
+	E PLAYER_STATE_EXIT_END
 	E PLAYER_STATE_EXITING
 	
 	; Wmblyk strangle minigame
@@ -211,7 +212,7 @@ Plr_Control PROC EXPORT
 	
 	; Glyphs
 	.IF (PlrState == PLAYER_STATE_GAME) && (InputGlyph) \
-	&& (GameState == GAME_STATE_GAME)
+	&& (GameState == GAME_STATE_GAME) && (NetSock || !(MazeCheck))
 		.IF (PlrGlyphs)
 			vinvoke Plr_PlaceGlyph, OFFSET CamPos, CamRot.Y, NetSock
 		.ENDIF
@@ -323,7 +324,8 @@ Plr_Control PROC EXPORT
 					invoke alSourcePlay, SndCamera
 					mov DrawWireframe, TRUE
 					
-					.IF (Virdya)
+					mov movSpd, 0
+					.IF (Virdya) && (Virdya != VIRDYA_COVER)
 						mov flVal, \
 						vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET VirdyaPos)
 						fcmp flVal, f(8)
@@ -332,7 +334,7 @@ Plr_Control PROC EXPORT
 							fcmp flVal, f(0.2)
 							.IF (!Carry?)
 								mov Virdya, VIRDYA_BLIND
-								invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+								mov movSpd, 1
 							.ENDIF
 						.ENDIF
 					.ENDIF
@@ -345,9 +347,27 @@ Plr_Control PROC EXPORT
 							fcmp flVal, f(0.2)
 							.IF (!Carry?)
 								mov Wmblyk, WMBLYK_BLIND
-								invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
+								mov movSpd, 1
 							.ENDIF
 						.ENDIF
+					.ENDIF
+					.IF (Shilbrik)
+						mov flVal, \
+						vrv(Vector32DDistanceSqr,OFFSET CamPos,OFFSET ShilbrikPos)
+						fcmp flVal, f(8)
+						.IF (Carry?)
+							mov flVal, vrv(Plr_FrustumDot, OFFSET ShilbrikPos)
+							fcmp flVal, f(0.2)
+							.IF (!Carry?)
+								bpMEM32 ShilbrikPatience, f(-5)
+								mov Shilbrik, SHILBRIK_ATTACK
+								mov movSpd, 1
+							.ENDIF
+						.ENDIF
+					.ENDIF
+					
+					.IF (movSpd)
+						invoke Net_FormSend, NET_MAZE_ENTITIES, NetSock
 					.ENDIF
 					
 					.IF (NetSock)
@@ -897,7 +917,7 @@ Plr_ProcessState PROC EXPORT
 		invoke Vector3Copy, ADDR CamPosL, ADDR v3Val
 		
 		mov PlrCanControl, FALSE
-				
+		
 		mov MazeDoorRot, 0
 		
 		mov UIFade, UI_FADE_IN
@@ -937,13 +957,35 @@ Plr_ProcessState PROC EXPORT
 			invoke alSourcePlay, SndExit
 		.ENDIF
 		ret
+	.ELSEIF (PlrState == PLAYER_STATE_EXIT_END)
+		invoke bpAnimPlay, ADDR CamAnimPlr, ADDR AnimCamExitEnd
+		
+		mov PlrCanControl, FALSE
+		
+		mov UIFade, UI_FADE_NONE
+		
+		mov PlrState, PLAYER_STATE_EXITING
+		mov PlrStateCallback, 0
+		
+		invoke SndSetPos, SndCheckpoint, ADDR MazeDoorPos
+		invoke alSourcePlay, SndCheckpoint
+		ret
 	.ELSEIF (PlrState == PLAYER_STATE_EXITING)
 		mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(-100), delta2)
 		invoke Vector3Lerp, ADDR CamPos, ADDR MazeDoorPos, delta2
 		mov CamRot.X, rv(flLerp, CamRot.X, 0, delta2)
 		mov CamRot.Y, rv(flLerpAngle, CamRot.Y, 0, delta2)
-		fcmp CamAnimPlr.Timer, f(40)
-		.IF (!Carry?) && !(UIFade)
+		.IF (CamAnimPlr.TrackPtr == OFFSET AnimCamExit)
+			fcmp CamAnimPlr.Timer, f(40)
+		.ELSEIF (CamAnimPlr.TrackPtr == OFFSET AnimCamExitEnd)
+			.IF (rv(flInRange, CamAnimPlr.Timer, f(50), f(70)))
+				.IF (rv(SndPlaying, SndExit2) != AL_PLAYING)
+					invoke alSourcePlay, SndExit2
+				.ENDIF
+			.ENDIF
+			fcmp CamAnimPlr.Timer, f(70)
+		.ENDIF
+		.IF ((!Carry?) || !(CamAnimPlr.TrackPtr)) && !(UIFade)
 			mov UIFade, UI_FADE_OUT
 			mov UIFadeCallback, OFFSET plrExitFade
 			mov UIFadeVal, 0
@@ -1274,8 +1316,20 @@ Plr_ProcessState PROC EXPORT
 			
 			invoke Net_FormSend, NET_LEADERBOARD, NetSock
 		.ELSE
-			mov PlrState, PLAYER_STATE_ENTER
-			call Maze_Progress
+			.IF (MazeLayer == 63)
+				; Decide ending
+				mov PlrState, PLAYER_STATE_ETC
+				.IF (PlrGlyphs == 7)
+					mov MazeState, MAZE_STATE_CROA
+				.ELSE
+					mov MazeState, MAZE_STATE_ASCEND
+				.ENDIF
+				mov UIFade, UI_FADE_IN
+				mov MazeCheck, 0
+			.ELSE
+				mov PlrState, PLAYER_STATE_ENTER
+				call Maze_Progress
+			.ENDIF
 		.ENDIF
 		mov UIFadeCallback, 0
 		ret
@@ -1283,6 +1337,7 @@ Plr_ProcessState PROC EXPORT
 		inc PlrState
 		ret
 	plrDeadSpectate:
+		call Plr_ResetLocal
 		mov PlrState, PLAYER_STATE_SPECTATE
 		mov UIFade, UI_FADE_IN
 		mov UIFadeCallback, 0
@@ -1324,26 +1379,50 @@ Plr_Progress PROC EXPORT
 Plr_Progress ENDP
 
 Plr_Reset PROC EXPORT
+	call Plr_ResetLocal
+	
 	mov PlrGlyphs, 7
 	mov PlrHealth, FLT_1
-	mov PlrItems, 0
-	mov PlrPowerup, MAZE_POWERUP_NONE
+	
+	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0
+	invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, f(0.5)
+	invoke glLightf, GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0
+	invoke glLightfv, GL_LIGHT0, GL_AMBIENT, ADDR clAmbient
+	invoke glLightfv, GL_LIGHT0, GL_DIFFUSE, ADDR clWhite
+	invoke Vector3Copy, ADDR CamLightPos, ADDR Vector3Zero
+	invoke glLightModelfv, GL_LIGHT_MODEL_AMBIENT, ADDR clBlack
 	ret
 Plr_Reset ENDP
+
+;   Reset just the local stuff (useful for multiplayer)
+Plr_ResetLocal PROC EXPORT
+	bpMEM32 CamBaseFOV, f(75)
+	mov PlrItems, 0
+	mov PlrPowerup, MAZE_POWERUP_NONE
+	
+	ret
+Plr_ResetLocal ENDP
 
 ;   Shake screen (through CamRotL)
 Plr_Shake PROC EXPORT Amplitude:REAL4
 	LOCAL v3Val:Vector3
-	mov eax, Amplitude
-	or eax, FLT_NEG
-	push pax
-	mov v3Val.X, rv(flRandRange, eax, Amplitude)
-	pop pax
-	push pax
-	mov v3Val.Y, rv(flRandRange, eax, Amplitude)
-	pop pax
-	mov v3Val.Z, rv(flRandRange, eax, Amplitude)
-	invoke Vector3Add, ADDR CamRotL, ADDR v3Val
+	.IF (deltaTime)
+		fld deltaTime
+		fsqrt
+		fmul f(32)
+		fmul Amplitude
+		fstp Amplitude
+		mov eax, Amplitude
+		or eax, FLT_NEG
+		push pax
+		mov v3Val.X, rv(flRandRange, eax, Amplitude)
+		pop pax
+		push pax
+		mov v3Val.Y, rv(flRandRange, eax, Amplitude)
+		pop pax
+		mov v3Val.Z, rv(flRandRange, eax, Amplitude)
+		invoke Vector3Add, ADDR CamRotL, ADDR v3Val
+	.ENDIF
 	ret
 Plr_Shake ENDP
 
@@ -1477,7 +1556,7 @@ Plr_Process PROC EXPORT
 	call Plr_CalculateAxes
 	
 	; Move & rotate
-	.IF (PlrCanControl)
+	.IF (PlrCanControl) && (UIState == UI_STATE_GAME)
 		call Plr_Control
 	.ENDIF
 	
@@ -1568,7 +1647,7 @@ Plr_Process PROC EXPORT
 	fstp CamFOV
 	
 	; Health affect afterimage
-	.IF (Maze && MazeState == MAZE_STATE_WBBK)
+	.IF (Maze && MazeState == MAZE_STATE_WBBK) || (MazeState == MAZE_STATE_CROA)
 		mov pax, FXAfterimageEndFull
 		.IF (!FXAfterimageHighFPS)
 			sub pax, SIZEOF BPPtr*4
@@ -1599,6 +1678,7 @@ Plr_Process PROC EXPORT
 		mov eax, PlrHealth
 		.IF (eax & FLT_NEG)
 			mov PlrState, PLAYER_STATE_DYING
+			mov PlrHealth, 0
 		.ENDIF
 	.ENDIF
 	

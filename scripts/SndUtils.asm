@@ -47,7 +47,7 @@ LoadAudio PROC EXPORT AudioPtr:BPPtr, FilePath:BPPtr
 	
 	invoke stb_vorbis_decode_filename, FilePath, ADDR channels, ADDR sample, \
 	ADDR decoded
-	.IF (SDWORD PTR eax == -1)
+	.IF (SDWORD PTR eax == -1) || (SDWORD PTR eax == -2)
 		mov pax, INVALID_HANDLE_VALUE
 		bpCheckFileInvalid
 	.ENDIF

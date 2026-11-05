@@ -41,6 +41,7 @@ Kubale_Spawn PROC EXPORT State:BPEnum
 		print "event", 13, 10
 	.ELSEIF (State == KUBALE_ACTIVE)
 		invoke Maze_GetRandomPos, ADDR KubalePos, FALSE
+		mov KubalePos.Y, 0
 		
 		.IF (MazeLayer > 42)
 			mov KubaleRaycast, TRUE
@@ -48,6 +49,7 @@ Kubale_Spawn PROC EXPORT State:BPEnum
 		
 		mov KubaleAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init animator
 		mov KubaleAnimPlr.Mesh, OFFSET MeshKubale
+		mov KubaleAnimPlr.MeshUseNormals, TRUE
 		invoke bpAnimPlay, ADDR KubaleAnimPlr, ADDR AnimKubaleMove
 		bpMEM32 KubaleAnimPlr.Speed, f(2)
 		
@@ -73,7 +75,7 @@ Kubale_Draw ENDP
 
 Kubale_Process PROC EXPORT
 	LOCAL dist:REAL4, flVal:REAL4, blocked:BPBool, invisible:BPBool
-	LOCAL dot:Vector3, fwd:Vector3, plr:DWORD
+	LOCAL dot:Vector3, plr:DWORD
 	
 	.IF (Kubale == KUBALE_EVENT)
 		; KubaleRot is state val (timer)
@@ -85,6 +87,9 @@ Kubale_Process PROC EXPORT
 		.IF (ecx & FLT_NEG)
 			.IF !(eax & FLT_NEG)
 				invoke alSourcePlay, SndKubaleAppear
+				.IF (Virdya)
+					vinvoke Vector3Copy, OFFSET KubalePos, OFFSET VirdyaPos
+				.ENDIF
 			.ENDIF
 			
 			fcmp KubaleRot, f(-3)
@@ -98,6 +103,14 @@ Kubale_Process PROC EXPORT
 				.ELSE			; > -1, < 0
 					; Flicker
 					mov FogDensity, rv(flRandRange, MazeFog, f(1.0))
+					
+					.IF (Virdya)
+						mov dot.X, rv(flRandRange, f(-0.1), f(0.1))
+						mov KubalePos.Y, rv(flRandRange, f(1.5), f(2))
+						mov dot.Z, rv(flRandRange, f(-0.1), f(0.1))
+						invoke Vector32DAdd, ADDR KubalePos, ADDR dot
+						vinvoke Virdya_Scare, OFFSET KubalePos, FALSE
+					.ENDIF
 				.ENDIF		
 			.ENDIF
 		.ENDIF
@@ -120,7 +133,7 @@ Kubale_Process PROC EXPORT
 				.IF (NetPlayers[pbx].PlayerID != -1) \
 				&& (NetPlayersVL[pbx].Visible & NET_VISIBLE_GLOBAL)
 					invoke Maze_Raycast, ADDR KubalePos, \
-					ADDR NetPlayersV[pbx].Position
+					ADDR NetPlayersV[pbx].Position, FALSE
 					.IF (!al)
 						mov blocked, FALSE
 						.BREAK
@@ -130,7 +143,7 @@ Kubale_Process PROC EXPORT
 			.ENDW
 			pop pbx
 		.ELSE
-			invoke Maze_Raycast, ADDR KubalePos, ADDR CamPosL
+			invoke Maze_Raycast, ADDR KubalePos, ADDR CamPosL, FALSE
 			mov blocked, al
 		.ENDIF
 		
@@ -142,21 +155,7 @@ Kubale_Process PROC EXPORT
 				.WHILE (pbx < SIZEOF NetPlayers)
 					.IF (NetPlayers[pbx].PlayerID != -1) \
 					&& (NetPlayersVL[pbx].Visible & NET_VISIBLE_GLOBAL)
-						invoke Vector32DCopy, ADDR dot, ADDR KubalePos
-						invoke Vector32DSub, ADDR dot, \
-						ADDR NetPlayersV[pbx].Position
-						invoke Vector32DNormalize, ADDR dot
-						mov eax, NetPlayerID
-						.IF (NetPlayers[pbx].PlayerID == eax)
-							invoke Vector32DDot, ADDR dot, ADDR PlrForward
-						.ELSE
-							fld NetPlayersV[pbx].Rotation.Y
-							fsincos
-							fstp fwd.Z
-							;for some reason no fchs required on X
-							fstp fwd.X
-							invoke Vector32DDot, ADDR dot, ADDR fwd
-						.ENDIF
+						invoke Net_PlayerDot, ADDR KubalePos
 						fcmp eax, KubaleDot
 						.IF (!Carry?)
 							mov invisible, FALSE

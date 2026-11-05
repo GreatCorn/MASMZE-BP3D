@@ -1017,6 +1017,7 @@ Settings_SetOption PROC EXPORT OptionPtr:BPPtr
 		mov HDLAnimPlr.Interpolation, al
 		mov KubaleAnimPlr.Interpolation, al
 		mov MotryaAnimPlr.Interpolation, al
+		mov ShilbrikAnimPlr.Interpolation, al
 		mov VebraAnimPlr.Interpolation, cl
 		mov VirdyaAnimPlr.Interpolation, al
 		mov WmblykAnimPlr.Interpolation, al

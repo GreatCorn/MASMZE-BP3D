@@ -1,5 +1,5 @@
 .686
-.xmm
+;.xmm
 .model flat,stdcall
 option casemap:none
 
@@ -12,9 +12,17 @@ BP_INTERPOLATION_DYNAMIC	EQU <1>
 ;BP_PAINT_LOOP				EQU <1>
 IFDEF MODE_DEBUG
 	ECHO Compiling MASMZE-BP3D in debug mode.
-	BP_TRACEABLE_HEAP EQU <1>
+	;BP_TRACEABLE_HEAP EQU <1>
+	BP_EXPORT_NAMES EQU <1>
 ENDIF
 
+;PROC_TRACE		EQU <1>
+PROC_TRACE_ALL	EQU <1>
+PROC_TRACE_FPU	EQU <1>
+TraceFiles TEXTEQU <!<\
+						;scripts\HDL.asm,\
+					!>>
+include scripts\ProcTrace.asm
 include ..\BoilPlate3D\src\BP3D.asm
 
 IFDEF BP_COMPATIBILITY_W9X
@@ -264,6 +272,7 @@ AsmTime		DB "Assembly time: ", stringify(@Date), 32, stringify(@Time), \
 
 clAmbient	REAL4 0.2, 0.2, 0.2, 1.0
 clSky		REAL4 0.24, 0.24, 0.22, 1.0
+clSkyBorder	REAL4 0.09, 0.09, 0.07, 1.0
 
 FogMinLn	REAL4 4.605170186	; -ln(0.01), when GL_EXP
 
@@ -443,15 +452,8 @@ wglChoosePixelFormatARB			BPPtr ?
 wglGetPixelFormatAttribivARB	BPPtr ?
 wglSwapIntervalEXT				BPPtr ?
 
+MAZE_AIRLOCKS_MAX	EQU 5
 include scripts\NetCode.inc
-
-;PROC_TRACE		EQU <1>
-;PROC_TRACE_ALL	EQU <1>
-TraceFiles TEXTEQU <!<\
-						main.asm,\
-						scripts\NetCode.asm,\
-					!>>
-include scripts\ProcTrace.asm
 
 AUDIO_OPENAL	EQU <1>
 include scripts\SndUtils.asm
@@ -471,6 +473,7 @@ include scripts\EBD.asm
 include scripts\HBD.asm
 include scripts\HDL.asm
 include scripts\Kubale.asm
+include scripts\Shilbrik.asm
 include scripts\Vebra.asm
 include scripts\Virdya.asm
 include scripts\WBBK.asm
@@ -488,6 +491,7 @@ GPadParse PROTO :BPPtr
 CreateScene PROC EXPORT
 	call Plr_Create
 	call Maze_Create
+	call Virdya_Create
 	call Wmblyk_Create
 	ret
 CreateScene ENDP
@@ -546,8 +550,18 @@ DrawScene PROC EXPORT
 		.ENDIF
 		invoke glDisable, GL_TEXTURE_2D
 	.ENDIF
-	
+	.IF (WBBK)
+		invoke glDisable, GL_FOG
+	.ENDIF
 	call Maze_Draw
+	.IF (WBBK)
+		invoke glEnable, GL_FOG
+	.ENDIF
+	.IF (DrawWireframe)
+		invoke glDisable, GL_LIGHTING
+		invoke glDisable, GL_FOG
+		invoke glColor3fv, ADDR clRed
+	.ENDIF
 	.IF (EBD)
 		call EBD_Draw
 	.ENDIF
@@ -559,6 +573,9 @@ DrawScene PROC EXPORT
 	.ENDIF
 	.IF (Kubale)
 		call Kubale_Draw
+	.ENDIF
+	.IF (Shilbrik)
+		call Shilbrik_Draw
 	.ENDIF
 	.IF (Vebra)
 		call Vebra_Draw
@@ -583,6 +600,9 @@ DrawScene PROC EXPORT
 	.IF (DrawWireframe) || (Textureless)
 		.IF (DrawWireframe)
 			invoke glPolygonMode, GL_FRONT_AND_BACK, GL_FILL
+			invoke glEnable, GL_FOG
+			invoke glEnable, GL_LIGHTING
+			invoke glColor3fv, ADDR clWhite
 		.ENDIF
 		invoke glEnable, GL_TEXTURE_2D
 	.ENDIF
@@ -631,10 +651,6 @@ GameStart PROC EXPORT
 	mov PlrCanControl, TRUE
 	mov PlrHealth, FLT_1
 	mov PlrStateCallback, 0
-	bpMEM32 CamBaseFOV, f(75)
-	
-	invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, 0
-	invoke glLightf, GL_LIGHT0, GL_LINEAR_ATTENUATION, f(0.5)
 	
 	bpMEM32 FogDensity, MazeFog
 	invoke alSourceStop, SndIntro
@@ -970,6 +986,10 @@ MenuInit PROC EXPORT
 	
 	invoke Vector3Copy, ADDR CamLightPos, ADDR MenuLight
 	
+	mov DrawWireframe, FALSE
+	mov FreezeTime, FALSE
+	mov Textureless, FALSE
+	
 	mov deltaScale, FLT_1
 	
 	mov PlrState, PLAYER_STATE_ETC
@@ -1029,6 +1049,9 @@ ProcessScene PROC EXPORT
 		.ENDIF
 		.IF (Kubale)
 			call Kubale_Process
+		.ENDIF
+		.IF (Shilbrik)
+			call Shilbrik_Process
 		.ENDIF
 		.IF (Vebra)
 			call Vebra_Process
@@ -1188,14 +1211,16 @@ OnInput PROC EXPORT BPInStruct:BPPtr
 					mov InputUIConfirm, TRUE
 					mov InputUIConfirmT, TRUE
 				CASE VK_MWHEEL_DOWN
-					sub UIScroll, UI_BTN_H + UI_BTN_M
-				CASE VK_MWHEEL_UP
 					add UIScroll, UI_BTN_H + UI_BTN_M
+				CASE VK_MWHEEL_UP
+					sub UIScroll, UI_BTN_H + UI_BTN_M
 					
 				IFDEF MODE_DEBUG
 				CASE 'C'
 					.IF (Keys[VK_SHIFT])
 						xor PlrItems, MAZE_ITEM_COMPASS
+					.ELSEIF (Keys[VK_CONTROL])
+						invoke Maze_CollectItem, MAZE_ITEM_KEY, NetSock
 					.ENDIF
 				CASE 'E'
 					.IF (Keys[VK_SHIFT])
@@ -1207,8 +1232,7 @@ OnInput PROC EXPORT BPInStruct:BPPtr
 					invoke MulSoundPitch, f(4)
 				CASE 'H'
 					.IF (Keys[VK_SHIFT])
-						mov HDLState, 0
-						mov HDLTimer, 0
+						invoke Shilbrik_Spawn, SHILBRIK_PASSIVE
 					.ELSE
 						invoke HDL_Spawn, HDL_WANDER
 						invoke Vector32DSet, ADDR HDLPos, f(1), f(1)
@@ -1593,9 +1617,7 @@ OnRender PROC EXPORT
 		call ProcessScene
 	.ENDIF
 	
-	.IF (MazeState != MAZE_STATE_CROA)
-		invoke glLightfv, GL_LIGHT0, GL_POSITION, ADDR CamLightPos	; Draw light
-	.ENDIF
+	invoke glLightfv, GL_LIGHT0, GL_POSITION, ADDR CamLightPos	; Draw light
 	
 	Vector3Push CamRotL
 	;invoke Vector3Negate, ADDR CamRotL

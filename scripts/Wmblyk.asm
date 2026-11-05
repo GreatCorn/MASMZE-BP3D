@@ -42,6 +42,7 @@ Wmblyk_Spawn PROC EXPORT State:BPEnum
 		invoke alSourceStop, SndWmblykSpin
 		invoke alSourceStop, SndWmblykStrM
 	.ELSEIF (State == WMBLYK_STILL)
+		mov WmblykStateVal, FLT_1
 		invoke Maze_GetRandomPos, ADDR WmblykPos, FALSE
 		
 		bpMEM32 WmblykCellPos.X, f(20)
@@ -105,6 +106,10 @@ Wmblyk_Draw PROC EXPORT
 				invoke glColor4f, f(1), f(1), f(1), WmblykStateVal
 			.ENDIF
 			
+			
+			.IF (DrawWireframe)
+				invoke glColor3fv, ADDR clRed
+			.ENDIF
 			.IF (Wmblyk == WMBLYK_STILL_SCARE)
 				invoke glCallList, MdlWmblykBodyG
 			.ELSE
@@ -112,7 +117,7 @@ Wmblyk_Draw PROC EXPORT
 			.ENDIF
 			
 			.IF (Wmblyk == WMBLYK_STILL)
-				.IF (WmblykStateVal & FLT_NEG)
+				.IF (WmblykStateVal & FLT_NEG) && !(DrawWireframe)
 					invoke glColor4fv, ADDR clBlack
 				.ENDIF
 			.ENDIF
@@ -153,6 +158,9 @@ Wmblyk_Draw PROC EXPORT
 				.ENDIF
 			.ENDIF
 			
+			.IF (DrawWireframe)
+				invoke glColor3fv, ADDR clRed
+			.ENDIF
 			invoke bpDrawMesh, ADDR MeshWmblyk
 			.IF (Wmblyk == WMBLYK_FROZEN)
 				fld f(2.5)
@@ -322,7 +330,7 @@ Wmblyk_Process PROC EXPORT
 				fmul f(6)
 				fstp flVal
 				
-				invoke Vector32DMove, ADDR WmblykPos, plrPosPtr, flVal
+				invoke Vector32DMoveEach, ADDR WmblykPos, plrPosPtr, flVal
 			.ELSE
 				mov Wmblyk, WMBLYK_STILL
 			.ENDIF
@@ -503,78 +511,64 @@ Wmblyk_Process PROC EXPORT
 				mov ways, 0
 				; I hope you like-a spaghetti, special for you
 				.IF (SDWORD PTR v3Val.X == 1)		; Going right
-					mov eax, WmblykCellPos.X
-					inc eax
-					invoke Maze_GetCellI, eax, WmblykCellPos.Z
-					.IF (al & MAZE_CELL_PASSLEFT)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_RIGHT, 0))
 						or ways, WMBLYK_FORWARD
 						mov cellFwd, pcx
 					.ENDIF
-					mov eax, WmblykCellPos.Z
-					inc eax
-					invoke Maze_GetCellI, WmblykCellPos.X, eax
-					.IF (al & MAZE_CELL_PASSTOP)	; right (down)
+					; right (down)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_DOWN, 0))
 						or ways, WMBLYK_RIGHT
 						mov cellRight, pcx
 					.ENDIF
-					invoke Maze_GetCellI, WmblykCellPos.X, WmblykCellPos.Z
-					.IF (al & MAZE_CELL_PASSTOP)	; left (up)
+					; left (up)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_UP, 0))
 						or ways, WMBLYK_LEFT
 						mov cellLeft, pcx
 					.ENDIF
 				.ELSEIF (SDWORD PTR v3Val.Z == 1)	; Going down
-					mov eax, WmblykCellPos.Z
-					inc eax
-					invoke Maze_GetCellI, WmblykCellPos.X, eax
-					.IF (al & MAZE_CELL_PASSTOP)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_DOWN, 0))
 						or ways, WMBLYK_FORWARD
 						mov cellFwd, pcx
 					.ENDIF
-					invoke Maze_GetCellI, WmblykCellPos.X, WmblykCellPos.Z
-					.IF (al & MAZE_CELL_PASSLEFT)	; right (left)
+					; right (left)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_LEFT, 0))
 						or ways, WMBLYK_RIGHT
 						mov cellRight, pcx
 					.ENDIF
-					mov eax, WmblykCellPos.X
-					inc eax
-					invoke Maze_GetCellI, eax, WmblykCellPos.Z
-					.IF (al & MAZE_CELL_PASSLEFT)	; left (right)
+					; left (right)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_RIGHT, 0))
 						or ways, WMBLYK_LEFT
 						mov cellLeft, pcx
 					.ENDIF
 				.ELSEIF (SDWORD PTR v3Val.X == -1)	; Going left
-					invoke Maze_GetCellI, WmblykCellPos.X, WmblykCellPos.Z
-					.IF (al & MAZE_CELL_PASSLEFT)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_LEFT, 0))
 						or ways, WMBLYK_FORWARD
 						mov cellFwd, pcx
 					.ENDIF
-					.IF (al & MAZE_CELL_PASSTOP)	; right (up)
+					; right (up)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_UP, 0))
 						or ways, WMBLYK_RIGHT
 						mov cellRight, pcx
 					.ENDIF
-					mov eax, WmblykCellPos.Z
-					inc eax
-					invoke Maze_GetCellI, WmblykCellPos.X, eax
-					.IF (al & MAZE_CELL_PASSTOP)	; left (down)
+					; left (down)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_DOWN, 0))
 						or ways, WMBLYK_LEFT
 						mov cellLeft, pcx
 					.ENDIF
 				.ELSEIF (SDWORD PTR v3Val.Z == -1)	; Going up
-					invoke Maze_GetCellI, WmblykCellPos.X, WmblykCellPos.Z
-					.IF (al & MAZE_CELL_PASSTOP)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_UP, 0))
 						or ways, WMBLYK_FORWARD
 						mov cellFwd, pcx
 					.ENDIF
-					.IF (al & MAZE_CELL_PASSLEFT)	; LEFT!! (left, same)
-						or ways, WMBLYK_LEFT
-						mov cellLeft, pcx
-					.ENDIF
-					mov eax, WmblykCellPos.X
-					inc eax
-					invoke Maze_GetCellI, eax, WmblykCellPos.Z
-					.IF (al & MAZE_CELL_PASSLEFT)	; right (right)
+					; right (right)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_RIGHT, 0))
 						or ways, WMBLYK_RIGHT
 						mov cellRight, pcx
+					.ENDIF
+					; LEFT!! (left, same)
+					.IF (rv(Maze_CanPass, WmblykCellPos.X, WmblykCellPos.Z, MAZE_FREE_LEFT, 0))
+						or ways, WMBLYK_LEFT
+						mov cellLeft, pcx
 					.ENDIF
 				.ENDIF
 				
@@ -646,7 +640,7 @@ Wmblyk_Process PROC EXPORT
 		.ENDIF
 		
 		mov flVal, rv(Vector32DDistanceSqr, OFFSET WmblykPos, OFFSET CamPos)
-		fcmp flVal, f(0.75)
+		fcmp flVal, f(0.67)
 		.IF (Carry?) && (PlrState == PLAYER_STATE_GAME) && \
 		(WmblykAnimPlr.TrackPtr != OFFSET AnimWmblykCrawl)
 			mov PlrState, PLAYER_STATE_STRANGLE
@@ -756,6 +750,8 @@ Wmblyk_Process PROC EXPORT
 					invoke Vector32DCopy, ADDR CamPosA, ADDR PlrForward
 					invoke Vector32DMulF, ADDR CamPosA, f(0.3)
 					bpMEM32 CamPosA.Y, f(0.3)
+					invoke Vector3Copy, ADDR CamPosL, ADDR CamPos
+					invoke Vector3Add, ADDR CamPosL, ADDR CamPosA
 					mov CamAnimPlr.TrackPtr, 0
 					invoke SndSetPos, SndSplash, ADDR CamPosL
 					invoke alSourcePlay, SndSplash

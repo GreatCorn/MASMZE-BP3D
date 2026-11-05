@@ -164,8 +164,10 @@ EBD_Draw PROC EXPORT
 	call glPopMatrix
 	
 	invoke glDisable, GL_BLEND
-	invoke glEnable, GL_LIGHTING
-	invoke glEnable, GL_FOG
+	.IF !(DrawWireframe)
+		invoke glEnable, GL_LIGHTING
+		invoke glEnable, GL_FOG
+	.ENDIF
 	ret
 EBD_Draw ENDP
 

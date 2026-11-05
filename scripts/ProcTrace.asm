@@ -11,7 +11,10 @@ ENDIF
 PROCP MACRO procname, flag, parmbytes, localbytes, reglist, userparms
 	LOCAL addbytes, newlocal, trace
 	; enter
-	newlocal = localbytes + 8
+	newlocal = localbytes
+	IFDEF PROC_TRACE_TIME
+		newlocal = newlocal + 8
+	ENDIF
 	
 	IF newlocal or parmbytes
 		push ebp
@@ -42,13 +45,15 @@ PROCP MACRO procname, flag, parmbytes, localbytes, reglist, userparms
 	ENDIF
 	
 	IF trace
-		push eax
-		push edx
-		rdtsc
-		mov DWORD PTR [ebp-8], eax
-		mov DWORD PTR [ebp-12], edx
-		pop edx
-		pop eax
+		IFDEF PROC_TRACE_TIME
+			push eax
+			push edx
+			rdtsc
+			mov DWORD PTR [ebp-8], eax
+			mov DWORD PTR [ebp-12], edx
+			pop edx
+			pop eax
+		ENDIF
 	ENDIF
 	
 	EXITM %newlocal
@@ -67,29 +72,52 @@ PROCE MACRO procname, flag, parmbytes, localbytes, reglist, userparms
 		ENDM
 	ENDIF
 	IF trace
-		push eax
-		push edx
-		rdtsc
-		sub eax, DWORD PTR [ebp-8]
-		sub edx, DWORD PTR [ebp-12]
-		procsym CATSTR <procname>,<NameStrE>
-		procstr CATSTR <">,<procname>,<">
-		%IFNDEF procsym
-			.DATA
-			procsym DB procstr, 0
-			.CODE
+		IFDEF PROC_TRACE_TIME 
+			push pax
+		ELSEIFDEF PROC_TRACE_FPU
+			push pax
 		ENDIF
-		pushad
-		print OFFSET procsym, 9
-		popad
-		pushad
-		print str$(eax), 13, 10
-		popad
-		pop edx
-		pop eax
+		
+		IFDEF PROC_TRACE_TIME
+			push pdx
+			rdtsc
+			sub eax, DWORD PTR [pbp-8]
+			sub edx, DWORD PTR [pbp-12]
+			procsym CATSTR <procname>,<NameStrE>
+			procstr CATSTR <">,<procname>,<">
+			%IFNDEF procsym
+				.DATA
+				procsym DB procstr, 0
+				.CODE
+			ENDIF
+			pushad
+			print OFFSET procsym, 9
+			popad
+			pushad
+			print str$(eax), 13, 10
+			popad
+			pop pdx
+		ENDIF
+		
+		IFDEF PROC_TRACE_FPU
+			fnstsw ax
+			and ax, 0011100000000000b
+			.IF (ax)
+				int 3
+			.ENDIF
+		ENDIF
+		
+		IFDEF PROC_TRACE_TIME 
+			pop pax
+		ELSEIFDEF PROC_TRACE_FPU
+			pop pax
+		ENDIF
 	ENDIF
 	
-	newlocal = localbytes + 8
+	newlocal = localbytes
+	IFDEF PROC_TRACE_TIME
+		newlocal = newlocal + 8
+	ENDIF
 	; USES registers
 	IFNB <reglist>
 		FOR r, reglist

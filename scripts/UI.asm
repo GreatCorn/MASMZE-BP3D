@@ -335,7 +335,11 @@ UI_Button PROC EXPORT String:BPPtr, X:SDWORD, Y:SDWORD, ButtonAlign:BPEnum
 					sub ecx, UI_BRD_M*2
 					
 					.IF !(rv(intInRange, eax, 0, ecx))
-						invoke intSign, xFrom
+						.IF (xFrom < 0)
+							mov eax, 1
+						.ELSE
+							mov eax, -1
+						.ENDIF
 						mov ecx, UI_BTN_H + UI_BTN_M
 						imul ecx
 						sub UIScroll, eax
@@ -1318,9 +1322,10 @@ UI_DrawLeaderboard PROC EXPORT
 	mov xFace, eax
 	add eax, UI_BTN_H
 	mov xLeft, eax
-	mov ecx, ScreenHalf.X
-	add ecx, eax
-	mov xRight, ecx
+	mov eax, ScreenHalf.X
+	shr eax, 1	; /2
+	add eax, ScreenHalf.X
+	mov xRight, eax
 	
 	mov eax, NetPlayersCount
 	mov ecx, UI_BTN_H + UI_BTN_M
@@ -2124,6 +2129,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 		mov UIScroll, 0
 		
 		mov dm.dmSize, SIZEOF DEVMODEAFIX
+		mov dm.dmDriverExtra, 0
 		invoke Vector2Set, ADDR res, 0, 0
 		
 		mov UIResSize, 0
@@ -2136,7 +2142,7 @@ UI_DrawMenuSettingsGraphics PROC EXPORT
 		lea pax, bpDisplayDevices[pax].RawName
 		mov devNamePtr, pax
 		invoke EnumDisplaySettingsA, devNamePtr, resEnum, ADDR dm
-		.IF (al)
+		.IF (pax)
 			invoke Vector2Set, ADDR res, dm.dmPelsWidth, dm.dmPelsHeight
 			
 			invoke RtlZeroMemory, ADDR nameStr, 32
@@ -2812,10 +2818,10 @@ UI_DrawPlayers PROC EXPORT
 	mov xFace, eax
 	add eax, UI_BTN_H
 	mov xLeft, eax
-	mov ecx, ScreenHalf.X
-	add ecx, eax
-	mov xRight, ecx
-	
+	mov eax, ScreenHalf.X
+	shr eax, 1	; /2
+	add eax, ScreenHalf.X
+	mov xRight, eax	
 	print str$(NetPlayersCount), 13, 10
 	
 	mov eax, NetPlayersCount
@@ -2902,8 +2908,12 @@ UI_HandleMenuEscape PROC EXPORT
 	.ENDIF
 	.IF (PlrState >= PLAYER_STATE_INTRO_DARK) \
 	&& (PlrState <= PLAYER_STATE_INTRO_TEXT3)
-		call GameStart
-		mov UIFadeVal, FLT_1
+		.IF (MazeState == MAZE_STATE_END)
+			call MenuInit
+		.ELSE
+			call GameStart
+			mov UIFadeVal, FLT_1
+		.ENDIF
 	.ELSEIF (MazeNote & 16)
 		bpMEM32 deltaScale, f(1)
 		mov MazeNote, 0
@@ -3522,7 +3532,7 @@ UI_Draw PROC EXPORT
 		mov UIShadow, FALSE
 	.ENDIF
 	
-	.IF (InputPlayers) && (NetSock)
+	.IF (InputPlayers) && (NetSock) && (PlrState != PLAYER_STATE_LEADERBOARD)
 		call UI_DrawPlayers
 	.ENDIF
 	
@@ -3556,21 +3566,15 @@ UI_Draw PROC EXPORT
 				BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			.ENDIF
 		CASE PLAYER_STATE_COMPLETED
-			mov ebx, ScreenHalf.Y
-			sub ebx, (UI_BTN_H + UI_BTN_M)/2
-			invoke UI_Text, StrLayerNumber, ScreenHalf.X, ebx, \
-			BP_ALIGN_CENTER, BP_ALIGN_CENTER
-			add ebx, UI_BTN_H + UI_BTN_M
-			invoke UI_Text, ADDR NetFinishStr, ScreenHalf.X, ebx, \
-			BP_ALIGN_CENTER, BP_ALIGN_CENTER
-			
 			.IF (GameComplete)
 				invoke glBindTexture, GL_TEXTURE_2D, UILoadTex
 				call glPushMatrix
 				
-				mov eax, FMain.ScreenSize.y
+				mov eax, UIScreenScaled.W
 				sub eax, UI_LOAD_S+UI_LOAD_S/4
-				invoke glTranslatei, UI_LOAD_S/4, eax, 0
+				mov ecx, UIScreenScaled.X
+				add ecx, UI_LOAD_S/4
+				invoke glTranslatei, ecx, eax, 0
 				
 				invoke glScalef, f(%UI_LOAD_S), f(%UI_LOAD_S), f(%UI_LOAD_S)
 				
@@ -3597,6 +3601,14 @@ UI_Draw PROC EXPORT
 				call glPopMatrix
 			.ENDIF
 			
+			mov ebx, ScreenHalf.Y
+			sub ebx, (UI_BTN_H + UI_BTN_M)/2
+			invoke UI_Text, StrLayerNumber, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+			add ebx, UI_BTN_H + UI_BTN_M
+			invoke UI_Text, ADDR NetFinishStr, ScreenHalf.X, ebx, \
+			BP_ALIGN_CENTER, BP_ALIGN_CENTER
+			
 		CASE PLAYER_STATE_LEADERBOARD
 			call UI_DrawLeaderboard
 	ENDSW
@@ -3611,8 +3623,8 @@ UI_Draw PROC EXPORT
 		sub ecx, UI_BTN_H*2
 		; Input hint subtitles
 		SWITCH UISubtitlesStr
-			CASE StrCCCheckpoint, StrCCElevator, StrCCSaveErase, StrCCShop, \
-			StrCCPowerupReplace
+			CASE StrCCCheckpoint, StrCCElevator, StrCCEnding, StrCCSaveErase, \
+			StrCCShop, StrCCPowerupReplace, StrCCAirlock
 				invoke UI_TextInput, UISubtitlesStr, IBConfirm, JBConfirm, \
 				ScreenHalf.X, ecx, BP_ALIGN_CENTER, BP_ALIGN_CENTER
 			CASE StrCCFightBack, StrNetCCSwitch

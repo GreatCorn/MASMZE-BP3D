@@ -16,6 +16,7 @@ Vebra_Spawn PROC EXPORT
 	mov Vebra, VEBRA_SIT
 	mov VebraAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init animator
 	mov VebraAnimPlr.Mesh, OFFSET MeshVebra
+	mov VebraAnimPlr.MeshUseNormals, TRUE
 	invoke bpAnimPlay, ADDR VebraAnimPlr, ADDR AnimVebraSit
 	ret
 Vebra_Spawn ENDP
@@ -62,7 +63,7 @@ Vebra_Process PROC EXPORT
 		.IF (Carry?)
 			mov Vebra, VEBRA_GO
 		.ELSE
-			.IF !(rv(Maze_Raycast, OFFSET MazeDoorPos, OFFSET CamPos))
+			.IF !(rv(Maze_Raycast, OFFSET MazeDoorPos, OFFSET CamPos, FALSE))
 				mov flVal, \
 				rv(Vector32DDistanceSqr, OFFSET MazeDoorPos, OFFSET CamPos)
 				fcmp flVal, f(48)

@@ -20,8 +20,11 @@ MAZE_PROP_LAMP			EQU 2 shl MAZE_PROP_SHIFT
 MAZE_PROP_PIPE			EQU 3 shl MAZE_PROP_SHIFT
 MAZE_PROP_WINDOW		EQU 4 shl MAZE_PROP_SHIFT
 MAZE_PROP_POSTERS		EQU 5 shl MAZE_PROP_SHIFT
+
+MAZE_PROP_IMPASSABLE	EQU 12 shl MAZE_PROP_SHIFT
 ; Props that require two adjacent walls
-MAZE_PROPS_ADJACENT		EQU 14 shl MAZE_PROP_SHIFT
+MAZE_PROPS_ADJACENT		EQU 13 shl MAZE_PROP_SHIFT
+MAZE_PROP_MOSS			EQU 13 shl MAZE_PROP_SHIFT
 MAZE_PROP_DOORWAY		EQU 14 shl MAZE_PROP_SHIFT
 MAZE_PROP_ARCH			EQU 15 shl MAZE_PROP_SHIFT
 
@@ -29,7 +32,8 @@ ENUM \
 	MAZE_CHECK_NONE, \
 	MAZE_CHECK_OPEN, \
 	MAZE_CHECK_CLOSE, \
-	MAZE_CHECK_SAVED
+	MAZE_CHECK_SAVED, \
+	MAZE_CHECK_ENDING
 	
 ENUM \
 	MAZE_ELEVATOR_NONE, \
@@ -144,6 +148,21 @@ MazeMotryaSpeak2	REAL4	6.5, 8.5, \
 							32.3, 37.7, \ 
 							39.5, 45.0, \ 
 							46.0, 49.7
+							
+MazeCroaSpeak		REAL4	0.3, 3.7, \
+							3.8, 6.3, \
+							6.4, 9.8, \
+							9.9, 13.2, \
+							13.3, 15.5, \
+							15.6, 19.7, \
+							20.1, 22.4, \
+							22.5, 24.4, \
+							24.5, 27.5, \
+							27.6, 30.8, \
+							30.9, 33.4, \
+							33.5, 37.7, \
+							38.7, 41.9
+
 .DATA
 Maze				BPPtr 0		; 2D BYTE array of dimensions MazeSize
 MazeByteSize 		DWORD 0
@@ -160,6 +179,18 @@ MazeStateCallback	BPPtr 0
 MazeType			BPEnum MAZE_TYPE_NORMAL
 
 MazeAmb				BPPtr OFFSET SndAmb[0]	; Pointer to current ambient track
+
+MazeAirlocks		DWORD 0
+MazeAirlockDoors	REAL4 MAZE_AIRLOCKS_MAX DUP (0.0)
+MazeAirlockPos		Vector2 MAZE_AIRLOCKS_MAX DUP (<?,?>)
+MazeAirlockState	BPBool MAZE_AIRLOCKS_MAX DUP (FALSE)
+MazeAirlockVertical	BPBool MAZE_AIRLOCKS_MAX DUP (?)
+
+MazeCroa			BPEnum 0
+MazeCroaColor		Vector4 <>
+MazeCroaLight		Vector3 <>
+MazeCroaPos			Vector3 <>
+MazeCroaTimer		REAL4 0.0
 
 MazeChangesPtr		BPPtr 0		; Offset for MazeChanges stack
 
@@ -180,6 +211,16 @@ MazeItems		BPEnum 0		; Maze items bitmask
 MazeCompassPos	Vector3 <>		; Compass item position
 MazeGlyphsPos	Vector3 <>		; Glyphs item position in layer
 MazeGlyphsRot	REAL4 0.0		; Glyphs item rotation
+
+MazeObject STRUCT
+	GLList		DWORD 0
+	Texture		DWORD ?
+	Position	Vector3 <?,?,?>
+	Rotation	REAL4 ?
+MazeObject ENDS
+
+MazeObjects		MazeObject 8 dup (<>)
+MazeObjectsSize	DWORD 0
 
 MazePowerup		BPEnum MAZE_POWERUP_NONE	; Maze powerup
 MazePowerupPos	Vector3 <>
@@ -264,7 +305,7 @@ MazeCurLamp		DWORD ?
 MazeCurRoof		DWORD ?
 MazeCurWall		DWORD ?
 MazeCurWallMDL	DWORD ?
-MazeDoorPos		Vector3 <?, ?, ?>	; Maze end door cell center position
+MazeDoorPos		Vector4 <?, ?, ?, ?>	; Maze end door cell center position
 MazeMapSize		Vector2 <?, ?>
 MazePlrPos		Vector2 <?, ?>		; Player cell position
 MazeSeed		DWORD ?
@@ -302,6 +343,20 @@ Maze_SpawnRandomSnd MACRO SndGroup:REQ, V3Val:=<bounds>
 	pop pbx
 ENDM
 
+Maze_AddObject PROC EXPORT GLList:DWORD, Texture:DWORD, Position:BPPtr, \
+Rotation:REAL4
+	mov pcx, MazeObjectsSize
+	
+	; Found free object space
+	bpMEM32 MazeObjects[pcx].GLList, GLList
+	bpMEM32 MazeObjects[pcx].Texture, Texture
+	invoke Vector3Copy, ADDR MazeObjects[pcx].Position, Position
+	bpMEM32 MazeObjects[pcx].Rotation, Rotation
+	
+	add MazeObjectsSize, SIZEOF MazeObject
+	ret
+Maze_AddObject ENDP
+
 Maze_ApplyChanges PROC EXPORT
 	mov pax, MazeChangesPtr
 	.WHILE (pax)
@@ -314,46 +369,125 @@ Maze_ApplyChanges PROC EXPORT
 	ret
 Maze_ApplyChanges ENDP
 
-Maze_CheckFree PROC EXPORT X:SDWORD, Y:SDWORD, Hor:BPBool, Fat:BPBool
-	print "Testing cell "
-	print str$(X), 32
-	print str$(Y), 32
-	.IF (Hor)
-		print "H", 32
+Maze_CanPass PROC EXPORT X:SDWORD, Y:SDWORD, Direction:BPEnum, Fat:BPEnum
+	; Fat & 1 = can't pass through doors, & 2 = can't pass through crevice
+	.IF (Direction == MAZE_FREE_DOWN)
+		inc Y
+	.ELSEIF (Direction == MAZE_FREE_RIGHT)
+		inc X
+	.ENDIF
+	invoke Maze_GetCellI, X, Y
+	push pcx
+	mov ah, al
+	mov cl, al
+	.IF (Direction == MAZE_FREE_LEFT) || (Direction == MAZE_FREE_RIGHT)
+		and cl, MAZE_CELL_PROPS
+		.IF (Fat & 1) && (cl == MAZE_PROP_DOORWAY) && (al & MAZE_CELL_ROTATED)
+			xor ah, ah
+		.ELSE
+			and ah, MAZE_CELL_PASSLEFT
+		.ENDIF
 	.ELSE
-		print "V", 32
+		and cl, MAZE_CELL_PROPS
+		.IF (Fat & 1) && (cl == MAZE_PROP_DOORWAY) && !(al & MAZE_CELL_ROTATED)
+			xor ah, ah
+		.ELSE
+			and ah, MAZE_CELL_PASSTOP
+		.ENDIF
 	.ENDIF
 	
-	invoke Maze_GetCellI, X, Y
-	pushad
-	print ubyte$(al), 9
-	popad
-	.IF (Hor)
-		mov cl, al
-		and cl, MAZE_CELL_PROPS
-		.IF (cl == MAZE_PROP_DOORWAY) && (al & MAZE_CELL_ROTATED) && (Fat)
-			xor al, al
+	.IF (ah)
+		; Impassable
+		.IF (Direction == MAZE_FREE_LEFT)
+			dec X
+			invoke Maze_GetCellI, X, Y
+		.ELSEIF (Direction == MAZE_FREE_UP)
+			dec Y
+			invoke Maze_GetCellI, X, Y
+		.ENDIF
+		and al, MAZE_CELL_PROPS
+		.IF (al == MAZE_PROP_IMPASSABLE)
+			xor pax, pax
 		.ELSE
-			and al, MAZE_CELL_PASSLEFT
+			; Check for crevice if fat
+			mov eax, X
+			mov ecx, Y
+			.IF (Fat & 2) && (MazeCreviceCell[0] == eax) && \
+			(MazeCreviceCell[4] == ecx)
+				mov pax, FALSE
+			.ELSE
+				mov pax, TRUE
+			.ENDIF
 		.ENDIF
 	.ELSE
-		mov cl, al
-		and cl, MAZE_CELL_PROPS
-		.IF (cl == MAZE_PROP_DOORWAY) && !(al & MAZE_CELL_ROTATED) && (Fat)
-			xor al, al
-		.ELSE
-			and al, MAZE_CELL_PASSTOP
-		.ENDIF
+		xor pax, pax
 	.ENDIF
-	.IF (al)
-		print "FREE", 13, 10
-		mov pax, TRUE
-		ret
-	.ENDIF
-	print "OCCUPIED", 13, 10
-	xor pax, pax
+	pop pcx
 	ret
-Maze_CheckFree ENDP
+Maze_CanPass ENDP
+
+Maze_CheckPattern PROC EXPORT PtrnPtr:BPPtr, X:SDWORD, Y:SDWORD
+	LOCAL ptrnSize:Vector2, posY:DWORD, cell:BYTE
+	
+	push pbx
+	
+	mov pbx, PtrnPtr
+	mov al, BYTE PTR [pbx]
+	movzx eax, al
+	mov ptrnSize.X, eax
+	mov al, BYTE PTR [pbx+1]
+	movzx eax, al
+	mov ptrnSize.Y, eax
+	
+	add PtrnPtr, 2		; Past w/h offset
+	
+	xor ebx, ebx		; X
+	.WHILE (ebx < ptrnSize.X)
+		xor ecx, ecx	; Y
+		.WHILE (ecx < ptrnSize.Y)
+			mov posY, ecx
+			
+			push pbx
+			push pcx
+			add pbx, X
+			add pcx, Y
+			
+			;pushad
+			;print str$(pbx), 9
+			;popad
+			;pushad
+			;print str$(pcx), 13, 10
+			;popad
+			
+			invoke Maze_GetCellI, ebx, ecx
+			and al, 11b
+			mov cell, al
+			pop posY
+			pop pbx
+			
+			invoke bp2DArrayGetOffset, ebx, posY, ptrnSize.X, 1
+			add pax, PtrnPtr
+			mov al, BYTE PTR [pax]
+			.IF (al != 11111111b)	; skip
+				and al, 11b
+				
+				.IF (al != cell)
+					pop pbx
+					mov pax, FALSE
+					ret
+				.ENDIF
+			.ENDIF
+			
+			mov ecx, posY
+			inc ecx
+		.ENDW
+		inc ebx
+	.ENDW
+	pop pbx
+	
+	mov pax, TRUE
+	ret
+Maze_CheckPattern ENDP
 
 Maze_CloseShop PROC EXPORT
 	mov MazeShop, 2
@@ -533,7 +667,7 @@ Maze_Collide PROC EXPORT PosPtr:BPPtr, Radius:REAL4, X:REAL4, Y:REAL4, Cell:BYTE
 Maze_Collide ENDP
 
 Maze_CollideLayout PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
-	LOCAL flVal:REAL4, colPos:Vector2, worldPos:Vector2, bounds:Vector4
+	LOCAL flVal:REAL4, colPos:Vector2, worldPos:Vector3, bounds:Vector4
 		
 	; Get collidee cell position
 	invoke fpuSetRounding, FPU_ROUND_TRUNC
@@ -601,26 +735,40 @@ Maze_CollideLayout PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
 						.ENDIF
 					.ENDIF
 				.ENDIF
-				invoke Vector2Copy, ADDR worldPos, ADDR colPos
+				invoke Vector32DSet, ADDR worldPos, colPos.X, colPos.Y
 				sal worldPos.X, 1	; *2
-				sal worldPos.Y, 1	; *2
-				invoke Vector2F, ADDR worldPos
+				sal worldPos.Z, 1	; *2
+				invoke Vector32DF, ADDR worldPos
 				invoke Maze_GetCellI, colPos.X, colPos.Y
-				.IF !(Props)
+				
+				.IF !(Props)	; Generic collision with impassable	
+					mov cl, al
+					and cl, MAZE_CELL_PROPS
+					.IF (cl == MAZE_PROP_IMPASSABLE)
+						Vector32DPush worldPos
+						invoke Vector32DAdd, ADDR worldPos, ADDR Vector3One
+						fld f(2)
+						fadd Radius
+						fstp flVal
+						invoke Collide_Rectangle, PosPtr, ADDR worldPos, \
+						flVal, flVal
+						Vector32DPop worldPos
+					.ENDIF
+					
 					and al, BYTE PTR not MAZE_CELL_PROPS
 				.ENDIF
-				invoke Maze_Collide, PosPtr, Radius, worldPos.X, worldPos.Y, al
+				invoke Maze_Collide, PosPtr, Radius, worldPos.X, worldPos.Z, al
 				mov eax, colPos.X
 				.IF (eax == MazeSize[8])	; End walls vertical
 					fld worldPos.X
 					fadd f(2)
 					fstp flVal
-					invoke Maze_Collide, PosPtr, Radius, flVal, worldPos.Y, \
+					invoke Maze_Collide, PosPtr, Radius, flVal, worldPos.Z, \
 					MAZE_CELL_PASSTOP
 				.ENDIF
 				mov eax, colPos.Y
 				.IF (eax == MazeSize[12])	; End walls hor and exit
-					fld worldPos.Y
+					fld worldPos.Z
 					fadd f(2)
 					fstp flVal
 					mov eax, colPos.X
@@ -642,6 +790,85 @@ Maze_CollideLayout PROC EXPORT PosPtr:BPPtr, Radius:REAL4, Props:BPBool
 		mov ecx, colPos.X
 	.ENDW
 	
+	.IF (Props)
+		push pbx
+		xor pbx, pbx
+		.WHILE (pbx < MazeObjectsSize)
+			mov eax, MazeObjects[pbx].GLList
+			SWITCH eax
+				CASE MdlCouch
+					fld f(2)
+					fadd Radius
+					fld f(1.2)
+					fadd Radius
+					mov eax, MazeObjects[pbx].Rotation
+					.IF (eax == PIHalf) || (eax == PIHalfN)
+						fxch
+					.ENDIF
+					fstp colPos.Y
+					fstp colPos.X
+					invoke Collide_Rectangle, PosPtr, \
+					ADDR MazeObjects[pbx].Position, colPos.X, colPos.Y
+			ENDSW
+			add pbx, SIZEOF MazeObject
+		.ENDW
+		
+		xor pbx, pbx
+		.WHILE (pbx < MazeAirlocks)
+			mov pcx, pbx
+			shl pcx, 2
+			bpMEM32 flVal, MazeAirlockDoors[pcx]
+			shl pcx, 1
+			invoke Vector32DSet, ADDR worldPos, MazeAirlockPos[pcx].X, MazeAirlockPos[pcx].Y
+			
+			mov colPos.X, rv(Vector32DDistanceSqr, PosPtr, ADDR worldPos)
+			;print real4$(colPos.X), 9
+			;Vector32DPrint worldPos
+			fcmp colPos.X, f(9)
+			.IF (Carry?)
+				invoke Vector32DSub, ADDR worldPos, ADDR Vector3One
+				
+				.IF (MazeAirlockVertical[pbx])
+					mov cl, MAZE_CELL_PASSTOP or MAZE_PROP_DOORWAY
+				.ELSE
+					mov cl, MAZE_CELL_PASSLEFT or MAZE_PROP_DOORWAY \
+					or MAZE_CELL_ROTATED
+				.ENDIF
+					
+				fcmp flVal, f(0.24)
+				.IF (Carry?)
+					xor al, al
+				.ELSE
+					mov al, cl
+				.ENDIF
+				push pcx
+				invoke Maze_Collide, PosPtr, Radius, worldPos.X, worldPos.Z, al
+				pop pcx
+				
+				.IF (MazeAirlockVertical[pbx])
+					fld worldPos.Z
+					fadd f(2)
+					fstp worldPos.Z
+				.ELSE
+					fld worldPos.X
+					fadd f(2)
+					fstp worldPos.X
+				.ENDIF
+				
+				fcmp flVal, f(0.08)
+				.IF (Carry?)
+					mov al, cl
+				.ELSE
+					xor al, al
+				.ENDIF
+				invoke Maze_Collide, PosPtr, Radius, worldPos.X, worldPos.Z, al
+			.ENDIF
+			inc pbx
+		.ENDW
+		
+		pop pbx
+	.ENDIF
+	
 	ret
 Maze_CollideLayout ENDP
 
@@ -654,6 +881,7 @@ Maze_DrawCheck PROC EXPORT
 	fmul f(-0.05)
 	fstp v3Val.Y
 	invoke glTranslate3fv, ADDR v3Val
+	
 	invoke glBindTexture, GL_TEXTURE_2D, TexFloor
 	invoke glCallList, MdlCheckFloor
 	invoke glBindTexture, GL_TEXTURE_2D, TexFacade
@@ -667,7 +895,8 @@ Maze_DrawCheck PROC EXPORT
 	call glPushMatrix
 	; Draw exit door
 	invoke glTranslatef, 0, 0, f(6.1)
-	.IF (MazeCheck == MAZE_CHECK_SAVED)
+	.IF (MazeCheck == MAZE_CHECK_SAVED) || ((MazeCheck == MAZE_CHECK_ENDING) &&\
+	(PlrGlyphs == 7) && (PlrState == PLAYER_STATE_EXITING))
 		mov eax, MazeDoorRot
 	.ELSE
 		xor eax, eax
@@ -701,16 +930,11 @@ Maze_DrawCheck PROC EXPORT
 		invoke flRandRange, f(0.8), f(1)	; Flicker, visual only, allowed
 		invoke Vector3Set, ADDR v3Val, eax, eax, eax
 		
-		;   Sometimes OpenGL likes glMaterial, sometimes it likes glColor. I
-		; thought glColor maps onto glMaterial properties and changes them when
-		; called but I just don't even fucking know anymore
-		;invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR v3Val
 		invoke glColor3fv, ADDR v3Val
 		
 		invoke glBindTexture, GL_TEXTURE_2D, TexLight
 		invoke glCallList, MdlParticle
 		
-		;invoke glMaterialfv, GL_FRONT, GL_DIFFUSE, ADDR clWhite
 		invoke glColor3fv, ADDR clWhite
 		
 		invoke glEnable, GL_DEPTH_TEST
@@ -718,7 +942,7 @@ Maze_DrawCheck PROC EXPORT
 	invoke glDisable, GL_BLEND
 	invoke glEnable, GL_FOG
 	invoke glEnable, GL_LIGHTING
-	.IF (MazeCheck != MAZE_CHECK_SAVED) && !(NetSock)
+	.IF (MazeCheck != MAZE_CHECK_SAVED) && !(NetSock) && (MazeLayer != 63)
 		invoke glTranslate3fv, ADDR MazeCheckPos
 		invoke glTranslatef, f(1), 0, f(4)
 		invoke glRotatef, f(180), 0, f(1), 0
@@ -729,22 +953,22 @@ Maze_DrawCheck PROC EXPORT
 	ret
 Maze_DrawCheck ENDP
 
-Maze_DrawDoor PROC EXPORT Rotation:REAL4, EndDoor:BPBool
+Maze_DrawDoor PROC EXPORT Openness:REAL4, Elevator:DWORD
 	invoke glBindTexture, GL_TEXTURE_2D, TexDoor
 	invoke glCallList, MdlDoorFrame
 	
 	call glPushMatrix
-	.IF (MazeElevator) && (EndDoor)
-		invoke glBindTexture, GL_TEXTURE_2D, TexDoorLift
+	.IF (Elevator)
+		invoke glBindTexture, GL_TEXTURE_2D, Elevator
 		invoke glCallList, MdlButton
 		
-		mov eax, MazeElevatorPos
+		mov eax, Openness
 		or eax, FLT_NEG
 		invoke glTranslatef, eax, 0, 0
 		invoke glCallList, MdlDoorLift
 		call glPopMatrix
 		call glPushMatrix
-		fld MazeElevatorPos
+		fld Openness
 		fadd f(2)
 		sub psp, SIZEOF BPPtr
 		fstp REAL4 PTR [psp]
@@ -754,8 +978,8 @@ Maze_DrawDoor PROC EXPORT Rotation:REAL4, EndDoor:BPBool
 		invoke glCallList, MdlDoorLift
 	.ELSE
 		invoke glTranslatef, f(0.65), 0, 0
-		.IF (Rotation)
-			invoke glRotatef, Rotation, 0, f(1), 0
+		.IF (Openness)
+			invoke glRotatef, Openness, 0, f(1), 0
 		.ENDIF
 		invoke glCallList, MdlDoor
 	.ENDIF
@@ -921,7 +1145,7 @@ Maze_DrawLayout PROC EXPORT
 				and al, MAZE_CELL_PROPS
 				.IF (MazeState != MAZE_STATE_TRENCH)
 					.IF (al == MAZE_PROP_ARCH) || (al == MAZE_PROP_TABURETKA) \
-					|| (al == MAZE_PROP_LAMP)
+					|| (al == MAZE_PROP_LAMP) || (al == MAZE_PROP_MOSS)
 						invoke glTranslatef, f(1), 0, f(1)
 					.ENDIF
 				.ENDIF
@@ -958,6 +1182,17 @@ Maze_DrawLayout PROC EXPORT
 						invoke glBindTexture, GL_TEXTURE_2D, TexPipe
 						invoke glCallList, MdlPipe
 					.ENDIF
+				.ELSEIF (al == MAZE_PROP_MOSS)
+					invoke glEnable, GL_ALPHA_TEST
+					.IF (MazeLayer < 21)
+						invoke glBindTexture, GL_TEXTURE_2D, TexRoofDust
+					.ELSEIF (MazeLayer < 42)
+						invoke glBindTexture, GL_TEXTURE_2D, TexRoofWeb
+					.ELSE
+						invoke glBindTexture, GL_TEXTURE_2D, TexMoss
+					.ENDIF
+					invoke glCallList, MdlMoss
+					invoke glDisable, GL_ALPHA_TEST
 				.ELSEIF (al == MAZE_PROP_ARCH)
 					.IF (MazeState == MAZE_STATE_TRENCH)
 						invoke glBindTexture, GL_TEXTURE_2D, TexPlanks
@@ -1048,7 +1283,11 @@ Maze_DrawLayout PROC EXPORT
 						call glPushMatrix	; Draw exit door
 						invoke glTranslatef, 0, 0, f(2)
 						invoke glCallList, MdlDoorwayM
-						invoke Maze_DrawDoor, MazeDoorRot, TRUE
+						.IF (MazeElevator)
+							invoke Maze_DrawDoor, MazeElevatorPos, TexDoorLift
+						.ELSE
+							invoke Maze_DrawDoor, MazeDoorRot, 0
+						.ENDIF
 						.IF (MazeLocked)
 							invoke glCallList, MdlDoorFrameLock
 							.IF (MazeLocked == MAZE_LOCK_LOCKED) || \
@@ -1217,7 +1456,8 @@ Maze_Finish PROC EXPORT
 	.IF (MazeAmb == OFFSET SndAmb[8])
 		push pax
 		fild MazeLayer
-		fmul f(0.01)
+		fmul f(0.03)
+		fsub f(1)
 		sub psp, SIZEOF BPPtr
 		fstp REAL4 PTR [psp]
 		mov eax, REAL4 PTR [psp]
@@ -1615,13 +1855,34 @@ Maze_GetRandomPos PROC EXPORT PosPtr:BPPtr, Occupy:BPBool
 	xor pbx, pbx
 	mazeRandPosLoop:
 	; Some weird shit is going on here
-	;print "Maze_GetRandomPos "
+	IFDEF MAZE_RANDOMPOS_EXCLUDE_EDGES
 	mov pos.X, rv(IntRandRLocal, 1, MazeSize[8], OFFSET MazeSeed)
-	;print str$(pos.X), 9
 	mov pos.Y, rv(IntRandRLocal, 1, MazeSize[12], OFFSET MazeSeed)
+	ELSE
+	mov pos.X, rv(IntRandRLocal, 0, MazeSize[0], OFFSET MazeSeed)
+	mov pos.Y, rv(IntRandRLocal, 0, MazeSize[4], OFFSET MazeSeed)
+	ENDIF
+	;print "Maze_GetRandomPos "
+	;print str$(pos.X), 9
 	;print str$(pos.Y), 13, 10
 	invoke Maze_GetCellI, pos.X, pos.Y
-	.IF (al & MAZE_CELL_VISITED) && (pbx < MazeRandPosMax)
+	IFDEF MAZE_RANDOMPOS_EXCLUDE_EDGES
+		.IF (al & MAZE_CELL_VISITED) && (pbx < MazeRandPosMax)
+			mov eax, TRUE
+		.ELSE
+			xor eax, eax
+		.ENDIF
+	ELSE
+		mov edx, MazeByteSize
+		dec edx
+		.IF ((al & MAZE_CELL_VISITED) || (ecx == MazeEntranceCell) || \
+		(ecx == edx)) && (pbx < MazeRandPosMax)
+			mov eax, TRUE
+		.ELSE
+			xor eax, eax
+		.ENDIF
+	ENDIF
+	.IF (eax)
 		;print ubyte$(al), 13, 10
 		inc pbx
 		jmp mazeRandPosLoop
@@ -1702,12 +1963,12 @@ Maze_OrCellI PROC EXPORT X:SDWORD, Y:SDWORD, Val:BYTE
 	ret
 Maze_OrCellI ENDP
 
-Maze_PlrVisible PROC EXPORT PosPtr:BPPtr
+Maze_PlrVisible PROC EXPORT PosPtr:BPPtr, MinDist:REAL4
 	LOCAL retVal:BPPtr, flVal:REAL4, flVal1:REAL4
 	
 	mov retVal, FALSE
 	mov flVal, vrv(Vector32DDistanceSqr, PosPtr, OFFSET CamPos)
-	fcmp flVal, f(9)
+	fcmp flVal, MinDist
 	.IF (Carry?)
 		mov retVal, TRUE
 	.ELSE
@@ -1719,7 +1980,7 @@ Maze_PlrVisible PROC EXPORT PosPtr:BPPtr
 			; eax = if visible raycast
 			mov eax, MdlWallSlit
 			.IF (MazeCurWallMDL != eax)
-				vinvoke Maze_Raycast, OFFSET CamPos, PosPtr
+				vinvoke Maze_Raycast, OFFSET CamPos, PosPtr, FALSE
 			.ELSE
 				xor eax, eax
 			.ENDIF
@@ -1735,6 +1996,59 @@ Maze_PlrVisible PROC EXPORT PosPtr:BPPtr
 	mov pax, retVal
 	ret
 Maze_PlrVisible ENDP
+
+Maze_PlrVisibleGlobal PROC EXPORT PosPtr:BPPtr, MinDist:REAL4
+	LOCAL retVal:BPPtr, dot:Vector3, fwd:Vector3
+	
+	.IF (NetSock)
+		mov retVal, FALSE
+		push pbx
+		xor pbx, pbx
+		.WHILE (pbx < SIZEOF NetPlayers)
+			.IF (NetPlayers[pbx].PlayerID != -1) \
+			&& (NetPlayersVL[pbx].Visible & NET_VISIBLE_GLOBAL)
+				invoke Vector32DDistanceSqr, PosPtr, \
+				ADDR NetPlayersV[pbx].Position
+				mov dot.X, eax
+				fcmp dot.X, MinDist
+				.IF (Carry?)
+					mov retVal, TRUE
+				.ELSE
+					fld FogEndDistSqr
+					fmul f(0.8)
+					fstp dot.Y
+					fcmp dot.X, dot.Y
+					.IF (Carry?)
+						; eax = if visible raycast
+						mov eax, MdlWallSlit
+						.IF (MazeCurWallMDL != eax)
+							vinvoke Maze_Raycast, \
+							ADDR NetPlayersV[pbx].Position, PosPtr, FALSE
+						.ELSE
+							xor eax, eax
+						.ENDIF
+						.IF !(eax)
+							invoke Net_PlayerDot, PosPtr
+							fcmp eax, f(0.1)
+							.IF (!Carry?)
+								mov retVal, TRUE
+							.ENDIF
+						.ENDIF
+					.ENDIF
+				.ENDIF
+				.IF (retVal)
+					.BREAK
+				.ENDIF
+			.ENDIF
+			add pbx, SIZEOF NetPlayerLocal
+		.ENDW
+		pop pbx
+		mov pax, retVal
+	.ELSE
+		invoke Maze_PlrVisible, PosPtr, MinDist
+	.ENDIF
+	ret
+Maze_PlrVisibleGlobal ENDP
 
 Maze_ProcessState PROC EXPORT
 	LOCAL flVal:REAL4, v3Val:Vector3
@@ -1864,45 +2178,12 @@ Maze_ProcessState PROC EXPORT
 		fstp MazeTrenchTimer
 		
 		.IF (MazeTrenchTimer & FLT_NEG)
-			mov ClearBuffers, TRUE
-			
-			mov MazeState, MAZE_STATE_GAME
-			
-			invoke glClearColor4fv, ADDR clBlack
-			invoke glFogfv, GL_FOG_COLOR, ADDR clBlack
-			invoke alSourceStop, SndAmbT
-			mov pax, MazeAmb
-			invoke alSourcePlay, DWORD PTR [pax]
-			
-			invoke alSourcef, SndCrumble, AL_PITCH, f(1)
-			invoke alSourcef, SndWmblykB, AL_PITCH, f(1)
-			invoke alSourcef, SndWBBK, AL_PITCH, f(1)
-			invoke SndSetGain, ADDR SndCrumble, f(1)
-			invoke SndSetGain, ADDR SndWmblykB, f(1)
-			;invoke SndSetGain, ADDR SndWBBK, f(1)
-			invoke alSourcef, SndWBBK, AL_ROLLOFF_FACTOR, f(10)
-			invoke alSourceStop, SndCrumble
-			invoke alSourceStop, SndWmblykB
-			invoke alSourceStop, SndWBBK
-			
-			mov UIFade, UI_FADE_IN
-			mov UIFadeCallback, 0
-			mov UIFadeVal, FLT_1
-			mov UIFadeDisp, FLT_1
-			
-			bpMEM32 CamBaseFOV, f(75)
-			bpMEM32 CamRotSmooth, f(16)
-			bpMEM32 PlrStepPitch, f(1)
-			bpMEM32 PlrStepPtr, OFFSET SndStep
-			bpMEM32 FogDensity, MazeFog
-			
-			mov MazeVasP, FALSE
-			
 			call Maze_SpawnElements
 			call Maze_SpawnEntities
-			vinvoke UI_ShowSubtitles, StrCCTrench, UISubDur
-			
+	
 			invoke alSourcePlay, SndMistake
+			vinvoke UI_ShowSubtitles, StrCCTrench, UISubDur
+			call Maze_ResetTrench
 		.ENDIF
 	.ELSEIF (MazeState == MAZE_STATE_LOBBY_CREAK)
 		bpMEM32 MazeStateTimer, f(4)
@@ -1938,6 +2219,168 @@ Maze_ProcessState PROC EXPORT
 				mov MazeStateCallback, 0
 			.ENDIF
 		.ENDIF
+	.ELSEIF (MazeState == MAZE_STATE_CROA)
+		.IF !(MazeCroa)
+			; Setup
+			mov MazeCroa, 1
+			invoke Vector3Set, ADDR MazeCroaLight, 0, f(-8), f(-5)
+			bpMEM32 MazeCroaTimer, f(1)
+			invoke Vector3Set, ADDR MazeCroaPos, 0, 0, f(4)
+			invoke Vector3Copy, ADDR MazeCroaColor, ADDR Vector3Zero
+			
+			vinvoke Plr_Teleport, 0, 0
+			vinvoke Vector2Set, OFFSET CamRot, 0, 0
+			
+			invoke glLightf, GL_LIGHT0, GL_CONSTANT_ATTENUATION, f(0.1)
+			invoke glLightf, GL_LIGHT0, GL_QUADRATIC_ATTENUATION, f(0.01)
+			
+			mov MazeDoorRot, 0
+		.ENDIF
+		
+		IFDEF MODE_DEBUG
+		.IF (Keys[VK_RETURN])
+			invoke alSourceStop, SndMus[16]
+			mov MazeCroa, 5
+			mov UIWhiteFadeVal, FLT_1
+			mov MazeCroaTimer, FLT_NEG
+		.ENDIF
+		ENDIF
+		
+		vinvoke Vector3Copy, OFFSET CamLightPos, OFFSET MazeCroaLight
+		
+		fld MazeCroaTimer
+		fsub deltaTime
+		fstp MazeCroaTimer
+		.IF (MazeCroaTimer & FLT_NEG)
+			.IF (MazeCroa == 1)
+				invoke alSourcef, SndAlarm, AL_PITCH, f(0.3)
+				invoke SndSetGain, ADDR SndAlarm, f(0.3)
+				invoke alSourcePlay, SndAlarm
+				bpMEM32 MazeCroaTimer, f(6)
+				mov MazeCroa, 2
+			.ELSEIF (MazeCroa == 2)
+				mov UISubPlayMode, UI_CC_START_END
+				mov UISubPlaySnd, 0
+				invoke alSourcePlay, SndMus[16]
+				vinvoke UI_PlaySubtitles, \
+				OFFSET MazeCroaSpeak, SIZEOF MazeCroaSpeak/8, OFFSET StrCCCroa1
+				bpMEM32 MazeCroaTimer, f(38.6)
+				mov MazeCroa, 3
+			.ELSEIF (MazeCroa == 3)
+				bpMEM32 MazeCroaTimer, f(2.4)
+				mov MazeCroa, 4
+			.ELSEIF (MazeCroa == 4)
+				bpMEM32 MazeCroaTimer, f(1)
+				mov MazeCroa, 5
+			.ELSEIF (MazeCroa == 5)
+				call Plr_Reset
+				bpMEM32 CamBaseFOV, f(140)
+				mov PlrCanControl, TRUE
+				mov UIWhiteFade, UI_FADE_IN
+				mov MazeState, MAZE_STATE_BORDER
+				invoke alSourceStop, SndAlarm
+				vinvoke Plr_Teleport, f(1), f(-1)
+			.ENDIF
+		.ENDIF
+		
+		.IF (MazeCroa == 2)
+			mov MazeCroaPos.Z, rv(flLerp, MazeCroaPos.Z, f(0.8), deltaTime)
+			mov MazeCroaLight.Y, rv(flLerp, MazeCroaLight.Y, f(0), deltaTime)
+			mov MazeCroaLight.Z, rv(flLerp, MazeCroaLight.Z, f(-2), deltaTime)
+		;.ELSEIF (MazeCroa == 3)
+			;   Produces no visible change because the legacy OpenGL lighting
+			; system sucks ass
+			
+			;mov MazeCroaColor.X, rv(flLerp, MazeCroaColor.X, f(1), deltaTime)
+			;fld MazeCroaColor.X
+			;fmul f(0.75)
+			;fst MazeCroaColor.Y
+			;fmul f(0.75)
+			;fstp MazeCroaColor.Z
+			;invoke glLightModelfv, GL_LIGHT_MODEL_AMBIENT, ADDR MazeCroaColor
+			;invoke glLightf, GL_LIGHT0, GL_AMBIENT, ADDR MazeCroaColor
+		.ELSEIF (MazeCroa == 4) || (MazeCroa == 5)
+			fld deltaTime
+			fmul f(0.5)
+			fstp flVal
+			mov MazeCroaPos.Z, rv(flLerp, MazeCroaPos.Z, f(2), flVal)
+			mov MazeCroaLight.Z, rv(flLerp, MazeCroaLight.Z, f(-5), deltaTime)
+			
+			.IF (MazeCroa == 5)
+				fld UIWhiteFadeVal
+				fadd deltaTime
+				fstp UIWhiteFadeVal
+			.ENDIF
+		.ENDIF
+	.ELSEIF (MazeState == MAZE_STATE_BORDER)
+		mov CamBaseFOV, vrv(flLerp, CamBaseFOV, f(75), deltaTime)
+		
+		fld deltaTime
+		fmul f(0.03)
+		fadd MazeCroaTimer
+		fstp MazeCroaTimer
+		mov MazeCroaTimer, rv(flAngle, MazeCroaTimer)
+		
+		fld MazeCroaColor.Y
+		fadd deltaTime
+		fst MazeCroaColor.Y
+		fsin
+		fadd f(4)
+		fmul f(0.33333333)
+		fstp MazeCroaColor.X
+		mov MazeCroaColor.Y, rv(flAngle, MazeCroaColor.Y)
+		
+		invoke Vector32DSet, ADDR v3Val, f(1), f(-3)
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(8.7), f(2.7)
+		invoke Vector32DSet, ADDR v3Val, f(-1), f(-1)
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(2.7), f(2.7)
+		bpMEM32 v3Val.X, f(3)
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(2.7), f(2.7)
+		invoke Vector32DSet, ADDR v3Val, 0, f(0.5)
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(1.7), f(2.1)
+		bpMEM32 v3Val.X, f(2)
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(1.7), f(2.1)
+		
+		fcmp CamPos.Z, f(0.4)
+		.IF (!Carry?)
+			.IF (PlrCanControl)
+				mov PlrCanControl, FALSE
+			.ENDIF
+			
+			fld deltaTime
+			fmul f(-5)
+			fmul CamPos.Z
+			fadd CamPos.Y
+			fstp CamPos.Y
+			fld CamPos.Z
+			fadd delta2
+			fstp CamPos.Z
+			
+			fld deltaTime
+			fmul f(0.5)
+			fadd UIFadeVal
+			fstp UIFadeVal
+			
+			fcmp UIFadeVal, f(1)
+			.IF (!Carry?)
+				mov MazeState, MAZE_STATE_END
+				mov PlrState, PLAYER_STATE_INTRO_TEXT3
+				or GameComplete, GAME_COMPLETE_CROA
+				vinvoke Settings_SaveEnum, OFFSET SettingsRegComplete, \
+				OFFSET GameComplete
+			.ENDIF
+		.ENDIF
+		
+		;fld CamRotL.X
+		;fadd PIHalf
+		;fmul f(0.318)
+		;fmul MazeCroaColor.X
+		;fstp flVal
+		
+		;invoke Vector3Copy, ADDR v3Val, ADDR clSky
+		;invoke Vector3Lerp, ADDR v3Val, ADDR clBlack, flVal
+		;invoke glFogfv, GL_FOG_COLOR, ADDR v3Val
+		
 	.ENDIF
 		
 	.IF (MazeStateTimer)
@@ -2130,7 +2573,7 @@ Maze_Progress PROC EXPORT
 Maze_Progress ENDP
 
 ;	Returns true if ray hits maze wall
-Maze_Raycast PROC EXPORT Pos:BPPtr, PosTarget:BPPtr
+Maze_Raycast PROC EXPORT Pos:BPPtr, PosTarget:BPPtr, Passable:BPBool
 	LOCAL dir:Vector2, cellPos:Vector2, fracPos:Vector2, maxTravel:Vector2
 	LOCAL destCell:Vector2
 	
@@ -2226,7 +2669,13 @@ Maze_Raycast PROC EXPORT Pos:BPPtr, PosTarget:BPPtr
 			; Test for vertical wall
 			mov dl, al
 			and dl, MAZE_CELL_PROPS
-			.IF !(al & MAZE_CELL_PASSLEFT) && (dl != MAZE_PROP_WINDOW)
+			.IF !(Passable) && (dl == MAZE_PROP_WINDOW)
+				xor dl, dl
+			.ELSE
+				mov dl, TRUE
+			.ENDIF
+			
+			.IF !(al & MAZE_CELL_PASSLEFT) && (dl)
 				mov pax, TRUE
 				.BREAK
 			.ENDIF
@@ -2262,7 +2711,13 @@ Maze_Raycast PROC EXPORT Pos:BPPtr, PosTarget:BPPtr
 			; Test for horizontal wall
 			mov dl, al
 			and dl, MAZE_CELL_PROPS
-			.IF !(al & MAZE_CELL_PASSTOP) && (dl != MAZE_PROP_WINDOW)
+			.IF !(Passable) && (dl == MAZE_PROP_WINDOW)
+				xor dl, dl
+			.ELSE
+				mov dl, TRUE
+			.ENDIF
+			
+			.IF !(al & MAZE_CELL_PASSTOP) && (dl)
 				mov pax, TRUE
 				.BREAK
 			.ENDIF
@@ -2294,6 +2749,7 @@ Maze_ResetElements PROC EXPORT
 	mov PlrGlyphsInMaze, 0
 	and PlrItems, not MAZE_ITEM_MAP
 	
+	mov MazeAirlocks, 0
 	mov MazeChangesPtr, 0
 	mov MazeCheck, MAZE_CHECK_NONE
 	mov MazeCrevice, 0
@@ -2313,8 +2769,13 @@ Maze_ResetElements PROC EXPORT
 			invoke glClearColor4fv, ADDR clBlack
 			invoke glFogfv, GL_FOG_COLOR, ADDR clBlack
 		.ENDIF
+	.ELSEIF (MazeState == MAZE_STATE_TRENCH)
+		call Maze_ResetTrench
 	.ENDIF
 	mov MazeTeleport, FALSE
+	
+	; Reset maze objects
+	mov MazeObjectsSize, 0
 	
 	invoke alSourceStop, SndRain
 	invoke alSourcef, SndSave, AL_PITCH, FLT_1
@@ -2347,6 +2808,7 @@ Maze_ResetEntities PROC EXPORT
 	vinvoke HBD_Spawn, HBD_NONE
 	vinvoke HDL_Spawn, HDL_NONE
 	vinvoke Kubale_Spawn, KUBALE_NONE
+	vinvoke Shilbrik_Spawn, SHILBRIK_NONE
 	mov MazeShn, FALSE
 	invoke alSourceStop, SndAlarm
 	mov Vebra, VEBRA_NONE
@@ -2355,6 +2817,43 @@ Maze_ResetEntities PROC EXPORT
 	vinvoke Wmblyk_Spawn, WMBLYK_NONE
 	ret
 Maze_ResetEntities ENDP
+
+Maze_ResetTrench PROC EXPORT
+	mov ClearBuffers, TRUE
+			
+	mov MazeState, MAZE_STATE_GAME
+	
+	invoke glClearColor4fv, ADDR clBlack
+	invoke glFogfv, GL_FOG_COLOR, ADDR clBlack
+	invoke alSourceStop, SndAmbT
+	mov pax, MazeAmb
+	invoke alSourcePlay, DWORD PTR [pax]
+	
+	invoke alSourcef, SndCrumble, AL_PITCH, f(1)
+	invoke alSourcef, SndWmblykB, AL_PITCH, f(1)
+	invoke alSourcef, SndWBBK, AL_PITCH, f(1)
+	invoke SndSetGain, ADDR SndCrumble, f(1)
+	invoke SndSetGain, ADDR SndWmblykB, f(1)
+	;invoke SndSetGain, ADDR SndWBBK, f(1)
+	invoke alSourcef, SndWBBK, AL_ROLLOFF_FACTOR, f(10)
+	invoke alSourceStop, SndCrumble
+	invoke alSourceStop, SndWmblykB
+	invoke alSourceStop, SndWBBK
+	
+	mov UIFade, UI_FADE_IN
+	mov UIFadeCallback, 0
+	mov UIFadeVal, FLT_1
+	mov UIFadeDisp, FLT_1
+	
+	bpMEM32 CamBaseFOV, f(75)
+	bpMEM32 CamRotSmooth, f(16)
+	bpMEM32 PlrStepPitch, f(1)
+	bpMEM32 PlrStepPtr, OFFSET SndStep
+	bpMEM32 FogDensity, MazeFog
+	
+	mov MazeVasP, FALSE
+	ret
+Maze_ResetTrench ENDP
 
 Maze_SetCellPublicI PROC EXPORT X:SDWORD, Y:SDWORD, Val:BYTE
 	Maze_ClampXYI
@@ -2393,6 +2892,122 @@ Maze_SetPropI PROC EXPORT X:SDWORD, Y:SDWORD, Prop:BYTE, Rotated:BPBool
 	ret
 Maze_SetPropI ENDP
 
+Maze_Solve PROC EXPORT Stack:BPPtr, StackSize:BPPtr, Map:BPPtr, CellFrom:BPPtr,\
+CellTo:BPPtr, Fat:BPEnum
+	LOCAL pos:Vector2, delta:Vector3
+	
+	invoke HSClear, Stack
+	
+	; Clear visit flags
+	push pbx
+	xor pbx, pbx
+	mov pcx, Map
+	.WHILE (pbx < MazeByteSize)
+		mov BYTE PTR [pcx+pbx], 0
+		inc pbx
+	.ENDW
+	pop pbx
+	
+	invoke Vector2Copy, ADDR pos, CellFrom
+	.WHILE (TRUE)
+		;print str$(pos.X), 9
+		;print str$(pos.Y), 13, 10
+		;invoke Maze_GetCellI, pos.X, pos.Y
+		invoke bp2DArrayGetOffset, pos.X, pos.Y, MazeSize[0], 1
+		add pax, Map
+		mov BYTE PTR [pax], 1	; Visited
+		
+		.IF (pos.Y > 0)
+			; Y - 1
+			invoke Maze_CanPass, pos.X, pos.Y, MAZE_FREE_UP, Fat
+			add pcx, Map
+			sub pcx, MazeSize[0]
+			.IF (pax) && !(BYTE PTR [pcx])
+				invoke Vector2Set, ADDR delta, 0, -1
+				jmp solveMove
+			.ENDIF
+		.ENDIF
+		.IF (pos.X > 0)
+			; X - 1
+			invoke Maze_CanPass, pos.X, pos.Y, MAZE_FREE_LEFT, Fat
+			add pcx, Map
+			dec pcx
+			.IF (pax) && !(BYTE PTR [pcx])
+				invoke Vector2Set, ADDR delta, -1, 0
+				jmp solveMove
+			.ENDIF
+		.ENDIF
+		mov eax, MazeSize[12]
+		.IF (pos.Y < eax)
+			; Y + 1
+			invoke Maze_CanPass, pos.X, pos.Y, MAZE_FREE_DOWN, Fat
+			add pcx, Map
+			.IF (pax) && !(BYTE PTR [pcx])
+				invoke Vector2Set, ADDR delta, 0, 1
+				jmp solveMove
+			.ENDIF
+		.ENDIF
+		mov eax, MazeSize[8]
+		.IF (pos.X < eax)
+			; X + 1
+			invoke Maze_CanPass, pos.X, pos.Y, MAZE_FREE_RIGHT, Fat
+			add pcx, Map
+			.IF (pax) && !(BYTE PTR [pcx])
+				invoke Vector2Set, ADDR delta, 1, 0
+				jmp solveMove
+			.ENDIF
+		.ENDIF
+		
+		mov pax, Stack		; Nothing more to pop
+		.IF (BPPtr PTR [pax] <= (SIZEOF BPPtr*2))
+			print "No way found.", 13, 10
+			xor pax, pax
+			ret
+		.ENDIF
+		
+		;print "Going back", 13, 10
+		mov pos.Y, rv(HSPop, Stack)	; Step back
+		mov pos.X, rv(HSPop, Stack)
+		.CONTINUE
+		
+		solveMove:
+		;print "DELTA: "
+		;print str$(delta.X), 9
+		;print str$(delta.Y), 13, 10
+		
+		mov pax, Stack
+		mov ecx, StackSize
+		dec ecx	; -2 + 1
+		shl ecx, BPPtrShift	;	*4
+		.IF (BPPtr PTR [pax] < ecx)
+			;print str$(ecx), " STACK LIMIT (if less then add also -2)", 13, 10
+			invoke HSPush, Stack, pos.X
+			invoke HSPush, Stack, pos.Y
+		.ELSE
+			print "PUSH LIMIT REACHED", 13, 10
+			xor pax, pax
+			ret
+		.ENDIF
+		
+		mov eax, delta.X
+		add pos.X, eax
+		mov eax, delta.Y
+		add pos.Y, eax
+		
+		mov eax, pos.X
+		mov ecx, pos.Y
+		mov pdx, CellTo
+		.IF (eax == DWORD PTR [pdx]) && (ecx == DWORD PTR [pdx+4])
+			invoke HSPush, Stack, pos.X
+			invoke HSPush, Stack, pos.Y
+			print "Found path to pos.", 13, 10
+			.BREAK
+		.ENDIF
+	.ENDW
+	mov pax, TRUE
+	ret
+Maze_Solve ENDP
+
 Maze_SpawnCheck PROC EXPORT
 	print "Spawning checkpoint", 13, 10
 	mov MazeMotrya, 0
@@ -2417,7 +3032,7 @@ Maze_SpawnCheck PROC EXPORT
 Maze_SpawnCheck ENDP
 
 Maze_SpawnElements PROC EXPORT
-	LOCAL bounds:Vector4, posY:DWORD, typeVal:DWORD
+	LOCAL bounds:Vector4, v3Val:Vector3, posY:DWORD, typeVal:DWORD
 	print "Spawning Maze elements with seed "
 	print str$(MazeSeed), 13, 10
 	
@@ -2480,6 +3095,157 @@ Maze_SpawnElements PROC EXPORT
 		print " to "
 		print str$(bounds.Z), ',', 32
 		print str$(bounds.W), 13, 10
+		
+		dec bounds.Z
+		dec bounds.W
+		
+		; Furnish
+		; Find place for couch by the worst fucking code imaginable
+		mov ebx, bounds.X
+		.WHILE (ebx <= bounds.Z)
+			mov edx, bounds.Y
+			.WHILE (edx <= bounds.W)
+				.IF (ebx == bounds.X) || (edx == bounds.Y) || \
+				(ebx == bounds.Z) || (edx == bounds.W)
+					mov posY, edx
+					
+					; Check patterns for couch
+					.DATA
+						mazeCouchPattern0	BYTE 3, 2, \
+						255, 10b, 10b, \
+						01b, 11b, 11b
+						mazeCouchPattern90	BYTE 2, 3, \
+						255, 10b, \
+						01b, 11b, \
+						01b, 11b
+						mazeCouchPattern180	BYTE 3, 2, \
+						11b, 11b, 11b, \
+						10b, 10b, 10b
+						mazeCouchPattern270	BYTE 2, 3, \
+						11b, 255, \
+						11b, 01b, \
+						11b, 255
+					.CODE
+					; typeVal will be rotation
+					mov typeVal, 0
+					mov eax, ebx
+					dec eax
+					invoke Maze_CheckPattern, OFFSET mazeCouchPattern0, eax,posY
+					.IF !(pax)
+						bpMEM32 typeVal, PIHalf
+						mov eax, posY
+						dec eax
+						invoke Maze_CheckPattern, OFFSET mazeCouchPattern90, \
+						ebx, eax
+						.IF !(pax)
+							bpMEM32 typeVal, PI
+							mov eax, ebx
+							dec eax
+							invoke Maze_CheckPattern, \
+							OFFSET mazeCouchPattern180, eax, posY
+							.IF !(pax)
+								bpMEM32 typeVal, PIHalfN
+								mov eax, posY
+								dec eax
+								invoke Maze_CheckPattern, \
+								OFFSET mazeCouchPattern270, ebx, eax
+							.ENDIF
+						.ENDIF
+					.ENDIF
+					
+					.IF (pax)
+						invoke Vector32DSet, ADDR v3Val, 0, f(-0.3)
+						invoke Rotate2DPoint, ADDR v3Val, typeVal, FALSE
+						Vector32DPush bounds
+						invoke Vector3Set, ADDR bounds, ebx, 0, posY
+						shl bounds.X, 1
+						inc bounds.X
+						mov bounds.Y, 0
+						shl bounds.Z, 1
+						inc bounds.Z
+						invoke Vector32DF, ADDR bounds
+						invoke Vector32DAdd, ADDR bounds, ADDR v3Val
+						
+						invoke Maze_AddObject, MdlCouch, TexCouch, \
+						ADDR bounds, typeVal
+						print "spawned a fuggin couch at "
+						print str$(ebx), 32
+						print str$(posY), 9
+						Vector32DPrint bounds
+						print real4$(typeVal), 13, 10
+						invoke Maze_SetPropI, ebx, posY, \
+						MAZE_PROP_IMPASSABLE, 0
+						or BYTE PTR [pax], MAZE_CELL_VISITED	; block
+						Vector32DPop bounds
+						jmp mazeSpawnElementsCouchEnd
+					.ENDIF
+					
+					mov edx, posY
+				.ENDIF
+				inc edx
+			.ENDW
+			inc ebx
+		.ENDW
+		mazeSpawnElementsCouchEnd:
+		
+		; You know what would be funny? If we did it again
+		mov ebx, bounds.X
+		.WHILE (ebx <= bounds.Z)
+			mov edx, bounds.Y
+			.WHILE (edx <= bounds.W)
+				mov posY, edx
+				
+				; Check patterns for carpet
+				.DATA
+					mazeCarpetPattern0	BYTE 2, 1, \
+					255, 11b
+					mazeCarpetPattern90	BYTE 1, 2, \
+					255, \
+					11b
+				.CODE
+				; typeVal will be rotation
+				mov typeVal, 0
+				mov eax, ebx
+				dec eax
+				invoke Maze_CheckPattern, OFFSET mazeCarpetPattern0, eax,posY
+				.IF !(pax)
+					bpMEM32 typeVal, PIHalf
+					mov eax, posY
+					dec eax
+					invoke Maze_CheckPattern, OFFSET mazeCarpetPattern90, \
+					ebx, eax
+				.ENDIF
+				
+				.IF (pax)
+					invoke Vector32DSet, ADDR v3Val, f(2), f(1)
+					invoke Rotate2DPoint, ADDR v3Val, typeVal, FALSE
+					Vector32DPush bounds
+					invoke Vector3Set, ADDR bounds, ebx, 0, posY
+					shl bounds.X, 1
+					;inc bounds.X
+					mov bounds.Y, 0
+					shl bounds.Z, 1
+					;inc bounds.Z
+					invoke Vector32DF, ADDR bounds
+					invoke Vector32DAdd, ADDR bounds, ADDR v3Val
+					
+					invoke Maze_AddObject, MdlCarpet, TexCarpet, \
+					ADDR bounds, typeVal
+					print "spawned a fuggin carpet at "
+					print str$(ebx), 32
+					print str$(posY), 9
+					Vector32DPrint bounds
+					print real4$(typeVal), 13, 10
+					Vector32DPop bounds
+					jmp mazeSpawnElementsCarpetEnd
+				.ENDIF
+				
+				mov edx, posY
+				inc edx
+			.ENDW
+			inc ebx
+		.ENDW
+		mazeSpawnElementsCarpetEnd:
 	.ENDIF
 	
 	; Props
@@ -2492,7 +3258,7 @@ Maze_SpawnElements PROC EXPORT
 			.CONTINUE
 		.ENDIF
 		
-		invoke nRandLocal, 4, ADDR MazeSeed
+		invoke nRandLocal, 3, ADDR MazeSeed
 		.IF !(al)	; Random props
 			; Maximum is exclusive
 			invoke IntRandRLocal, 1, 6, ADDR MazeSeed
@@ -2577,20 +3343,19 @@ Maze_SpawnElements PROC EXPORT
 			
 			mazeSpawnAdjacentSpawn:
 			
-			invoke IntRandRLocal, 14, 16, ADDR MazeSeed	; max exclusive
+			invoke IntRandRLocal, 13, 16, ADDR MazeSeed	; max exclusive
 			shl eax, MAZE_PROP_SHIFT
 			.IF (typeVal & 1000b)
-				mov dl, MAZE_CELL_PASSTOP
-			.ELSE
 				mov dl, MAZE_CELL_PASSLEFT
+			.ELSE
+				mov dl, MAZE_CELL_PASSTOP
 			.ENDIF
 			mov pcx, Maze
 			; I'm checking for pestilence
 			.IF (al == MAZE_PROP_DOORWAY) && (MazeLayer < 42)
 				.IF !(BYTE PTR [pcx+pbx] & dl)
 					; Foound oone
-					inc pbx
-					.CONTINUE
+					jmp mazeSpawnAdjacentSkip
 				.ENDIF
 			.ENDIF
 			
@@ -2603,6 +3368,113 @@ Maze_SpawnElements PROC EXPORT
 		.ENDIF
 		inc pbx
 	.ENDW
+	
+	; Airlocks
+	.IF (MazeLayer > 42)
+		xor pbx, pbx
+		.WHILE (pbx < MazeByteSize)
+			.IF !(rv(nRandLocal, 24/MAZE_AIRLOCKS_MAX, OFFSET MazeSeed))
+				invoke bp2DArrayGetPosition, pbx, MazeSize[0], 1
+				mov v3Val.X, edx
+				mov v3Val.Y, eax
+				
+				; Check if in adequate range
+				bpMPM v3Val.Z, MazeSize[12]
+				dec v3Val.Z
+				.IF !(rv(intInRange, pax, 1, v3Val.Z))
+					jmp mazeSpawnAirlockSkip
+				.ENDIF
+				mov pax, MazeSize[8]
+				dec pax
+				.IF !(rv(intInRange, pdx, 1, pax))
+					jmp mazeSpawnAirlockSkip
+				.ENDIF
+				
+				; Check pattern
+				.DATA
+					mazeAirlockPattern0		BYTE 2, 2, \
+					10b, 10b, \
+					10b, 255
+					mazeAirlockPattern90	BYTE 2, 2, \
+					01b, 01b, \
+					01b, 255
+				.CODE
+				invoke Maze_CheckPattern, OFFSET mazeAirlockPattern0, v3Val.X, \
+				v3Val.Y
+				.IF (pax)
+					mov typeVal, TRUE	; horizontal airlock
+					jmp mazeSpawnAirlockSpawn
+				.ENDIF
+				invoke Maze_CheckPattern, OFFSET mazeAirlockPattern90, v3Val.X, \
+				v3Val.Y
+				.IF (pax)
+					mov typeVal, FALSE
+					jmp mazeSpawnAirlockSpawn
+				.ENDIF
+				jmp mazeSpawnAirlockSkip
+				
+				mazeSpawnAirlockSpawn:
+				bpMEM32 bounds.X, v3Val.X
+				bpMEM32 bounds.Y, v3Val.Y
+				shl v3Val.X, 1
+				inc v3Val.X
+				shl v3Val.Y, 1
+				inc v3Val.Y
+				invoke Vector2F, ADDR v3Val
+				push pbx
+				xor pbx, pbx
+				.WHILE (pbx < MazeAirlocks)
+					mov pax, pbx
+					shl pax, 3
+					lea pcx, MazeAirlockPos[pax]
+					mov v3Val.Z, rv(Vector2DistanceSqr, pcx, ADDR v3Val)
+					print "DISTANCEEEEE "
+					print real4$(v3Val.Z), 13, 10
+					fcmp v3Val.Z, f(10)
+					.IF (Carry?)
+						pop pbx
+						jmp mazeSpawnAirlockSkip
+					.ENDIF
+					inc pbx
+				.ENDW
+				pop pbx
+				
+				mov pax, MazeAirlocks
+				pushad
+				print str$(pax), 13, 10
+				popad
+				.IF (typeVal)
+					mov MazeAirlockVertical[pax], FALSE
+				.ELSE
+					mov MazeAirlockVertical[pax], TRUE
+				.ENDIF
+				shl pax, 3
+				lea pcx, MazeAirlockPos[pax]
+				invoke Vector2Copy, pcx, ADDR v3Val
+				invoke Maze_SetPropI, bounds.X, bounds.Y, MAZE_PROP_IMPASSABLE,0
+				or BYTE PTR [pax], MAZE_CELL_VISITED
+				.IF (typeVal)
+					inc bounds.X
+				.ELSE
+					inc bounds.Y
+				.ENDIF
+				invoke Maze_SetPropI, bounds.X, bounds.Y, 0, 0
+				or BYTE PTR [pax], MAZE_CELL_VISITED
+				
+				inc MazeAirlocks
+				print "Spawned airlock at "
+				Vector2Print v3Val
+				.IF (typeVal)
+					print "HOR", 13, 10
+				.ENDIF
+				.IF (MazeAirlocks >= MAZE_AIRLOCKS_MAX)
+					.BREAK
+				.ENDIF
+			.ENDIF
+			mazeSpawnAirlockSkip:
+			inc pbx
+		.ENDW
+	.ENDIF
 	
 	; Crevice
 	.IF (rv(nRandLocal, 10, OFFSET MazeSeed) > 6) && (MazeLayer > 4)
@@ -2633,10 +3505,11 @@ Maze_SpawnElements PROC EXPORT
 		mov MazeHeight, FLT_1
 	.ENDIF
 		
-	; Start taburetka, random start pos and env var
+	; Start taburetka and tutorial wall, random start pos and env var
 	.IF (MazeLayer == 1)
 		mov MazeEntranceCell, 0
 		invoke Maze_SetPropI, 1, 0, MAZE_PROP_TABURETKA, 0
+		invoke Maze_SetPropI, 0, 1, 0, 0
 	.ELSE
 		invoke nRandLocal, 6, ADDR MazeSeed		; Random start pos
 		.IF !(al)
@@ -2688,6 +3561,9 @@ Maze_SpawnElements PROC EXPORT
 				CASE 1
 					bpMEM32 MazeCurWallMDL, MdlWallWainscot
 			ENDSW
+			
+			; Roof
+			bpMEM32 MazeCurRoof, TexRoof
 		.ELSEIF (MazeLayer > 21) && (MazeLayer <= 42)	; Moderate zone
 			bpMEM32 MazeCurArch, MdlArchRect
 			bpMEM32 MazeCurLamp, MdlLamp
@@ -2733,6 +3609,9 @@ Maze_SpawnElements PROC EXPORT
 				CASE 4
 					bpMEM32 MazeCurWallMDL, MdlWallSlant
 			ENDSW
+			
+			; Roof
+			bpMEM32 MazeCurRoof, TexConcreteRoof
 		.ELSEIF (MazeLayer > 42)						; Heavy zone
 			bpMEM32 MazeCurArch, MdlArchWood
 			bpMEM32 MazeCurLamp, MdlLampCase
@@ -2774,16 +3653,16 @@ Maze_SpawnElements PROC EXPORT
 				CASE 3
 					bpMEM32 MazeCurWallMDL, MdlWallSlant
 			ENDSW
+			
+			; Roof
+			bpMEM32 MazeCurRoof, TexMetalRoof
 		.ENDIF
-		invoke nRandLocal, 3, ADDR MazeSeed
-		SWITCH eax
-			CASE 0
-				bpMEM32 MazeCurRoof, TexRoof
-			CASE 1
-				bpMEM32 MazeCurRoof, TexMetalRoof
-			CASE 2
-				bpMEM32 MazeCurRoof, TexConcreteRoof
-		ENDSW
+	.ENDIF
+	.IF (MazeLayer == 63)
+		bpMEM32 MazeCurWall, TexWall
+		bpMEM32 MazeCurFloor, TexFloor
+		bpMEM32 MazeCurRoof, TexRoof
+		bpMEM32 MazeCurWallMDL, MdlWall
 	.ENDIF
 	
 	; Clean props on entrance & exit
@@ -2804,25 +3683,13 @@ Maze_SpawnElements PROC EXPORT
 			.ENDIF
 		.ENDIF
 		
-		; Plushies
-		.IF (GameComplete) && (MazeLayer > 6)
-			push MazeSeed
-			add MazeSeed, 13581
-			.IF !(rv(nRandLocal, 9, OFFSET MazeSeed))
-				invoke nRandLocal, SIZEOF MdlPl/4, OFFSET MazeSeed
-				inc al
-				; check if has
-				mov MazePlush, al
-				print "Spawned plushie "
-				print ubyte$(MazePlush), " at "
-				invoke Maze_GetRandomPos, ADDR MazePlushPos, FALSE
-				Vector32DPrint MazePlushPos
-			.ENDIF
-			pop MazeSeed
-		.ENDIF
-		
 		; Powerups
-		.IF (MazeLayer > rv(IntRandRLocal, 6, 63, OFFSET MazeSeed))
+		.IF (NetSock)
+			mov eax, 42
+		.ELSE
+			mov eax, 52
+		.ENDIF
+		.IF (MazeLayer > rv(IntRandRLocal, 6, eax, OFFSET MazeSeed))
 			print "Spawned powerup "
 			invoke nRandLocal, 4, OFFSET MazeSeed
 			inc al
@@ -2834,7 +3701,7 @@ Maze_SpawnElements PROC EXPORT
 		
 		; Elevator
 		.IF (MazeLayer != 42) && (MazeLayer != 63) && \
-		(rv(nRandLocal, MazeLayer, OFFSET MazeSeed) > 21)
+		(rv(nRandLocal, MazeLayer, OFFSET MazeSeed) > 24)
 			mov MazeElevator, MAZE_ELEVATOR
 			mov MazeElevatorPos, 0
 		.ENDIF
@@ -2901,6 +3768,24 @@ Maze_SpawnElements PROC EXPORT
 			Vector32DPrint MazeTeleportPos2
 			mov MazeTeleport, TRUE
 		.ENDIF
+	
+		
+		; Plushies, based on local game complete
+		.IF (GameComplete) && (MazeLayer > 6)
+			push MazeSeed
+			add MazeSeed, 13581
+			.IF !(rv(nRandLocal, 9, OFFSET MazeSeed))
+				invoke nRandLocal, SIZEOF MdlPl/4, OFFSET MazeSeed
+				inc al
+				; check if has
+				mov MazePlush, al
+				print "Spawned plushie "
+				print ubyte$(MazePlush), " at "
+				invoke Maze_GetRandomPos, ADDR MazePlushPos, FALSE
+				Vector32DPrint MazePlushPos
+			.ENDIF
+			pop MazeSeed
+		.ENDIF
 	.ENDIF
 		
 	SWITCH MazeLayer	; Notes
@@ -2959,6 +3844,12 @@ Maze_SpawnEntities PROC EXPORT
 		.ENDIF
 	.ENDIF
 	
+	; Shilbrik
+	.IF (MazeLayer > 21) && !(MazeCrevice) && \
+	(rv(nRandLocal, MazeLayer, OFFSET MazeSeed) > 16)
+		vinvoke Shilbrik_Spawn, SHILBRIK_PASSIVE
+	.ENDIF
+	
 	; Shnurpshik-Vasylko
 	.IF (MazeByteSize > 90) && !(MazeTram) && !(NetSock)
 		.IF !(rv(nRandLocal, 10, OFFSET MazeSeed))
@@ -3004,14 +3895,15 @@ Maze_SpawnEntities PROC EXPORT
 	
 	; Virdya
 	.IF (NetSock)
-		invoke IntRandRLocal, 6, 63, OFFSET MazeSeed
+		mov eax, 8
 	.ELSE
-		invoke IntRandRLocal, 12, 78, OFFSET MazeSeed
+		mov eax, 14
 	.ENDIF
-	.IF (MazeLayer > eax)
-		.IF (rv(nRandLocal, 3, OFFSET MazeSeed))
+	invoke IntRandRLocal, eax, 90, OFFSET MazeSeed
+	.IF (rv(intDistance, eax, MazeLayer) < 16)
+		;.IF (rv(nRandLocal, 4, OFFSET MazeSeed))
 			vinvoke Virdya_Spawn, VIRDYA_CHILL
-		.ENDIF
+		;.ENDIF
 	.ENDIF
 	
 	; Huenbergondel appears if nobody is present
@@ -3019,6 +3911,7 @@ Maze_SpawnEntities PROC EXPORT
 		print "Testing conditions for HBD", 13, 10
 		.IF (MazeType == MAZE_TYPE_SQUIGGLY)
 			.IF (rv(nRandLocal, 2, OFFSET MazeSeed))
+				mov MazeCrevice, FALSE
 				vinvoke HDL_Spawn, HDL_WANDER
 			.ENDIF
 		.ELSEIF (Wmblyk != WMBLYK_WALK) && (Wmblyk != WMBLYK_STILL)
@@ -3325,10 +4218,13 @@ Maze_Create PROC EXPORT
 	
 	mov KoluplykAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init Koluplyk animator
 	mov KoluplykAnimPlr.Mesh, OFFSET MeshKoluplyk
+	mov KoluplykAnimPlr.MeshUseNormals, TRUE
 	mov MotryaAnimPlr.FrameType, BPA_FRAME_VERTEX	; Init Motrya animator
 	mov MotryaAnimPlr.Mesh, OFFSET MeshMotrya
+	mov MotryaAnimPlr.MeshUseNormals, TRUE
 	mov VasAnimPlr.FrameType, BPA_FRAME_VERTEX		; Init Vasylko animator
 	mov VasAnimPlr.Mesh, OFFSET MeshVas
+	mov VasAnimPlr.MeshUseNormals, TRUE
 	bpMEM32 VasAnimPlr.Speed, f(2)
 	
 	mov MazeMotryaTimer, rv(flRandRange, MazeMotryaTimer[4], MazeMotryaTimer[8])
@@ -3336,7 +4232,7 @@ Maze_Create PROC EXPORT
 Maze_Create ENDP
 
 Maze_Draw PROC EXPORT
-	LOCAL flVal:REAL4
+	LOCAL flVal:REAL4, v3Val:Vector3
 	
 	.IF (Maze) && !(MazeGenerating)
 		.IF (MazeHeight != FLT_1)
@@ -3347,6 +4243,62 @@ Maze_Draw PROC EXPORT
 		.IF (MazeHeight != FLT_1)
 			call glPopMatrix
 		.ENDIF
+		
+		; Airlocks
+		push pbx
+		xor pbx, pbx
+		.WHILE (pbx < MazeAirlocks)
+			call glPushMatrix
+			mov pax, pbx
+			shl pax, 3
+			invoke glTranslatef, MazeAirlockPos[pax].X, 0, MazeAirlockPos[pax].Y
+			.IF (MazeAirlockVertical[pbx])
+				invoke glRotatef, f(-90), 0, FLT_1, 0
+			.ENDIF
+			invoke glBindTexture, GL_TEXTURE_2D, TexWalkwaySmall
+			invoke glCallList, MdlAirlockFloor
+			invoke glBindTexture, GL_TEXTURE_2D, TexConcreteRoof
+			invoke glCallList, MdlAirlockRoof
+			invoke glBindTexture, GL_TEXTURE_2D, TexFoil
+			invoke glCallList, MdlAirlockWall
+			
+			invoke glRotatef, f(90), 0, FLT_1, 0
+			invoke glTranslatef, f(-1), 0, f(-1)
+			invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
+			invoke glCallList, MdlDoorwayM
+			
+			mov pax, pbx
+			shl pax, 2
+			bpMEM32 flVal, MazeAirlockDoors[pax]
+			
+			invoke Maze_DrawDoor, flVal, TexDoorAirlock
+			invoke glTranslatef, 0, 0, f(2)
+			invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
+			invoke glCallList, MdlDoorwayM
+			fld f(0.32)
+			fsub flVal
+			fstp flVal
+			invoke Maze_DrawDoor, flVal, TexDoorAirlock
+			call glPopMatrix
+			inc pbx
+		.ENDW
+		
+		; Objects
+		xor pbx, pbx
+		.WHILE (pbx < MazeObjectsSize)
+			mov flVal, vrv(Vector32DDistanceSqr, ADDR MazeObjects[pbx].Position, OFFSET CamPos)
+			fcmp flVal, f(100)
+			.IF (Carry?)
+				call glPushMatrix
+				invoke glTranslate3fv, ADDR MazeObjects[pbx].Position
+				invoke glRotatefr, MazeObjects[pbx].Rotation, 0, FLT_1, 0
+				invoke glBindTexture, GL_TEXTURE_2D, MazeObjects[pbx].Texture
+				invoke glCallList, MazeObjects[pbx].GLList
+				call glPopMatrix
+			.ENDIF
+			add pbx, SIZEOF MazeObject
+		.ENDW
+		pop pbx
 		
 		.IF (MazeLayer == 1)	; Tutorial
 			.IF (InputMethod == INPUT_KEYBOARD_MOUSE)
@@ -3373,6 +4325,11 @@ Maze_Draw PROC EXPORT
 			call Maze_DrawMotrya
 		.ENDIF
 		
+		; Collectibles section
+		.IF (DrawWireframe)
+			invoke glDisable, GL_LIGHTING
+			invoke glColor3fv, ADDR clGreen
+		.ENDIF
 		; Items
 		.IF (MazeItems & MAZE_ITEM_COMPASS)
 			call glPushMatrix
@@ -3468,6 +4425,13 @@ Maze_Draw PROC EXPORT
 			.ENDW
 			pop pbx
 		.ENDIF
+		
+		.IF (DrawWireframe)
+			invoke glEnable, GL_LIGHTING
+			invoke glColor3fv, ADDR clWhite
+		.ENDIF
+		
+		; Not Shnurpshik
 		.IF (MazeState == MAZE_STATE_TRENCH) || (MazeShn == MAZE_SHN_RUN)
 			call glPushMatrix
 			invoke glTranslate3fv, ADDR MazeVasPos
@@ -3521,18 +4485,30 @@ Maze_Draw PROC EXPORT
 	.ENDIF
 	.IF (MazeCheck)			; Checkpoint
 		; Maze, unlimited maze, but no maze
+		call glPushMatrix
+		.IF (MazeCheck == MAZE_CHECK_ENDING) && (PlrGlyphs < 7)
+			invoke Vector32DSet, ADDR v3Val, f(1), f(3)
+			invoke Vector32DAdd, ADDR v3Val, ADDR MazeCheckPos
+			invoke glTranslate32Dfv, ADDR v3Val
+			invoke glRotatefr, MazeCheckErasePos.X, 0, FLT_1, 0
+			invoke Vector32DNegate, ADDR v3Val
+			invoke glTranslate32Dfv, ADDR v3Val
+		.ENDIF
 		.IF !(Maze)
 			call glPushMatrix
 			invoke glTranslate3fv, ADDR MazeCheckPos
 			invoke glBindTexture, GL_TEXTURE_2D, MazeCurWall
 			invoke glCallList, MdlDoorwayM
-			invoke glBindTexture, GL_TEXTURE_2D, TexDoor
-			invoke glCallList, MdlDoorFrame
-			invoke glTranslatef, f(0.65), 0, 0
-			invoke glCallList, MdlDoor
+			.IF (MazeCheck == MAZE_CHECK_ENDING) && (PlrGlyphs < 7)
+				mov eax, MazeDoorRot
+			.ELSE
+				mov eax, 0
+			.ENDIF
+			invoke Maze_DrawDoor, eax, FALSE
 			call glPopMatrix
 		.ENDIF
 		call Maze_DrawCheck
+		call glPopMatrix
 	.ENDIF
 	
 	
@@ -3602,6 +4578,64 @@ Maze_Draw PROC EXPORT
 		.ENDIF
 		
 		call glPopMatrix
+	.ELSEIF (MazeState == MAZE_STATE_CROA)
+		; Draw croa
+		invoke glBindTexture, GL_TEXTURE_2D, TexCroa
+		invoke glEnable, GL_ALPHA_TEST
+		
+		fld UISubPlayTimer
+		fmul f(0.35)
+		fsin
+		fmul f(0.03)
+		fstp flVal
+		
+		call glPushMatrix
+		invoke glTranslate3fv, ADDR MazeCroaPos
+		
+		
+		call glPushMatrix
+		invoke glTranslatef, f(1), flVal, f(3)
+		invoke glRotatef, f(30), 0, f(1), 0
+		invoke glCallList, MdlTorlagg
+		call glPopMatrix
+		
+		fld UISubPlayTimer
+		fmul f(0.4)
+		fsin
+		fmul f(0.03)
+		fstp flVal
+		
+		call glPushMatrix
+		invoke glTranslatef, f(-1), flVal, f(3)
+		invoke glRotatef, f(-30), 0, f(1), 0
+		invoke glCallList, MdlNeqaotor
+		call glPopMatrix
+		
+		call glPopMatrix
+		
+		invoke glDisable, GL_ALPHA_TEST
+	.ELSEIF (MazeState == MAZE_STATE_BORDER)
+		invoke glBindTexture, GL_TEXTURE_2D, TexFloor
+		invoke glCallList, MdlBorderFloor
+		invoke glBindTexture, GL_TEXTURE_2D, TexWall
+		invoke glCallList, MdlBorderWall
+		invoke Maze_DrawDoor, 0, FALSE
+		
+		call glPushMatrix
+		
+		vinvoke glTranslate32Dfv, OFFSET CamPos
+		invoke glRotatefr, MazeCroaTimer, 0, f(1), 0
+		invoke glScalef, MazeCroaColor.X, MazeCroaColor.X, MazeCroaColor.X
+		invoke glDisable, GL_FOG
+		invoke glDisable, GL_LIGHTING
+		invoke glColor3f, MazeCroaColor.X, MazeCroaColor.X, MazeCroaColor.X
+		invoke glBindTexture, GL_TEXTURE_2D, TexSky
+		invoke glCallList, MdlSky
+		invoke glEnable, GL_FOG
+		invoke glEnable, GL_LIGHTING
+		
+		call glPopMatrix
+		invoke glColor3fv, ADDR clWhite
 	.ENDIF
 	
 	.IF (SettingsGraphicsParticles)
@@ -3657,7 +4691,9 @@ Maze_Exit PROC EXPORT
 	.IF (Maze)
 		call Maze_Free
 	.ENDIF
+	mov MazeCroa, 0
 	mov MazeCheck, 0
+	mov MazeDoorRot, 0
 	mov MazeState, MAZE_STATE_GAME
 	mov MazeStateTimer, 0
 	
@@ -3833,27 +4869,34 @@ Maze_Fixed PROC EXPORT
 		.IF (MazeLocked == MAZE_LOCK_LOCKED_JAPE)
 			fcmp flVal, f(2)
 			.IF ((Carry?) && (PlrState == PLAYER_STATE_GAME)) || (MazeKeyPos.Y)
-				.IF !(MazeKeyPos.Y)
-					invoke SndSetPos, SndKeyJape, ADDR MazeKeyPos
-					invoke alSourcePlay, SndKeyJape
-					bpMEM32 MazeKeyPos.Y, f(0.01)
-					.IF (NetSock)
-						invoke Net_FormSend, NET_MAZE_ELEMENTS, NetSock
+				.IF (FreezeTime)
+					fcmp flVal, MazeItemDistImp
+					.IF (Carry?)
+						invoke Maze_CollectItem, MAZE_ITEM_KEY, NetSock
 					.ENDIF
-				.ENDIF
-				
-				fld deltaFixed
-				fmul f(2)
-				fstp flVal
-				mov MazeKeyPos.Y, rv(flLerp, MazeKeyPos.Y, f(4), flVal)
-				
-				fcmp MazeKeyPos.Y, f(2)
-				.IF (!Carry?)
-					.IF !(NetSock) || (NetHosting)
-						invoke Maze_GetRandomPos, ADDR MazeKeyPos, FALSE
-						mov MazeLocked, MAZE_LOCK_LOCKED
+				.ELSE
+					.IF !(MazeKeyPos.Y)
+						invoke SndSetPos, SndKeyJape, ADDR MazeKeyPos
+						invoke alSourcePlay, SndKeyJape
+						bpMEM32 MazeKeyPos.Y, f(0.01)
 						.IF (NetSock)
 							invoke Net_FormSend, NET_MAZE_ELEMENTS, NetSock
+						.ENDIF
+					.ENDIF
+					
+					fld deltaFixed
+					fmul f(2)
+					fstp flVal
+					mov MazeKeyPos.Y, rv(flLerp, MazeKeyPos.Y, f(4), flVal)
+					
+					fcmp MazeKeyPos.Y, f(2)
+					.IF (!Carry?)
+						.IF !(NetSock) || (NetHosting)
+							invoke Maze_GetRandomPos, ADDR MazeKeyPos, FALSE
+							mov MazeLocked, MAZE_LOCK_LOCKED
+							.IF (NetSock)
+								invoke Net_FormSend, NET_MAZE_ELEMENTS, NetSock
+							.ENDIF
 						.ENDIF
 					.ENDIF
 				.ENDIF
@@ -3879,7 +4922,7 @@ Maze_Fixed PROC EXPORT
 				mov MazeMotryaRot, \
 				vrv(Vector32DAngle, OFFSET MazeMotryaPos, OFFSET CamPos)
 			.ENDIF
-			.IF (rv(Maze_PlrVisible, OFFSET MazeMotryaPos))
+			.IF (rv(Maze_PlrVisible, OFFSET MazeMotryaPos, f(9)))
 				
 				mov MazeMotryaSeen, TRUE
 				fld MazeMotryaTimer
@@ -3923,7 +4966,7 @@ Maze_Fixed PROC EXPORT
 					fadd f(0.1)
 					fstp MazeMotryaPos.Z
 					
-					.IF (rv(Maze_PlrVisible, OFFSET MazeMotryaPos))
+					.IF (rv(Maze_PlrVisible, OFFSET MazeMotryaPos, f(9)))
 						mov MazeMotrya, MAZE_MOTRYA_GENERIC
 					.ELSE
 						mov MazeMotryaRot, 0
@@ -3931,7 +4974,7 @@ Maze_Fixed PROC EXPORT
 						pushb MotryaAnimPlr.Interpolation
 						mov MotryaAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 						invoke bpAnimPlay,ADDR MotryaAnimPlr, ADDR AnimMotryaSit
-						invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr,deltaTime
+						invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr,1
 						popb MotryaAnimPlr.Interpolation
 						
 						print "Motrya Sit", 13, 10
@@ -3971,7 +5014,7 @@ Maze_Fixed PROC EXPORT
 							.BREAK
 						.ENDIF
 						
-						invoke Maze_PlrVisible, OFFSET MazeMotryaPos
+						invoke Maze_PlrVisible, OFFSET MazeMotryaPos, f(9)
 					.UNTIL !(eax)
 					pop pbx
 					
@@ -4005,7 +5048,7 @@ Maze_Fixed PROC EXPORT
 						pushb MotryaAnimPlr.Interpolation
 						mov MotryaAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 						invoke bpAnimPlay,ADDR MotryaAnimPlr,ADDR AnimMotryaLook
-						invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr,deltaTime
+						invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr,1
 						popb MotryaAnimPlr.Interpolation
 						
 						print "Motrya Posmotrishka", 13, 10
@@ -4014,7 +5057,7 @@ Maze_Fixed PROC EXPORT
 						pushb MotryaAnimPlr.Interpolation
 						mov MotryaAnimPlr.Interpolation, BP_INTERPOLATE_CONSTANT
 						invoke bpAnimPlay,ADDR MotryaAnimPlr,ADDR AnimMotryaIdle
-						invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr,deltaTime
+						invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr,1
 						popb MotryaAnimPlr.Interpolation
 						
 						; Adjust position
@@ -4119,7 +5162,7 @@ Maze_Fixed PROC EXPORT
 				mov MazeSlam, 2
 			.ENDIF
 		.ELSEIF (MazeSlam == 2)
-			mov MazeSlamRot, rv(flLerp, MazeSlamRot, f(-24), deltaTime)
+			mov MazeSlamRot, rv(flLerp, MazeSlamRot, f(-24), deltaFixed)
 			fcmp flVal, f(4)
 			.IF (Carry?)
 				mov MazeSlam, 3
@@ -4133,8 +5176,8 @@ Maze_Fixed PROC EXPORT
 			vinvoke Virdya_Scare, ADDR v3Val, TRUE
 		.ENDIF
 	.ELSEIF !(MazeSlam) && (MazeSlamRot)
-		fld delta20
-		fmul f(10)
+		fld deltaFixed
+		fmul f(200)
 		fstp flVal
 		mov MazeSlamRot, rv(flMove, MazeSlamRot, 0, flVal)
 	.ENDIF
@@ -4157,6 +5200,83 @@ Maze_Process PROC EXPORT
 		sar MazePlrPos.Y, 1
 		invoke fpuSetRounding, FPU_ROUND_ROUND
 		
+		; Airlocks
+		fld deltaTime
+		fmul f(0.5)
+		fstp v3Val.Y
+		push pbx
+		xor pbx, pbx
+		.WHILE (pbx < MazeAirlocks)
+			mov pcx, pbx
+			shl pcx, 2
+			.IF (MazeAirlockState[pbx])
+				mov MazeAirlockDoors[pcx], \
+				rv(flMove, MazeAirlockDoors[pcx], f(0.32), v3Val.Y)
+			.ELSE
+				mov MazeAirlockDoors[pcx], \
+				rv(flMove, MazeAirlockDoors[pcx], 0, v3Val.Y)
+			.ENDIF
+			mov eax, f(0.32)
+			.IF (MazeAirlockDoors[pcx] == eax) || (MazeAirlockDoors[pcx] == 0)
+				shl pcx, 1
+				invoke Vector32DSet, ADDR v3Val, MazeAirlockPos[pcx].X, \
+				MazeAirlockPos[pcx].Y
+				.IF (MazeAirlockVertical[pbx])
+					fld v3Val.Z
+					fsub f(1)
+					fstp v3Val.Z
+				.ELSE
+					fld v3Val.X
+					fsub f(1)
+					fstp v3Val.X
+				.ENDIF
+				
+				mov sndPos.X, 0
+				mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, ADDR v3Val)
+				fcmp flVal, MazeItemDist
+				.IF (Carry?)
+					inc sndPos.X
+				.ELSE
+					.IF (MazeAirlockVertical[pbx])
+						fld v3Val.Z
+						fadd f(2)
+						fstp v3Val.Z
+					.ELSE
+						fld v3Val.X
+						fadd f(2)
+						fstp v3Val.X
+					.ENDIF
+					mov flVal, vrv(Vector32DDistanceSqr, OFFSET CamPos, ADDR v3Val)
+					fcmp flVal, MazeItemDist
+					.IF (Carry?)
+						inc sndPos.X
+					.ENDIF
+				.ENDIF
+				.IF (sndPos.X)
+					vinvoke UI_ShowSubtitles, StrCCAirlock
+					.IF (InputConfirm)
+						mov InputConfirm, FALSE
+						not MazeAirlockState[pbx]
+						invoke SndSetPos, SndButton, ADDR v3Val
+						invoke alSourcePlay, SndButton
+						mov pcx, pbx
+						shl pcx, 3
+						invoke Vector32DSet, ADDR v3Val, MazeAirlockPos[pcx].X,\
+						MazeAirlockPos[pcx].Y
+						invoke SndSetPos, SndAirlock, ADDR v3Val
+						invoke alSourcePlay, SndAirlock
+						vinvoke HDL_Alert, ADDR v3Val, f(3)
+						invoke Net_FormSend, NET_MAZE_ELEMENTS, NetSock
+						
+						bpMEM32 NetSound, SndAirlock
+						invoke Vector32DCopy, ADDR NetSoundPos, ADDR v3Val
+						invoke Net_FormSend, NET_SOUND, NetSock
+					.ENDIF
+				.ENDIF
+			.ENDIF
+			inc pbx
+		.ENDW
+		
 		.IF (MazeElevator == MAZE_ELEVATOR_CALLED)
 			.IF (rv(SndPlaying, SndElevator) != AL_PLAYING)
 				fild MazeSize[4]
@@ -4173,15 +5293,18 @@ Maze_Process PROC EXPORT
 			.IF (Carry?)
 				vinvoke Vector32DDistanceSqr, OFFSET MazeDoorPos, OFFSET CamPos
 				mov v3Val.Y, eax
-				fld flVal
-				fsub f(9)
-				fld f(32)
-				fsub v3Val.Y
-				fmul f(0.0001)
-				fmul
-				fstp v3Val.X
-				.IF !(v3Val.X & FLT_NEG)
-					vinvoke Plr_Shake, v3Val.X
+				fcmp v3Val.Y, f(32)
+				.IF (Carry?)
+					fld flVal
+					fsub f(9)
+					fld f(32)
+					fsub v3Val.Y
+					fmul f(0.0001)
+					fmul
+					fstp v3Val.X
+					.IF !(v3Val.X & FLT_NEG)
+						vinvoke Plr_Shake, v3Val.X
+					.ENDIF
 				.ENDIF
 			.ENDIF
 			fcmp flVal, f(18)
@@ -4274,7 +5397,7 @@ Maze_Process PROC EXPORT
 			fadd delta20
 			fstp MazeTeleportRot
 			fcmp MazeTeleportRot, f(360)
-			.IF (Carry?)
+			.IF (!Carry?)
 				fld MazeTeleportRot
 				fsub f(360)
 				fstp MazeTeleportRot
@@ -4410,11 +5533,18 @@ Maze_Process PROC EXPORT
 		fld v3Val.Z
 		fadd f(2)
 		fstp v3Val.Z
-		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), f(4.7)
+		.IF (MazeCheck == MAZE_CHECK_ENDING) && (PlrGlyphs < 7)
+			mov eax, f(10)
+		.ELSE
+			mov eax, f(4.7)
+		.ENDIF
+		push pax
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), eax
 		fld v3Val.X
 		fadd f(1)
 		fstp v3Val.X
-		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), f(4.7)
+		pop pax
+		vinvoke Collide_Rectangle, OFFSET CamPos, ADDR v3Val, f(0.8), eax
 		fld v3Val.X
 		fsub f(1.5)
 		fstp v3Val.X
@@ -4444,7 +5574,7 @@ Maze_Process PROC EXPORT
 		invoke SndFade, MazeAmb, f(0), delta2
 				
 		; Process Motrya animator
-		.IF (MazeCheck != MAZE_CHECK_SAVED) && !(NetSock)
+		.IF (MazeCheck != MAZE_CHECK_SAVED) && !(NetSock) && (MazeLayer != 63)
 			invoke bpProcessAnimPlayer, ADDR MotryaAnimPlr, deltaTime
 		.ENDIF
 		
@@ -4457,10 +5587,13 @@ Maze_Process PROC EXPORT
 			.IF !(NetSock)
 				fcmp flVal, f(1)
 				.IF (!Carry?)
-					mov MazeCheck, MAZE_CHECK_CLOSE
+					.IF (MazeLayer == 63)
+						mov MazeCheck, MAZE_CHECK_ENDING
+					.ELSE
+						mov MazeCheck, MAZE_CHECK_CLOSE
+						vinvoke UI_ShowSubtitles, StrCCSave, UISubDur
+					.ENDIF
 					invoke alSourcePlay, SndDoorClose
-					
-					vinvoke UI_ShowSubtitles, StrCCSave, UISubDur
 				.ENDIF
 			.ELSE
 				mov cl, TRUE
@@ -4495,7 +5628,7 @@ Maze_Process PROC EXPORT
 				.ENDIF
 			.ENDIF
 		.ELSEIF (MazeCheck == MAZE_CHECK_CLOSE)
-			mov MazeDoorRot, rv(flLerp, MazeDoorRot, f(0), delta10)
+			mov MazeDoorRot, rv(flLerp, MazeDoorRot, 0, delta10)
 			
 			.IF (NetSock)
 				fcmp MazeDoorRot, f(-16)
@@ -4521,44 +5654,47 @@ Maze_Process PROC EXPORT
 					bpMEM32 MazeCurWall, TexWall
 				.ENDIF
 			.ELSE
-			.IF (MotryaAnimPlr.TrackPtr == OFFSET AnimMotryaIdle)
-				fcmp flVal, f(2)
-				.IF (!Carry?)
-					invoke bpAnimPlay, ADDR MotryaAnimPlr, ADDR AnimMotryaSave
-					bpMEM32 MazeStateTimer, f(0.5)
-					mov MazeStateCallback, 0
-					invoke alSourcePlay, SndSave
+				.IF (MotryaAnimPlr.TrackPtr == OFFSET AnimMotryaIdle)
+					fcmp flVal, f(2)
+					.IF (!Carry?)
+						invoke bpAnimPlay, ADDR MotryaAnimPlr, ADDR AnimMotryaSave
+						bpMEM32 MazeStateTimer, f(0.5)
+						mov MazeStateCallback, 0
+						invoke alSourcePlay, SndSave
+					.ENDIF
+				.ELSE
+					.IF (!MazeStateTimer)
+						call Maze_Exit
+						bpMEM32 MazeCurWall, TexWall
+						mov MazeStateTimer, FLT_1
+						mov MazeDoorRot, 0
+						invoke Vector3Set, ADDR MazeCheckErasePos, f(1), \
+						f(1.5), f(0.5)
+						invoke Vector32DAdd, ADDR MazeCheckErasePos, \
+						ADDR MazeCheckPos
+						invoke Vector3Set, ADDR MazeCheckErasePosL, f(1), \
+						f(1), f(4)
+						invoke Vector32DAdd, ADDR MazeCheckErasePosL, \
+						ADDR MazeCheckPos
+						vinvoke UI_ShowSubtitles, StrCCSaved, UISubDur
+						
+						vinvoke Settings_EraseSave, TRUE
+						vinvoke Settings_SaveGame, FALSE
+						
+						mov PlrGlyphs, 7
+						
+						invoke alSourcePlay, SndMus[8]
+						mov MazeCheck, MAZE_CHECK_SAVED
+					.ENDIF
+					fld MazeStateTimer
+					fsubr f(0.5)
+					fld st
+					fmul f(0.1)
+					fstp flVal
+					fmul f(2)
+					fstp UIWhiteFadeVal
+					vinvoke Plr_Shake, flVal
 				.ENDIF
-			.ELSE
-				.IF (!MazeStateTimer)
-					call Maze_Exit
-					bpMEM32 MazeCurWall, TexWall
-					mov MazeStateTimer, FLT_1
-					mov MazeDoorRot, 0
-					invoke Vector3Set, ADDR MazeCheckErasePos,f(1),f(1.5),f(0.5)
-					invoke Vector32DAdd,ADDR MazeCheckErasePos,ADDR MazeCheckPos
-					invoke Vector3Set, ADDR MazeCheckErasePosL, f(1), f(1), f(4)
-					invoke Vector32DAdd, ADDR MazeCheckErasePosL, \
-					ADDR MazeCheckPos
-					vinvoke UI_ShowSubtitles, StrCCSaved, UISubDur
-					
-					vinvoke Settings_EraseSave, TRUE
-					vinvoke Settings_SaveGame, FALSE
-					
-					mov PlrGlyphs, 7
-					
-					invoke alSourcePlay, SndMus[8]
-					mov MazeCheck, MAZE_CHECK_SAVED
-				.ENDIF
-				fld MazeStateTimer
-				fsubr f(0.5)
-				fld st
-				fmul f(0.1)
-				fstp flVal
-				fmul f(2)
-				fstp UIWhiteFadeVal
-				vinvoke Plr_Shake, flVal
-			.ENDIF
 			.ENDIF
 		.ELSEIF (MazeCheck == MAZE_CHECK_SAVED)
 			.IF !(NetSock)
@@ -4616,6 +5752,42 @@ Maze_Process PROC EXPORT
 					invoke alSourcePlay, SndMistake
 				.ENDIF
 			.ENDIF
+			.ENDIF
+		.ELSEIF (MazeCheck == MAZE_CHECK_ENDING)			
+			fcmp MazeDoorRot, f(-6)
+			.IF (!Carry?) && (Maze)
+				call Maze_Exit
+				mov MazeCheck, MAZE_CHECK_ENDING
+				invoke SndSetPos, SndSlam, ADDR MazeDoorPos
+				invoke alSourcePlay, SndSlam
+				mov MazeDoorRot, 0
+				mov PlrState, PLAYER_STATE_ETC
+			.ENDIF
+			
+			.IF (PlrGlyphs < 7)
+				fld CamPosL.Z
+				fsub MazeCheckPos.Z
+				fsub f(2.5)
+				fmul PI
+				fstp MazeCheckErasePos.X
+				
+				mov MazeCheckErasePos.X, \
+				rv(flClamp, MazeCheckErasePos.X, 0, PI)
+			.ENDIF
+			
+			; Exit door
+			.IF (PlrState != PLAYER_STATE_EXITING)
+				mov MazeDoorRot, rv(flLerp, MazeDoorRot, 0, delta10)
+				
+				mov flVal, \
+				vrv(Vector32DDistanceSqr, OFFSET CamPos, OFFSET MazeDoorPos)
+				fcmp flVal, MazeItemDist
+				.IF (Carry?)
+					vinvoke UI_ShowSubtitles, StrCCEnding, f(0.1)
+					.IF (InputConfirm)
+						mov PlrState, PLAYER_STATE_EXIT_END
+					.ENDIF
+				.ENDIF
 			.ENDIF
 		.ENDIF
 	.ENDIF
@@ -4830,10 +6002,10 @@ Maze_Process PROC EXPORT
 					mov UISubType, TRUE
 					bpMEM32 UISubTypeDur, f(0.08)
 					
-					mov UISubPlayMode, UI_CC_START_END
-					bpMEM32 UISubPlaySnd, SndSpeak
 					invoke SndSetGain, ADDR SndSpeak, f(0.1)
 					
+					mov UISubPlayMode, UI_CC_START_END
+					bpMEM32 UISubPlaySnd, SndSpeak
 					vinvoke UI_PlaySubtitles, \
 					OFFSET MazeMotryaSpeak1, \
 					SIZEOF MazeMotryaSpeak1/8, OFFSET StrCCSpeak1

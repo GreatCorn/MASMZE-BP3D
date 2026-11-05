@@ -22,6 +22,7 @@ HBD_Spawn PROC EXPORT State:BPEnum
 		print "Spawned Huenbergondel at "
 		mov HBDAnimPlr.FrameType, BPA_FRAME_VERTEX
 		mov HBDAnimPlr.Mesh, OFFSET MeshHBD
+		mov HBDAnimPlr.MeshUseNormals, TRUE
 	
 		mov HBDAnimPlr.Speed, FLT_1 or FLT_NEG
 		invoke bpAnimPlay, ADDR HBDAnimPlr, ADDR AnimHBDBlink
@@ -84,52 +85,26 @@ HBD_Process PROC EXPORT
 				; Choose direction to go
 				mov movePool, 0
 				.IF (HBDCell.Y > 0)		; Up
-					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
-						mov eax, HBDCell.X
-						mov ecx, HBDCell.Y
-						dec ecx
-						.IF !(MazeCrevice) || (eax != MazeCreviceCell[0]) || \
-						(ecx != MazeCreviceCell[4])
-							or movePool, MAZE_FREE_UP
-						.ENDIF						
+					.IF (rv(Maze_CanPass, HBDCell.X, HBDCell.Y, MAZE_FREE_UP, 3))
+						or movePool, MAZE_FREE_UP
 					.ENDIF
 				.ENDIF
 				.IF (HBDCell.X > 0)		; Left
-					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
-						mov eax, HBDCell.X
-						mov ecx, HBDCell.Y
-						dec eax
-						.IF !(MazeCrevice) || (eax != MazeCreviceCell[0]) || \
-						(ecx != MazeCreviceCell[4])
-							or movePool, MAZE_FREE_LEFT
-						.ENDIF	
+					.IF (rv(Maze_CanPass, HBDCell.X, HBDCell.Y, MAZE_FREE_LEFT, 3))
+						or movePool, MAZE_FREE_LEFT
 					.ENDIF
 				.ENDIF
 				mov eax, HBDCell.Y
 				.IF (eax < MazeSize[12]); Down
-					inc HBDCell.Y
-					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, FALSE, TRUE))
-						mov eax, HBDCell.X
-						mov ecx, HBDCell.Y
-						.IF !(MazeCrevice) || (eax != MazeCreviceCell[0]) || \
-						(ecx != MazeCreviceCell[4])
-							or movePool, MAZE_FREE_DOWN
-						.ENDIF	
+					.IF (rv(Maze_CanPass, HBDCell.X, HBDCell.Y, MAZE_FREE_DOWN, 3))
+						or movePool, MAZE_FREE_DOWN
 					.ENDIF
-					dec HBDCell.Y
 				.ENDIF
 				mov eax, HBDCell.X
 				.IF (eax < MazeSize[8])	; Right
-					inc HBDCell.X
-					.IF (rv(Maze_CheckFree, HBDCell.X, HBDCell.Y, TRUE, TRUE))
-						mov eax, HBDCell.X
-						mov ecx, HBDCell.Y
-						.IF !(MazeCrevice) || (eax != MazeCreviceCell[0]) || \
-						(ecx != MazeCreviceCell[4])
-							or movePool, MAZE_FREE_RIGHT
-						.ENDIF	
+					.IF (rv(Maze_CanPass, HBDCell.X, HBDCell.Y, MAZE_FREE_RIGHT, 3))
+						or movePool, MAZE_FREE_RIGHT
 					.ENDIF
-					dec HBDCell.X
 				.ENDIF
 				.IF !(movePool)
 					print "Huenbergondel stuck", 13, 10
@@ -206,7 +181,7 @@ HBD_Process PROC EXPORT
 	
 	mov movePool, 0
 	.IF (PlrState == PLAYER_STATE_GAME)
-		invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(0.7), 0
+		invoke Collide_Distance, ADDR CamPos, ADDR HBDPos, f(0.67), 0
 		mov movePool, al
 	.ENDIF
 	
@@ -220,7 +195,7 @@ HBD_Process PROC EXPORT
 			fld delta2
 			fmul HBDSpeed
 			fstp v3Val.X
-			invoke Vector32DMove, ADDR HBDPos, ADDR HBDPosT, v3Val.X
+			invoke Vector32DMoveEach, ADDR HBDPos, ADDR HBDPosT, v3Val.X
 			invoke SndSetPos, SndHBD, ADDR HBDPos
 			.IF (rv(SndPlaying, SndHBD) != AL_PLAYING)
 				invoke alSourcePlay, SndHBD
