@@ -32,7 +32,7 @@ To compile the project, either run makeit.bat or compile and link manually with 
 This project includes header definitions (`.inc`) and import libraries (`.lib`) designed to interface with <a href=https://github.com/kcat/openal-soft>OpenAL Soft</a> and stb_vorbis.
 OpenAL Soft is licensed under the GNU Lesser General Public License (LGPL). This project's source repository does not distribute any binaries; users must download the binary builds under releases or provide their own runtime libraries.
 
-The game's code, not including the external libraries, is licensed under the <a href=https://github.com/GreatCorn/MASMZE-BP3D/blob/main/LICENSE.txt>MIT License</a>. The game's assets are licensed under a <a href=https://github.com/GreatCorn/MASMZE-BP3D/blob/main/assets/LICENSE.txt>Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
+The game's code, not including the external libraries, is licensed under the [MIT License](./LICENSE.MIT). The game's assets are licensed under a [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](./LICENSE.CC-BY-NC-SA-4.0).
 
 © Yevhenii Ionenko (aka GreatCorn), 2023-2026
 
