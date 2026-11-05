@@ -359,8 +359,8 @@ HDL_Process PROC EXPORT
 		.ELSE
 			fld v3Val.Y
 			.IF (HDL == HDL_SEARCH) || (HDL == HDL_RUSH)
-				fmul f(0.5)
-				fadd f(2.2)
+				fmul f(0.4)
+				fadd f(1.8)
 			.ELSE
 				fmul f(0.6)
 			.ENDIF

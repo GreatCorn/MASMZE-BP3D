@@ -34,8 +34,6 @@ OpenAL Soft is licensed under the GNU Lesser General Public License (LGPL). This
 
 The game's code, not including the external libraries, is licensed under the <a href=https://github.com/GreatCorn/MASMZE-BP3D/blob/main/LICENSE.txt>MIT License</a>. The game's assets are licensed under a <a href=https://github.com/GreatCorn/MASMZE-BP3D/blob/main/assets/LICENSE.txt>Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License</a>.
 
-`SPDX-License-Identifier: MIT AND CC-BY-NC-SA-4.0`
-
 © Yevhenii Ionenko (aka GreatCorn), 2023-2026
 
 https://greatcorn.github.io/me/
